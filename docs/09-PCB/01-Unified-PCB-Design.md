@@ -1,7 +1,7 @@
 ---
 created: 2026-03-06
-modified: 2026-03-11
-version: 1.9
+modified: 2026-03-18
+version: 2.0
 status: Draft
 ---
 
@@ -82,6 +82,14 @@ Combined components (~112 ICs/discretes + 17 connectors) occupy ~3,789 mm² of t
                                                               └───────┬────────┘
                                                                       │
                                                                   5V_MAIN ── D_OR1 (SS14) ──┐
+                                                                      │
+                                                                ┌─────▼───────┐
+                                                                │  B0505S     │
+                                                                │  5V→5V_ISO  │
+                                                                │  (isolated) │
+                                                                └─────┬───────┘
+                                                                  5V_ISO ──► ISO1050 VCC2
+                                                                  GND_ISO ──► ISO1050 GND2
                                                                                              │
 USB-C VBUS ─── F_USB (500mA polyfuse) ──── 5V_USB ── D_OR2 (SS14) ──┼── 5V_MERGED
                        │                                              │
@@ -407,7 +415,7 @@ STM32G474RE (LQFP-64) — Unified PCB Pin Assignment
 | Input Voltage | 12V (from UPS-backed DC input) |
 | Output Voltage | 5V |
 | Max Current | 5A |
-| Load | CM5 (up to 3A), 3.3V LDO (0.17A), buzzer (0.03A), LED ring (1A peak) |
+| Load | CM5 (up to 3A), 3.3V LDO (0.17A), buzzer (0.03A), LED ring (1A peak), B0505S isolated DC-DC (0.05A) |
 | Inductor | 10uH, CDRH127 (12.7x12.7mm), Isat > 6A |
 | Output Cap | 2x 22uF MLCC (X5R, 10V) + 220uF electrolytic (10V) |
 | Feedback Resistors | R_top = 52.3k, R_bot = 10k → 4.98V |
@@ -497,9 +505,39 @@ Three independent 5V sources are OR'd via SS14 Schottky diodes to create `5V_MER
 | 5V_MERGED (5A max) | 3-way Schottky-OR: TPS54531 / USB-C / MT3608 | 1.5 | 4.0 | 20% | CM5 (3A peak) + LDO (0.17A) + buzzer + LED; ~0.35V Schottky drop |
 | 12V (3A max) | 24V → MP1584EN #1 | 1.9 | 3.0 | 0% | Actuators only (not needed during power fail) |
 | 6.5V (3A max) | 24V → MP1584EN #2 | 0 | 0 | 100% | Available for future use |
+| 5V_ISO (200mA max) | 5V_MAIN → B0505S | 0.04 | 0.15 | 25% | ISO1050 VCC2 (~40mA) + optional J_CAN pin 4 |
 | 24V direct | 24V input | 1.0 | 3.0 | — | BLDC stirring motor (integrated ESC, via J_BLDC) |
 | **24V input** | **Mean Well PSU** | **~2.0** | **~2.5** | Within PSU 3.2A rating | |
 | **12V UPS input** | **External UPS** | **1.5** | **4.0** | Within 5A fuse | UPS-backed |
+
+### 4.11 Isolated 5V DC-DC (B0505S-1WR3)
+
+The ISO1050DUB CAN transceiver requires an isolated 5V supply on its bus side (VCC2/GND_ISO). A Mornsun B0505S-1WR3 isolated DC-DC converter generates 5V_ISO from the system 5V_MAIN rail, preserving the ISO1050's 5 kV galvanic isolation barrier.
+
+| Parameter | Value |
+|-----------|-------|
+| IC | B0505S-1WR3 (Mornsun), SIP-4 (TH) |
+| Input | 5V_MAIN (TPS54531 output, before Schottky-OR) |
+| Output | 5V_ISO, 200mA max |
+| Isolation | 3 kVDC |
+| Load | ISO1050 VCC2 (~40mA) + optional J_CAN pin 4 |
+| Input decoupling | C_ISO_IN: 10µF MLCC (0805, 10V) |
+| Output decoupling | C_ISO_OUT: 10µF MLCC (0805, 10V) |
+
+```
+5V_MAIN ──┬── C_ISO_IN (10µF) ──┬── GND
+           │                      │
+           └── VIN+ ┌────────────┐│
+                    │ B0505S     ││
+                    │ -1WR3      ││
+           GND ─── VIN- │  VOUT+ ├┘── 5V_ISO ──► ISO1050 VCC2
+                        │  VOUT- ├── GND_ISO ──► ISO1050 GND2
+                        └────────┘       │
+                                    C_ISO_OUT (10µF) ── GND_ISO
+```
+
+> [!note]
+> **Input voltage choice:** 5V_MAIN is used instead of 5V_MERGED to avoid the tight margin from the Schottky-OR drop (~4.65V vs B0505S minimum 4.5V). CAN communication with the induction module only occurs during cooking when the PSU is active, so 5V_MAIN availability is guaranteed.
 
 ---
 
@@ -1125,9 +1163,9 @@ PB9 (FDCAN1_TX) ──► TXD ┐
                ┌──────────▼──────────┐
                │     ISO1050DUB      │
                │                     │
-  VCC1 = 3.3V ─┤ VCC1           VCC2 ├──── 5V
+  VCC1 = 3.3V ─┤ VCC1           VCC2 ├──── 5V_ISO (from B0505S-1WR3)
                │                     │
-  GND1 = GND  ─┤ GND1           GND2 ├──── GND_ISO (isolated)
+  GND1 = GND  ─┤ GND1           GND2 ├──── GND_ISO (from B0505S-1WR3)
                │                     │
                │  ─── 5 kV barrier ─ │
                │                     │
@@ -1150,7 +1188,9 @@ A **6mm milled slot** in the PCB under the ISO1050 provides physical separation 
 |-----|------|-------|-------|
 | C_CAN1 | 100nF MLCC | 0402 | VCC1 decoupling (3.3V logic side) |
 | C_CAN2a | 100nF MLCC | 0402 | VCC2 high-freq decoupling (5V bus side) |
-| C_CAN2b | 10uF MLCC | 0805 | VCC2 bulk decoupling (5V bus side) |
+| C_CAN2b | 10uF MLCC | 0805 | VCC2 bulk decoupling (5V_ISO bus side) |
+| C_ISO_IN | 10uF MLCC | 0805 (10V) | B0505S input decoupling (system 5V_MAIN side) |
+| C_ISO_OUT | 10uF MLCC | 0805 (10V) | B0505S output decoupling (isolated 5V_ISO side) |
 | R_TERM | 120R | 0402 | CAN bus termination |
 
 > [!note]
@@ -1413,7 +1453,7 @@ Mates directly with the CM5IO board's 40-pin GPIO header. Only the pins listed b
 | 1 | CAN_H | CAN bus high |
 | 2 | CAN_L | CAN bus low |
 | 3 | GND_ISO | Isolated bus ground (NOT system GND) |
-| 4 | NC | Reserved |
+| 4 | 5V_ISO | Isolated 5V output (from B0505S), optional 100mA polyfuse (F_CAN) |
 
 ### 10.11 J_BUZZER — Piezo Buzzer (2-pin JST-PH 2.0mm)
 
@@ -1533,9 +1573,9 @@ Inner copper: 1 oz (35um) for planes
 │  │ TB6612FNG   │  │ ARRAY     │  │ CONVERTERS    │  │
 │  │ PCF8574 x2  │  │ 11xMOSFET │  │ 2x MP1584EN   │  │
 │  └─────────────┘  │ +flybacks │  │ TPS54531      │  │
-│  ┌── CAN ISOLATION (6mm slot)─┐  │ +3 inductors  │  │
-│  │ ISO1050 │ SLOT │ J_CAN     │  └───────────────┘  │
-│  └────────────────────────────┘                     │
+│  ┌── CAN ISOLATION (6mm slot)──────┐ +3 inductors  │  │
+│  │ B0505S │ ISO1050 │ SLOT │ J_CAN│ └───────────────┘  │
+│  └─────────────────────────────────┘                   │
 │J_BLDC  J_PASD  J_PRES  J_SLD  J_CID  J_FAN  J_BUZZER│
 └─────────────────────────────────────────────────────┘
 ```
@@ -1657,6 +1697,10 @@ At 40C ambient (inside Epicura enclosure near induction surface):
 | C_CAN2a | 100nF MLCC | 0402 | 1 | $0.01 | VCC2 high-freq |
 | C_CAN2b | 10uF MLCC | 0805 | 1 | $0.11 | VCC2 bulk |
 | R_TERM | 120R | 0402 | 1 | $0.01 | CAN bus termination |
+| U_ISO_DC | B0505S-1WR3 (Mornsun) | SIP-4 (TH) | 1 | $2.50 | 5V→5V_ISO isolated DC-DC, 1W, 3kVDC |
+| C_ISO_IN | 10uF MLCC | 0805 (10V) | 1 | $0.10 | B0505S input decoupling (system side) |
+| C_ISO_OUT | 10uF MLCC | 0805 (10V) | 1 | $0.10 | B0505S output decoupling (isolated side) |
+| F_CAN | 100mA polyfuse | 0402 | 1 | $0.10 | Optional J_CAN pin 4 overcurrent protection |
 | **Protection** | | | | | |
 | F1 | 5A polyfuse | 1812 | 1 | $0.40 | 24V input overcurrent |
 | F2-F3 | 1.5A/3A polyfuse | 0805/1206 | 2 | $0.25 | 12V and 6.5V per-rail |
@@ -1762,14 +1806,14 @@ At 40C ambient (inside Epicura enclosure near induction surface):
 | H-Bridge ICs (DRV8876 x1 + TB6612) | $4.00 | $3.25 |
 | Discrete MOSFETs + Diodes | $3.70 | $2.20 |
 | I2C Peripherals (PCF8574 x2 + INA219) | $2.81 | $2.00 |
-| CAN Transceiver (ISO1050 + passives) | $3.64 | $2.50 |
+| CAN Transceiver + Isolated DC-DC (ISO1050 + B0505S + passives) | $6.44 | $4.50 |
 | Protection (polyfuses + TVS + ESD) | $2.70 | $1.60 |
 | Passive Components | $3.00 | $1.50 |
 | USB-C + Schottky-OR | $1.13 | $0.75 |
 | Li-Ion Charger + Boost | $1.45 | $0.95 |
 | Connectors (17 total) | $6.18 | $3.80 |
 | PCB | $5.50 | $2.50 |
-| **Total** | **~$55.50** | **~$34.50** |
+| **Total** | **~$58.30** | **~$36.50** |
 
 > [!note]
 > **Cost comparison vs 2-board design:**
@@ -1806,7 +1850,7 @@ At 40C ambient (inside Epicura enclosure near induction surface):
 ### 14.1 Assembly Notes
 
 - All ICs and passives are SMT (top side preferred, bottom side available for passives)
-- Through-hole: Hirose DF11 dual-row connectors (incl. J_IR_LED), JST-XH connectors (J_FAN, J_CAN), XT30 for power inputs, 2.54mm pin headers
+- Through-hole: Hirose DF11 dual-row connectors (incl. J_IR_LED), JST-XH connectors (J_FAN, J_CAN), XT30 for power inputs, 2.54mm pin headers, B0505S-1WR3 (SIP-4)
 - J_CM5 (2x20 socket) on bottom side, top edge center — mates downward with CM5IO below
 - Reflow for SMT, then wave or hand-solder through-hole
 - Mark pin 1 of all multi-pin connectors with silkscreen triangle
@@ -1995,6 +2039,7 @@ The following documents were merged into this unified design and are retained fo
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
+| 2.0 | 2026-03-18 | Manas Pradhan | Added Mornsun B0505S-1WR3 isolated DC-DC converter (SIP-4, 5V→5V_ISO, 1W, 3kVDC) to provide true galvanically isolated 5V supply for ISO1050 VCC2/GND_ISO; input from 5V_MAIN (not 5V_MERGED) for full voltage margin; added C_ISO_IN/C_ISO_OUT (10µF each), optional F_CAN polyfuse on J_CAN pin 4; J_CAN pin 4 changed NC→5V_ISO; B0505S placed in CAN isolation zone (system-GND side of milled slot, output traces cross to isolated island); +$2.80 BOM |
 | 1.9 | 2026-03-11 | Manas Pradhan | Added PCF8574 #2 (0x21) I2C GPIO expander for GPIO headroom; moved SLD solenoids (PA7→P0, PA9→P1), status LED (PC8→P2), and LED ring enable (PA2→P3) to PCF8574 #2; freed 4 STM32 pins (PA2, PA7, PA9, PC8) for future use; 7-8 total free GPIO; +$0.51 BOM (PCF8574 $0.50 + 100nF $0.01); I2C bus now 5 devices, within 400pF budget |
 | 1.8 | 2026-03-11 | Manas Pradhan | Replaced CID-1 DC linear actuator + DRV8876 #1 with NEMA 23 stepper motor + external driver (PUL/DIR/ENA differential signals); PA10→PUL+, PB4→DIR+, PCF8574 P7→ENA+ (all via 100R); J_CID expanded 10-pin→14-pin (2x7 Hirose DF11) with stepper signals + 24V power; DRV8876 qty 2→1; PB11 freed (CID-1 extend switch removed, step counting for travel); 3× 100R stepper resistors added; BOM/thermal/checklists updated |
 | 1.7 | 2026-03-10 | Manas Pradhan | Converted 6 connectors from single-row JST-XH 2.5mm to dual-row Hirose DF11 2.0mm: J_BLDC (2x3), J_PASD (2x8), J_PRES (2x2), J_SLD (2x8), J_CID (2x5, +1 GND pin), J_SAFE (2x2); more compact layout, keyed/polarized; updated BOM and cost summary (+$2/unit) |
