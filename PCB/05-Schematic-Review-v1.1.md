@@ -103,62 +103,48 @@ Unified_v1.kicad_sch (Root — Sheet 1/4)
 
 ### 3.1 CRITICAL Issues (Must Fix Before Fabrication)
 
-#### C-01: MP1584EN #2 (U8) Feedback Resistors — Output Voltage Mismatch
+#### ~~C-01: MP1584EN #2 (U8) Feedback Resistors — Output Voltage Mismatch~~ RESOLVED
 
-**Location:** Driver sheet, "24V to 6.5V conversion" section
-**Components:** R24 = 140K (top), R26 = 37.4K (bottom)
-**Expected Output:** 6.5V (per section label and design doc)
-**Calculated Output:** Vout = 0.8V × (1 + 140K/37.4K) = **3.79V**
+**Status:** Closed — false positive. Original review incorrectly assigned R24/R26 to U8.
 
-The feedback divider produces ~3.8V, not 6.5V. For 6.5V output:
-- R_bot should be **19.6K** (closest E96: 19.6K) with R_top = 140K
-- Or R_top should be **267K** (closest E96: 267K) with R_bot = 37.4K
+**Root Cause of Error:** The v1.0 review assumed R24 (140K) and R26 (37.4K) formed U8's feedback divider based on BOM proximity, without tracing the actual schematic net connections. Physical net tracing (v1.3, 2026-03-23) revealed R24/R25 belong to U4, and U8 uses R36/R38 on a separate net (`+6.5V_DCDC_FB`).
 
-**Impact:** Downstream circuits expecting 6.5V will receive only 3.8V. If this rail feeds the INA219 bus voltage sensing or other 6.5V-dependent circuits, they will malfunction.
+**Actual U8 feedback:** R36 = 71.5K (top), R38 = 10K (bottom)
+**Calculated:** Vout = 0.8V × (1 + 71.5K/10K) = **6.52V** — correct for 6.5V rail.
 
-**Action:** Verify intended output voltage and correct feedback resistors.
+See "Feedback Network Reference Table" below for the complete verified mapping.
 
 ---
 
-#### C-02: MT3608 (U14) Feedback Resistors — Battery Boost Output Voltage
+#### ~~C-02: MT3608 (U14) Feedback Resistors — Battery Boost Output Voltage~~ RESOLVED
 
-**Location:** Driver sheet, "Battery to +5V converter" section
-**Components:** R64 = 732K (top), feedback-to-GND resistor (verify value)
-**Expected Output:** 5V (per design doc)
+**Status:** Closed — false positive. Original review assumed R36 (71.5K) was the MT3608 bottom resistor; it is actually U8's top feedback resistor.
 
-If R64 = 732K and the bottom resistor is 71.5K (R36):
-- Vout = 0.6V × (1 + 732K/71.5K) = **6.74V**
+**Actual U14 feedback:** R64 = 732K (top), R65 = 100K (bottom)
+**Calculated:** Vout = 0.6V × (1 + 732K/100K) = **4.99V** — correct for 5V boost output.
 
-This output feeds through a Schottky OR-diode (~0.5V drop) into +5V_MERGED, producing ~6.2V on the 5V bus. This **exceeds the absolute maximum rating** of many 5V-rated components.
-
-**Impact:** Potential damage to USB peripherals, TB6612FNG (VCC max 5.5V), and any 5V-rated ICs on the merged bus.
-
-**Action:** Verify which resistors form the MT3608 feedback divider. For 5V output: R_bot should be ~100K with R_top = 732K (gives Vout = 0.6 × (1 + 7.32) = 4.99V). Alternatively, reduce R64 to ~524K with R_bot = 71.5K.
-
-> **Note:** If R36 (71.5K) is actually the TPS54531 feedback resistor rather than the MT3608, this issue may not apply. Cross-check the schematic to confirm feedback resistor assignments for U5, U8, and U14.
+> **Note on R65:** The v1.0 review (H-06) identified R65 as a "100K fixed resistor on TP4056 TEMP pin". R65 (at schematic position 264.16, 251.46) is physically in U14's feedback divider area, not near U16 (TP4056 at 59.69, 281.94). The TP4056 TEMP pin resistor is a separate component — verify its reference designator independently.
 
 ---
 
-#### C-03: PCF8574AT I2C Address vs Documentation Mismatch
+#### ~~C-03: PCF8574AT I2C Address vs Documentation Mismatch~~ RESOLVED
+
+**Status:** Fixed in v1.3 (2026-03-23). Changed BOM part from PCF8574AT to PCF8574T (non-A variant).
 
 **Location:** Driver sheet, U9 and U10
-**Part:** PCF8574**A**T (BOM line 80, MPN: PCF8574AT)
-
-The PCF8574 (non-A) uses base address **0x20-0x27**, while the PCF8574**A** uses base address **0x38-0x3F**. The "T" suffix indicates TSSOP package.
+**Previous Part:** PCF8574**A**T → addresses 0x38/0x39 (mismatched design doc)
+**New Part:** PCF8574**T** → addresses **0x20/0x21** (matches design doc and firmware)
 
 | Variant | Address Range | A0=0,A1=0,A2=0 | A0=1,A1=0,A2=0 |
 |---------|--------------|-----------------|-----------------|
-| PCF8574 | 0x20–0x27 | 0x20 | 0x21 |
-| PCF8574A | 0x38–0x3F | 0x38 | 0x39 |
+| PCF8574 (non-A) | 0x20–0x27 | 0x20 | 0x21 |
+| ~~PCF8574A~~ | ~~0x38–0x3F~~ | ~~0x38~~ | ~~0x39~~ |
 
-**Design doc states:** addresses 0x20 and 0x21
-**Actual addresses (if PCF8574A):** 0x38 and 0x39
-
-**Impact:** Firmware using addresses 0x20/0x21 will get NACKs. All P-ASD solenoids, SLD solenoids, status LED, and LED ring power will be non-functional.
-
-**Action:** Either:
-1. Change BOM part to PCF8574T (non-A variant) to match firmware addresses 0x20/0x21, **or**
-2. Update firmware to use addresses 0x38/0x39 matching the PCF8574AT.
+**Changes made:**
+- `Driver.kicad_sch`: Value, MPN, MP properties on U9 and U10 changed to `PCF8574T`
+- `BoM/Unified_v1.3.csv`: MPN updated to `PCF8574T`
+- Footprint unchanged (SOIC-16 1.27mm pitch — identical package for both variants)
+- `lib_id` reference unchanged (symbol pinout is identical)
 
 ---
 
@@ -175,19 +161,35 @@ On a nominal 24V rail, this provides only **4% voltage margin**. The Mean Well L
 
 ---
 
-#### C-05: TPS54531 (U5) Feedback Verification Needed
+#### ~~C-05: TPS54531 (U5) Feedback Verification Needed~~ RESOLVED
 
-**Location:** Driver sheet, "UPS_INPUT" section
-**Expected Output:** 5V (per design doc — 12V UPS → 5V conversion)
+**Status:** Closed — verified correct. Original review assumed R36/R25 were U5's divider; actual divider is R20/R27 on the `+5V_FB` net.
 
-The TPS54531DDA VSENSE reference is 0.8V. The feedback resistor values need verification against the schematic to confirm 5V output. If R36 = 71.5K (top) and R25 = 10K (bottom):
-- Vout = 0.8V × (1 + 71.5K/10K) = **6.52V** (not 5V!)
+**Actual U5 feedback:** R20 = 52.3K (top), R27 = 10K (bottom)
+**Calculated:** Vout = 0.8V × (1 + 52.3K/10K) = **4.98V** — correct for 5V output.
 
-If this is intentional (producing 6.5V to match the "+6.5V_OUT" rail), then the section label "UPS_INPUT" and design doc description ("12V → 5V") are wrong.
+R36 (71.5K) belongs to U8's feedback network, not U5. R26 (37.4K) and C18 (2.2nF) form a series RC compensation network in U5's area (both at x=391.16), likely connected to U5's COMP pin.
 
-**Impact:** If TPS54531 outputs 6.5V instead of 5V, the 5V_MAIN Schottky-OR bus may see higher-than-expected voltage.
+---
 
-**Action:** Verify the actual feedback resistor connections on U5 in the schematic. Confirm intended output voltage and update documentation accordingly.
+### Feedback Network Reference Table (Verified 2026-03-23)
+
+Traced from KiCad source via net labels and wire coordinates. Each divider confirmed by matching IC FB pin position to net label, then following the net to the resistor pair.
+
+| Regulator | IC | Vref | R_top | R_bottom | Net Label | Calc Vout | Target | Status |
+|-----------|-----|------|-------|----------|-----------|-----------|--------|--------|
+| 24V → 12V | U4 (MP1584EN) | 0.8V | R24 = 140K | R25 = 10K | `+12V_DCDC_FB` | 12.0V | 12V | OK |
+| 24V → 6.5V | U8 (MP1584EN) | 0.8V | R36 = 71.5K | R38 = 10K | `+6.5V_DCDC_FB` | 6.52V | 6.5V | OK |
+| 12V → 5V | U5 (TPS54531) | 0.8V | R20 = 52.3K | R27 = 10K | `+5V_FB` | 4.98V | 5V | OK |
+| 3.7V → 5V | U14 (MT3608) | 0.6V | R64 = 732K | R65 = 100K | *(direct wire)* | 4.99V | 5V | OK |
+
+**Other resistors in regulator areas (not feedback dividers):**
+
+| Resistor | Value | Location (x, y) | Likely Function |
+|----------|-------|-----------------|-----------------|
+| R19 | 140K | (312.42, 24.13) | U5 compensation or timing |
+| R26 | 37.4K | (391.16, 46.99) | U5 COMP network (series with C18) |
+| C18 | 2.2nF | (391.16, 39.37) | U5 COMP network (series with R26) |
 
 ---
 
@@ -616,11 +618,11 @@ Adequate margin.
 
 | ID | Issue | Action |
 |----|-------|--------|
-| C-01 | MP1584EN #2 feedback gives 3.8V not 6.5V | Correct R24/R26 values |
-| C-02 | MT3608 feedback may give 6.7V not 5V | Verify and correct feedback divider |
-| C-03 | PCF8574AT addresses 0x38/0x39, not 0x20/0x21 | Change part or update firmware |
-| C-04 | C34 470uF@25V on 24V rail (4% margin) | Replace with 35V or 50V rated cap |
-| C-05 | TPS54531 output voltage unverified | Confirm feedback resistors and output |
+| ~~C-01~~ | ~~MP1584EN #2 feedback gives 3.8V not 6.5V~~ | **RESOLVED** — false positive; actual divider R36/R38 = 6.52V ✓ |
+| ~~C-02~~ | ~~MT3608 feedback may give 6.7V not 5V~~ | **RESOLVED** — false positive; actual divider R64/R65 = 4.99V ✓ |
+| ~~C-03~~ | ~~PCF8574AT addresses 0x38/0x39, not 0x20/0x21~~ | **RESOLVED** — changed to PCF8574T (non-A), addresses 0x20/0x21 |
+| ~~C-04~~ | ~~C34 470uF@25V on 24V rail (4% margin)~~ | **RESOLVED** in v1.3 — upgraded to 35V |
+| ~~C-05~~ | ~~TPS54531 output voltage unverified~~ | **RESOLVED** — verified R20/R27 = 4.98V ✓ |
 
 ### Must Fix (Before First Power-On)
 
@@ -658,9 +660,9 @@ Adequate margin.
 
 Based on this review, the following changes are recommended for the next revision:
 
-1. **Correct all voltage regulator feedback dividers** (C-01, C-02, C-05) — verify every output voltage with actual resistor values
-2. **Standardize PCF8574 variant** (C-03) — use PCF8574T (non-A) if firmware uses 0x20/0x21
-3. **Upgrade C34 to 35V rating** (C-04)
+1. ~~**Correct all voltage regulator feedback dividers** (C-01, C-02, C-05)~~ — **RESOLVED**: all four dividers verified correct (see Feedback Network Reference Table)
+2. ~~**Standardize PCF8574 variant** (C-03)~~ — **RESOLVED**: changed to PCF8574T (non-A), addresses 0x20/0x21
+3. ~~**Upgrade C34 to 35V rating** (C-04)~~ — **RESOLVED** in v1.3
 4. **Fix root page net labels** (H-01)
 5. **Add WS2812B level shifter** (M-11)
 6. **Add NTC thermistor on TP4056** (H-06) for battery safety
