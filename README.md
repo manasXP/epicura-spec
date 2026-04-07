@@ -80,6 +80,7 @@ See [`docs/README.md`](__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README.m
 | Repository                                                          | Stack                          | Purpose                                                               |
 | ------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------- |
 | **[epicura-spec](https://github.com/manasXP/epicura-spec)**         | Markdown + KiCAD 9             | Documentation, specifications, PCB design (this repo)                 |
+| **[epicura-pcb](https://github.com/manasXP/epicura-pcb)**           | KiCAD 9                        | PCB schematics, layouts, Gerbers, DRC/fabrication outputs             |
 | **[epicura-pm](https://github.com/manasXP/epicura-pm)**             | Markdown                       | Project management — epics, sprints, resource allocation              |
 | **[epicura-tcc](https://github.com/manasXP/epicura-tcc)**           | Markdown                       | Testing strategies, compliance/safety, recipe schema & seed data      |
 | **[epicura-ux](https://github.com/manasXP/epicura-ux)**             | Markdown + Vite/React          | UI/UX design documentation and interactive mobile mockups             |
