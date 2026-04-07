@@ -1012,13 +1012,13 @@ The Raspberry Pi CM5 includes onboard WiFi and Bluetooth. No external modules ar
 
 ## 19. Related Documentation
 
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[03-Sensors-Acquisition|Sensors & Data Acquisition]]
 - [[04-Mechanical-Design|Mechanical Design]]
 - [[../09-PCB/01-Unified-PCB-Design|Unified PCB Design]]
-- [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[../03-Software/01-Tech-Stack|Tech Stack]]
-- [[../07-Development/01-Prototype-Development-Plan|Prototype Development Plan]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[01-Tech-Stack|Tech Stack]]
+- [[01-Prototype-Development-Plan|Prototype Development Plan]]
 
 ---
 

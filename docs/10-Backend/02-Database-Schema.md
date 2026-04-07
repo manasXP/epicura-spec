@@ -454,7 +454,7 @@ Migration files are stored in `packages/db/migrations/` and version-controlled. 
 
 - [[01-Backend-Architecture|Backend Architecture]] - Service architecture and deployment
 - [[01-REST-API-Reference|REST API Reference]] - Endpoints that query this schema
-- [[../03-Software/02-Controller-Software-Architecture|Controller & Software Architecture]] - CM5 PostgreSQL schema
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - CM5 PostgreSQL schema
 - [[03-Admin-Portal|Admin Portal]] - Admin interface for managing this data
 
 #epicura #database #postgresql #schema #drizzle #backend

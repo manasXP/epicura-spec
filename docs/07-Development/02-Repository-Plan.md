@@ -40,9 +40,7 @@ epicura/
 │   ├── 01-Overview/
 │   ├── 02-Hardware/
 │   ├── ...
-│   └── 13-ProjectManagement/
-│       ├── epics/                     # 12 epic files
-│       └── sprints/                   # 12 sprint files
+│   └── (13-ProjectManagement → moved to Epicura-PM workspace)
 ├── research/                          # Market research and planning
 ├── pcb/                               # KiCAD PCB design files
 │   ├── controller-board/
@@ -490,5 +488,5 @@ Repositories should be created in this order, matching the epic dependency chain
 
 - [[01-Tech-Stack|Tech Stack]]
 - [[01-Epicura-Architecture|System Architecture]]
-- [[__Workspaces/Epicura/docs/13-ProjectManagement/epics/__init|Epic Index]]
+- [[__Workspaces/Appliance/Epicura/Epicura-PM/Epics/__init|Epic Index]]
 - [[01-Prototype-Development-Plan|Prototype Development Plan]]

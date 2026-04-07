@@ -147,13 +147,7 @@ docs/
 │   ├── 01-Mobile-Architecture         Native app strategy and shared patterns
 │   ├── 02-iOS-App                     SwiftUI implementation details
 │   └── 03-Android-App                 Kotlin/Compose implementation details
-└── 13-ProjectManagement/
-    ├── 01-Epics                       High-level project epics
-    ├── 02-Stories                     User stories breakdown
-    ├── 03-Sprints                     Sprint planning and schedule
-    ├── 04-Procurement-Schedule        Component procurement timeline
-    ├── 05-Resource-Allocation         Team resource planning
-    └── 06-Weekly-Status-Report-Template  Status report template
+└── (13-ProjectManagement → moved to Epicura-PM workspace)
 ```
 
 ## Story Workflow — GitHub Project as Single Source of Truth

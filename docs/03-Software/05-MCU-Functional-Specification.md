@@ -415,4 +415,4 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 | Unified PCB design | [[01-Unified-PCB-Design]] |
 | Dispensing subsystems | [[03-Ingredient-Dispensing]] |
 | Hardware architecture | [[01-Epicura-Architecture]] |
-| Technical specifications | [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications]] |
+| Technical specifications | [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications]] |

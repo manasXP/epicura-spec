@@ -334,13 +334,13 @@ Power (W)
 
 ## 12. Related Documentation
 
-- [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
-- [[../02-Hardware/01-Epicura-Architecture|Hardware Architecture]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[01-Epicura-Architecture|Hardware Architecture]]
 - [[02-Robotic-Arm|Robotic Arm System]]
 - [[03-Ingredient-Dispensing|Ingredient Dispensing System]]
 - [[04-Vision-System|Vision System]]
-- [[../06-Compliance/01-Safety-Compliance|Safety & Compliance]]
+- [[01-Safety-Compliance|Safety & Compliance]]
 
 #epicura #induction-heating #subsystem #pid-control #canbus
 

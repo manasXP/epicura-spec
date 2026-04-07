@@ -259,7 +259,7 @@ Target: 10-15 fps at 640x480 resolution.
 | Success | Green | `#43A047` | Cooking complete, success states |
 | Warning | Amber | `#FFB300` | Warnings, caution states |
 
-This palette matches the Kivy touchscreen UI colors defined in [[../04-UserInterface/01-UI-UX-Design#Styling|UI/UX Design - Styling]].
+This palette matches the Kivy touchscreen UI colors defined in [[01-UI-UX-Design#Styling|UI/UX Design - Styling]].
 
 ### 7.2 Platform-Native Patterns
 
@@ -295,8 +295,8 @@ Recipe cards in the list use a horizontal layout:
 - [[01-REST-API-Reference|REST API Reference]] - Backend endpoints
 - [[02-WebSocket-Events|WebSocket Events]] - Real-time event protocol
 - [[04-BLE-Services|BLE Services]] - BLE pairing services
-- [[../04-UserInterface/01-UI-UX-Design|UI/UX Design]] - Design language and color palette
-- [[../03-Software/01-Tech-Stack|Tech Stack]] - Overall technology choices
+- [[01-UI-UX-Design|UI/UX Design]] - Design language and color palette
+- [[01-Tech-Stack|Tech Stack]] - Overall technology choices
 
 #epicura #mobile #architecture #mvvm #ios #android #swift #kotlin #native-mobile
 

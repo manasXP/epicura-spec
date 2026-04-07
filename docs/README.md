@@ -14,12 +14,12 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 ### 1.1 Core Documentation
 
 #### 1.1.1 Overview
-1. **[[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]]** - Executive summary, key features, and target use cases
+1. **[[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]** - Executive summary, key features, and target use cases
 
 #### 1.1.2 Hardware
-2. **[[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]** - Induction, robotic arm, sensors, and performance requirements
-3. **[[02-Hardware/01-Epicura-Architecture|Epicura Architecture]]** - System block diagrams and hardware wiring
-4. **[[02-Hardware/03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera, IR thermometer, and load cells
+2. **[[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]** - Induction, robotic arm, sensors, and performance requirements
+3. **[[01-Epicura-Architecture|Epicura Architecture]]** - System block diagrams and hardware wiring
+4. **[[03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera, IR thermometer, and load cells
 5. **[[04-Mechanical-Design|Mechanical Design]]** - Enclosure, arm mechanism, and industrial design
 
 #### 1.1.3 Software
@@ -30,17 +30,17 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 10. **[[05-MCU-Functional-Specification|MCU Functional Specification]]** - STM32G474RE functional requirements, pin assignments, and FreeRTOS tasks
 
 #### 1.1.4 User Interface
-8. **[[01-UI-UX-Design|UI/UX Design]]** - Touchscreen interface, companion app, and multi-language support
+> [!note] Moved to [[__Workspaces/Appliance/Epicura/Epicura-UX/__init|Epicura-UX]] workspace
 
 #### 1.1.5 Subsystems
-9. **[[05-Subsystems/01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface (CAN bus), PID temperature control, and power management
-10. **[[05-Subsystems/02-Robotic-Arm|Robotic Arm]]** - Single-axis servo arm, stirring patterns, and STM32 motor control
+9. **[[01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface (CAN bus), PID temperature control, and power management
+10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis servo arm, stirring patterns, and STM32 motor control
 11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing: ASD (seasonings), CID (coarse), SLD (liquids)
-12. **[[05-Subsystems/04-Vision-System|Vision System]]** - HD camera, edge AI inference, and cooking stage detection
-13. **[[05-Subsystems/05-Exhaust-Fume-Management|Exhaust & Fume Management]]** - Exhaust fan, grease/carbon filtration, and fume extraction
+12. **[[04-Vision-System|Vision System]]** - HD camera, edge AI inference, and cooking stage detection
+13. **[[05-Exhaust-Fume-Management|Exhaust & Fume Management]]** - Exhaust fan, grease/carbon filtration, and fume extraction
 
 #### 1.1.6 Compliance
-13. **[[01-Safety-Compliance|Safety & Compliance]]** - Electrical safety, food contact regulations, and BIS standards
+> [!note] Moved to [[__Workspaces/Appliance/Epicura/Epicura-TCC/__init|Epicura-TCC]] workspace
 
 #### 1.1.7 Development
 14. **[[01-Prototype-Development-Plan|Prototype Development Plan]]** - Phased plan from prototype to production (20-24 weeks)
@@ -48,17 +48,20 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 16. **[[03-Submodule-Setup|Docs Submodule Setup]]** - Linking the docs repo as a submodule in all other repositories
 
 #### 1.1.8 Project Management
-15. **[[__Workspaces/Epicura/docs/13-ProjectManagement/epics/__init|Epics]]** - 12 subsystem-based epics (~58 stories, ~365 points) covering PCB, embedded, thermal, actuation, vision, recipe, UI, backend, iOS, Android, admin, and integration
-16. **[[__Workspaces/Epicura/docs/13-ProjectManagement/sprints/__init|Sprint Calendar]]** - 6-week pre-sprint PCB phase + 12 two-week sprints (30 weeks total)
+> [!note] Moved to [[__Workspaces/Appliance/Epicura/Epicura-PM/__init|Epicura-PM]] workspace
+
+15. **[[__Workspaces/Appliance/Epicura/Epicura-PM/Epics/__init|Epics]]** - 13 subsystem-based epics (~89 stories, ~385 points) covering PCB, embedded, thermal, actuation, vision, recipe, UI, backend, iOS, Android, admin, integration, and UX
+16. **[[__Workspaces/Appliance/Epicura/Epicura-PM/Sprints/__init|Sprint Calendar]]** - 6-week pre-sprint PCB phase + 12 two-week sprints (30 weeks total)
 
 #### 1.1.9 Components (BOM)
 18. **[[01-Compute-Module-Components|Compute Module Components]]** - Raspberry Pi CM5, STM32, carrier boards
 19. **[[02-Actuation-Components|Actuation Components]]** - Servo motors, induction driver, solenoids
 20. **[[03-Sensor-Components|Sensor Components]]** - Camera, IR thermometer, load cells
-21. **[[__Workspaces/Epicura/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis ($614 prototype)
+21. **[[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis ($614 prototype)
 
 #### 1.1.10 PCB Design
 22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - STM32 controller + power/driver electronics on single 4-layer board (160x90mm)
+23. **[epicura-pcb](https://github.com/manasXP/epicura-pcb)** - Dedicated repo for KiCad project files, schematics, layouts, Gerbers, and DRC/fabrication outputs
 
 #### 1.1.11 Backend
 24. **[[01-Backend-Architecture|Backend Architecture]]** - Cloud backend (Fastify, PostgreSQL, Redis, MQTT bridge)
@@ -76,12 +79,8 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 32. **[[02-iOS-App|iOS App]]** - Swift/SwiftUI implementation (Core Bluetooth, APNs)
 33. **[[03-Android-App|Android App]]** - Kotlin/Compose implementation (CompanionDeviceManager, FCM)
 
-#### 1.1.14 Testing
-34. **[[01-Firmware-Test-Strategy|Firmware Test Strategy]]** - Unity/CMock unit tests, HIL tests, MISRA static analysis, safety tests
-35. **[[02-CM5-Test-Strategy|CM5 Test Strategy]]** - pytest per Docker service, Docker Compose integration, CV model validation
-36. **[[03-API-Test-Strategy|API & Admin Test Strategy]]** - Vitest monorepo tests, Testcontainers integration, API contract tests
-37. **[[04-iOS-Test-Strategy|iOS Test Strategy]]** - XCTest/XCUITest, performance benchmarks, security tests
-38. **[[05-Android-Test-Strategy|Android Test Strategy]]** - JUnit 5/Compose UI tests, Macrobenchmark, security tests
+#### 1.1.14 Testing & Recipes
+> [!note] Moved to [[__Workspaces/Appliance/Epicura/Epicura-TCC/__init|Epicura-TCC]] workspace
 
 ## 2. Documentation Structure
 
@@ -101,16 +100,14 @@ docs/
 │   ├── 03-Main-Loop-State-Machine.md            Cooking state machine & layer impacts
 │   ├── 04-MPU-Functional-Specification.md       CM5 functional spec
 │   └── 05-MCU-Functional-Specification.md       STM32 functional spec
-├── 04-UserInterface/
-│   └── 01-UI-UX-Design.md                       Touchscreen & app design
+├── (04-UserInterface → moved to Epicura-UX workspace)
 ├── 05-Subsystems/
 │   ├── 01-Induction-Heating.md                  Induction heater subsystem
 │   ├── 02-Robotic-Arm.md                        Stirring arm subsystem
 │   ├── 03-Ingredient-Dispensing.md              Dispensing subsystem
 │   ├── 04-Vision-System.md                      Computer vision subsystem
 │   └── 05-Exhaust-Fume-Management.md            Exhaust fan and filtration
-├── 06-Compliance/
-│   └── 01-Safety-Compliance.md                  Regulatory compliance
+├── (06-Compliance → moved to Epicura-TCC workspace)
 ├── 07-Development/
 │   ├── 01-Prototype-Development-Plan.md         Development roadmap (20-24 weeks)
 │   └── 02-Repository-Plan.md                    6-repo structure & GitHub setup
@@ -134,58 +131,25 @@ docs/
 │   ├── 01-Mobile-Architecture.md                MVVM, networking, design
 │   ├── 02-iOS-App.md                            Swift/SwiftUI implementation
 │   └── 03-Android-App.md                        Kotlin/Compose implementation
-├── 14-Testing/
-│   ├── 01-Firmware-Test-Strategy.md           STM32 firmware testing
-│   ├── 02-CM5-Test-Strategy.md                CM5 Docker services testing
-│   ├── 03-API-Test-Strategy.md                API & admin portal testing
-│   ├── 04-iOS-Test-Strategy.md                iOS app testing
-│   └── 05-Android-Test-Strategy.md            Android app testing
-└── 13-ProjectManagement/
-    ├── __init.md                                PM overview
-    ├── epics/
-    │   ├── __init.md                            Epic index (12 epics, ~365 points)
-    │   ├── PCB-pcb-design.md                    PCB Design & Fabrication
-    │   ├── EMB-embedded.md                      Embedded Platform (STM32 + CM5)
-    │   ├── THR-thermal.md                       Thermal & Induction Control
-    │   ├── ARM-actuation.md                     Robotic Arm & Dispensing
-    │   ├── CV-vision.md                         Computer Vision
-    │   ├── RCP-recipe.md                        Recipe Engine
-    │   ├── UI-touchscreen.md                    Touchscreen UI (Kivy)
-    │   ├── BE-backend.md                        Cloud Backend (Fastify)
-    │   ├── IOS-ios.md                           iOS App (SwiftUI)
-    │   ├── AND-android.md                       Android App (Kotlin/Compose)
-    │   ├── ADM-admin.md                         Admin Portal (Next.js)
-    │   └── INT-integration.md                   Integration & Validation
-    └── sprints/
-        ├── __init.md                            Sprint calendar (12 sprints)
-        ├── sprint-01.md                         STM32 FreeRTOS, CM5 Yocto, SPI
-        ├── sprint-02.md                         Docker, safety, OTA
-        ├── sprint-03.md                         CAN bus, PID start
-        ├── sprint-04.md                         PID, thermal safety, servo arm
-        ├── sprint-05.md                         P-ASD, CID, backend start
-        ├── sprint-06.md                         SLD, calibration, camera
-        ├── sprint-07.md                         ML model, stage detection
-        ├── sprint-08.md                         Recipe engine, mobile apps
-        ├── sprint-09.md                         State machine, Kivy UI
-        ├── sprint-10.md                         Cooking UI, admin portal
-        ├── sprint-11.md                         Integration & safety testing
-        └── sprint-12.md                         Reliability, launch readiness
+├── (14-Testing → moved to Epicura-TCC workspace)
+├── (15-Recipes → moved to Epicura-TCC workspace)
+└── (13-ProjectManagement → moved to Epicura-PM workspace)
 ```
 
 ## 3. Getting Started
 
 ### 3.1 For Project Managers
 Start with:
-1. [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]] - Understand the project scope and target market
-2. [[__Workspaces/Epicura/docs/13-ProjectManagement/epics/__init|Epics]] - 12 subsystem-based epics (~58 stories, ~365 points)
-3. [[__Workspaces/Epicura/docs/13-ProjectManagement/sprints/__init|Sprint Calendar]] - 6-week pre-sprint PCB phase + 12 two-week sprints
+1. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Understand the project scope and target market
+2. [[__Workspaces/Appliance/Epicura/Epicura-PM/Epics/__init|Epics]] - 13 subsystem-based epics (~89 stories, ~385 points)
+3. [[__Workspaces/Appliance/Epicura/Epicura-PM/Sprints/__init|Sprint Calendar]] - 6-week pre-sprint PCB phase + 12 two-week sprints
 5. [[01-Prototype-Development-Plan|Prototype Development Plan]] - Phased development roadmap (20-24 weeks)
 6. [[01-Tech-Stack|Tech Stack]] - Review technology choices
-7. [[01-Safety-Compliance|Safety & Compliance]] - Understand electrical and food safety requirements
+7. Safety & Compliance - See [[__Workspaces/Appliance/Epicura/Epicura-TCC/__init|Epicura-TCC]] workspace
 
 ### 3.2 For Hardware Engineers
 Start with:
-1. [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - System requirements and power budget
+1. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - System requirements and power budget
 2. [[01-Epicura-Architecture|Epicura Architecture]] - Block diagrams and wiring
 3. [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and load cell design
 4. [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and thermal management
@@ -194,7 +158,7 @@ Start with:
 Start with:
 1. [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor design and recipe state machine
 2. [[01-Tech-Stack|Tech Stack]] - Development environment and tools
-3. [[01-UI-UX-Design|UI/UX Design]] - Touchscreen and companion app interface requirements
+3. UI/UX Design - See [[__Workspaces/Appliance/Epicura/Epicura-UX/__init|Epicura-UX]] workspace
 
 ### 3.4 For Backend Engineers
 Start with:
@@ -213,8 +177,8 @@ Start with:
 ### 3.6 For Industrial Designers
 Start with:
 1. [[04-Mechanical-Design|Mechanical Design]] - Enclosure form factor and material selection
-2. [[01-UI-UX-Design|UI/UX Design]] - Physical controls, display layout, and user flow
-3. [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]] - Product vision and target user profile
+2. UI/UX Design - See [[__Workspaces/Appliance/Epicura/Epicura-UX/__init|Epicura-UX]] workspace
+3. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product vision and target user profile
 
 ## 4. Key Features Summary
 

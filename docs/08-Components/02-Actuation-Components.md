@@ -180,9 +180,9 @@ This document details the actuation subsystem components for the Epicura kitchen
 
 - [[01-Compute-Module-Components|Compute Module Components]]
 - [[03-Sensor-Components|Sensor Components]]
-- [[__Workspaces/Epicura/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
-- [[../05-Subsystems/05-Exhaust-Fume-Management|Exhaust & Fume Management]]
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[05-Exhaust-Fume-Management|Exhaust & Fume Management]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 
 ---
 

@@ -673,13 +673,13 @@ For quick cleaning of SLD channels between recipes:
 
 ## 13. Related Documentation
 
-- [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture]]
 - [[01-Induction-Heating|Induction Heating System]]
 - [[02-Robotic-Arm|Robotic Arm System]]
 - [[04-Vision-System|Vision System]]
-- [[../06-Compliance/01-Safety-Compliance|Safety & Compliance]]
+- [[01-Safety-Compliance|Safety & Compliance]]
 
 #epicura #ingredient-dispensing #subsystem #p-asd #pneumatic #cid #sld
 

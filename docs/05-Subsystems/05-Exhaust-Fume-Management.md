@@ -190,7 +190,7 @@ The recipe engine sends `EXHAUST_AUTO` at each cooking stage transition. Manual 
 | Steam (water vapor) | Boiling, simmering | <5% | <5% | <5% (passes through) |
 
 > [!note]
-> Steam (water vapor) is not filtered — it passes through and exits as moisture. A condensation approach (cold surface or lid drip channel) can reduce steam volume before it reaches the filter. See [[../02-Hardware/04-Mechanical-Design|Mechanical Design]] for pot lid condensation channel design.
+> Steam (water vapor) is not filtered — it passes through and exits as moisture. A condensation approach (cold surface or lid drip channel) can reduce steam volume before it reaches the filter. See [[04-Mechanical-Design|Mechanical Design]] for pot lid condensation channel design.
 
 ---
 
@@ -364,10 +364,10 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 
 - [[01-Induction-Heating|Induction Heating]] - Heat source and PID control (fan speed tracks cooking stage)
 - [[04-Vision-System|Vision System]] - Camera anti-fog measures and steam protection
-- [[../02-Hardware/04-Mechanical-Design|Mechanical Design]] - Enclosure airflow, pot lid design, vent placement
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Power budget and communication interfaces
-- [[../02-Hardware/01-Epicura-Architecture|Epicura Architecture]] - STM32 GPIO allocation for exhaust fan PWM
-- [[../06-Compliance/01-Safety-Compliance|Safety & Compliance]] - IEC 60335 ventilation requirements
+- [[04-Mechanical-Design|Mechanical Design]] - Enclosure airflow, pot lid design, vent placement
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Power budget and communication interfaces
+- [[01-Epicura-Architecture|Epicura Architecture]] - STM32 GPIO allocation for exhaust fan PWM
+- [[01-Safety-Compliance|Safety & Compliance]] - IEC 60335 ventilation requirements
 - [[02-Actuation-Components|Actuation Components]] - Exhaust fan BOM entry
 
 ---

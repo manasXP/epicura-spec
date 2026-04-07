@@ -16,19 +16,19 @@ Development of an autonomous countertop kitchen robot that cooks complete one-po
 
 This project encompasses the following major subsystems:
 
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, robotic arm, sensors, and power budget
-- [[../02-Hardware/01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
-- [[../02-Hardware/03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and pot detection
-- [[../02-Hardware/04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
-- [[../03-Software/02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
-- [[../03-Software/01-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and tools
-- [[../04-UserInterface/01-UI-UX-Design|UI/UX Design]] - Touchscreen interface and companion mobile app
-- [[../05-Subsystems/01-Induction-Heating|Induction Heating]] - 1,800W microwave induction surface with CAN bus control and PID
-- [[../05-Subsystems/02-Robotic-Arm|Robotic Arm]] - Single-axis servo arm and stir patterns
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, robotic arm, sensors, and power budget
+- [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
+- [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and pot detection
+- [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
+- [[01-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and tools
+- [[01-UI-UX-Design|UI/UX Design]] - Touchscreen interface and companion mobile app
+- [[01-Induction-Heating|Induction Heating]] - 1,800W microwave induction surface with CAN bus control and PID
+- [[02-Robotic-Arm|Robotic Arm]] - Single-axis servo arm and stir patterns
 - [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Three-subsystem dispensing (ASD/CID/SLD)
-- [[../05-Subsystems/04-Vision-System|Vision System]] - HD camera, edge AI, and cooking stage detection
-- [[../05-Subsystems/05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Exhaust fan, grease/carbon filtration
-- [[../06-Compliance/01-Safety-Compliance|Safety & Compliance]] - Electrical safety and food contact regulations
+- [[04-Vision-System|Vision System]] - HD camera, edge AI, and cooking stage detection
+- [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Exhaust fan, grease/carbon filtration
+- [[01-Safety-Compliance|Safety & Compliance]] - Electrical safety and food contact regulations
 
 ## 3. Core Features
 
@@ -182,21 +182,21 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 
 ## 9. Related Documentation
 
-- [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Detailed hardware specs
-- [[../02-Hardware/01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and wiring
-- [[../02-Hardware/03-Sensors-Acquisition|Sensors & Acquisition]] - Sensor system design
-- [[../02-Hardware/04-Mechanical-Design|Mechanical Design]] - Physical design and enclosure
-- [[../03-Software/02-Controller-Software-Architecture|Controller & Software Architecture]] - Software design
-- [[../03-Software/01-Tech-Stack|Tech Stack]] - Technology choices
-- [[../04-UserInterface/01-UI-UX-Design|UI/UX Design]] - User interface design
-- [[../05-Subsystems/01-Induction-Heating|Induction Heating]] - Heater subsystem
-- [[../05-Subsystems/02-Robotic-Arm|Robotic Arm]] - Stirring arm subsystem
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Detailed hardware specs
+- [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and wiring
+- [[03-Sensors-Acquisition|Sensors & Acquisition]] - Sensor system design
+- [[04-Mechanical-Design|Mechanical Design]] - Physical design and enclosure
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Software design
+- [[01-Tech-Stack|Tech Stack]] - Technology choices
+- [[01-UI-UX-Design|UI/UX Design]] - User interface design
+- [[01-Induction-Heating|Induction Heating]] - Heater subsystem
+- [[02-Robotic-Arm|Robotic Arm]] - Stirring arm subsystem
 - [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Dispensing subsystem
-- [[../05-Subsystems/04-Vision-System|Vision System]] - Computer vision subsystem
-- [[../05-Subsystems/05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Fume extraction subsystem
-- [[../06-Compliance/01-Safety-Compliance|Safety & Compliance]] - Regulatory compliance
-- [[../07-Development/01-Prototype-Development-Plan|Prototype Development Plan]] - Development roadmap
-- [[__Workspaces/Epicura/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
+- [[04-Vision-System|Vision System]] - Computer vision subsystem
+- [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Fume extraction subsystem
+- [[01-Safety-Compliance|Safety & Compliance]] - Regulatory compliance
+- [[01-Prototype-Development-Plan|Prototype Development Plan]] - Development roadmap
+- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
 
 ## 10. Revision History
 

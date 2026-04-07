@@ -37,15 +37,15 @@ Start with off-the-shelf: Raspberry Pi CM5 carrier board for AI/compute, ST STM3
 
 ## Documentation
 
-Comprehensive documentation has been organized in the [[__Workspaces/Epicura/docs/README|docs folder]]. See the following detailed specifications:
+Comprehensive documentation has been organized in the [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README|docs folder]]. See the following detailed specifications:
 
 ### Core Documentation
 
 **Overview**
-1. [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]] - Product definition, features, and target use cases
+1. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product definition, features, and target use cases
 
 **Hardware**
-2. [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, sensors, power, and performance specs
+2. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, sensors, power, and performance specs
 3. [[docs/02-Hardware/Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
 4. [[docs/02-Hardware/05-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, load cells, and NTC probes
 5. [[07-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
@@ -74,9 +74,9 @@ Comprehensive documentation has been organized in the [[__Workspaces/Epicura/doc
 15. [[01-Compute-Module-Components|Compute Module Components]] - Raspberry Pi CM5, STM32, carrier boards
 16. [[02-Actuation-Components|Actuation Components]] - Servo motors, induction driver, solenoids
 17. [[03-Sensor-Components|Sensor Components]] - Camera, IR thermometer, NTC probes, load cells
-18. [[__Workspaces/Epicura/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
+18. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
 
-**Start here:** [[__Workspaces/Epicura/docs/README|Documentation Index]]
+**Start here:** [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README|Documentation Index]]
 
 ---
 

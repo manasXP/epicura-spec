@@ -3,9 +3,9 @@
 ## Documentation
 
 - [x] Create documentation folder structure
-- [x] [[__Workspaces/Epicura/docs/README|Documentation Index]] (README.md)
-- [x] [[__Workspaces/Epicura/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [x] [[__Workspaces/Epicura/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [x] [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README|Documentation Index]] (README.md)
+- [x] [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [x] [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [x] [[docs/02-Hardware/Epicura-Architecture|Epicura Architecture]]
 - [x] [[docs/02-Hardware/05-Sensors-Acquisition|Sensors & Acquisition]]
 - [x] [[07-Mechanical-Design|Mechanical Design]]
@@ -22,7 +22,7 @@
 - [x] [[01-Compute-Module-Components|Compute Module Components]]
 - [x] [[02-Actuation-Components|Actuation Components]]
 - [x] [[03-Sensor-Components|Sensor Components]]
-- [x] [[__Workspaces/Epicura/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [x] [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
 - [x] Update `__init.md` with documentation links
 - [x] Expand `CLAUDE.md` with technical context
 
