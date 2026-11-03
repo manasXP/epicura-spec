@@ -21,7 +21,7 @@ Epicura targets one-pot recipes that represent the daily cooking reality of Indi
 - **Rice dishes** — Jeera Rice, Veg/Chicken/Mutton Biryani, Pulao, Khichdi
 - **Beyond Indian** — Pasta, stir-fries, soups, one-pot global recipes
 
-108 recipes at launch across 9 cuisines, expandable over-the-air.
+324 recipes at launch across 9 cuisines, expandable over-the-air.
 
 ## Target User
 
@@ -48,7 +48,7 @@ The touchscreen and companion app follow a rule: recipe selection to cooking sta
 Every recipe, UI asset, and control algorithm runs locally on the device. Cloud connectivity enables recipe updates, remote monitoring, and OTA firmware upgrades — but the machine cooks a full meal with WiFi unplugged.
 
 ### 5. Affordable for India
-Target retail price of $400-600 USD, roughly half the price of comparable international products. Achieved through commodity ARM processors (Raspberry Pi CM5), off-the-shelf induction surfaces, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
+Target retail price of $400-600 USD, roughly half the price of comparable international products. Achieved through commodity ARM processors (Rockchip RV1106G3 on a Luckfox Pico Zero), off-the-shelf induction surfaces, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
 
 ## How It Works
 
@@ -62,8 +62,8 @@ A compact countertop unit (50 x 40 x 30 cm, ~12-15 kg) with:
   - **Liquids (SLD)** — 2 peristaltic pumps for oil and water, closed-loop weight verification via load cells
   - **Spices (P-ASD)** — 6 sealed cartridges with pneumatic puff-dosing, measured in quarter-teaspoon increments
   - **Solids (CID)** — 2 trays with motorized push-plates for vegetables, dal, rice, meat
-- **Vision system** — Overhead HD camera with LED ring illumination, running TFLite MobileNetV2 for cooking stage detection (raw, browning, boiling, simmering, done)
-- **10-inch touchscreen** — Capacitive, 1280x800, showing recipe browser, live camera feed, and cooking progress
+- **Vision system** — Overhead camera with LED ring illumination, hardware ISP for steam and haze, running MobileNetV2 INT8 on the RV1106's NPU for cooking stage detection (raw, browning, boiling, simmering, done)
+- **4-inch touchscreen** — Capacitive, 480x320, showing recipe browser, cooking progress, and an on-demand pot preview
 - **Exhaust** — Dual 120mm fans with grease pre-filter and activated carbon cartridge, <45 dB
 
 ### Intelligence
@@ -72,33 +72,33 @@ A dual-processor architecture splits responsibilities:
 
 | Processor | Role |
 |-----------|------|
-| **Raspberry Pi CM5** (Cortex-A76 quad) | AI vision, recipe engine, touchscreen UI, cloud sync, companion app API |
+| **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP) | AI vision, recipe engine, touchscreen UI, cloud sync |
 | **STM32G474** (Cortex-M4F) | Real-time PID temperature control, motor/servo drive, sensor polling, CAN bus, safety watchdog |
 
-The CM5 runs Yocto Linux with Docker Compose orchestrating services: PostgreSQL (recipe database), Mosquitto (MQTT telemetry), a Python recipe engine with hierarchical state machine, an OpenCV/TFLite vision pipeline, and a Kivy touchscreen application.
+The RV1106 runs Buildroot Linux with a single native C application, `epicurad`: SQLite (recipe database), MQTT and REST clients to the cloud, a recipe engine with hierarchical state machine, a hardware ISP + NPU (RKNN) vision pipeline, and an LVGL touchscreen application.
 
 The STM32 runs FreeRTOS with five priority-scheduled tasks executing PID loops at 100 Hz, motor control at 50 Hz, and a safety monitor that operates independently of all application logic.
 
 ### Software Ecosystem
 
 - **Companion apps** — Native iOS (SwiftUI) and Android (Jetpack Compose) for BLE device pairing, WiFi provisioning, remote recipe browsing, live camera streaming during cooking, push notifications on completion, and dietary preference profiles.
-- **Cloud backend** — Fastify (TypeScript) API with PostgreSQL, serving recipe updates, device telemetry, user accounts, and OTA firmware distribution. Same codebase runs on-device and in the cloud.
+- **Cloud backend** — Fastify (TypeScript) API with PostgreSQL, serving recipe updates, device telemetry, user accounts, and OTA firmware distribution.
 - **Admin portal** — Next.js dashboard for recipe management, device fleet monitoring, and user administration.
 
 ## Competitive Position
 
 Epicura is modeled after the [Posha robot chef](https://www.posha.com), a commercial product that validates the autonomous cooking concept. Epicura differentiates on:
 
-| Dimension | Posha | Epicura |
-|-----------|-------|---------|
-| Price | ~$800 | $400-600 (target) |
-| Market | Global | India-first (regional recipes, languages, power grid) |
-| Monitoring | App only | App + 10" local touchscreen |
-| Mobile apps | Single app | Native iOS + Android |
-| Languages | English | 8 languages (English, Hindi, Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi) |
-| Recipes at launch | Curated library | 108 across 9 cuisines, heavy Indian focus |
-| Offline capability | Cloud-dependent | Fully offline-capable |
-| Updates | Cloud-pushed | OTA with A/B partition rollback |
+| Dimension          | Posha           | Epicura                                                                           |
+| ------------------ | --------------- | --------------------------------------------------------------------------------- |
+| Price              | ~$1400          | $500-700 (target)                                                                 |
+| Market             | Global          | India-first (regional recipes, languages, power grid)                             |
+| Monitoring         | App only        | App + 4" local touchscreen                                                        |
+| Mobile apps        | Single app      | Native iOS + Android                                                              |
+| Languages          | English         | 8 languages (English, Hindi, Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi) |
+| Recipes at launch  | Curated library | 108 across 9 cuisines, heavy Indian focus                                         |
+| Offline capability | Cloud-dependent | Fully offline-capable                                                             |
+| Updates            | Cloud-pushed    | OTA with A/B partition rollback                                                   |
 
 ## Recipe Intelligence
 
@@ -111,6 +111,8 @@ Recipes are not simple timers. Each recipe is a structured YAML document definin
 - Heat profile (Low through High) and duration
 - Stirring profile (speed, direction, pattern)
 
+![[Cooking-Process-Overview.excalidraw]]
+![[Cooking Process Overview.png]]
 The recipe engine executes segments as a state machine, using CV feedback to confirm cooking stage transitions before advancing. If the vision system detects an anomaly (burning, boil-over), it can pause cooking, reduce heat, and alert the user.
 
 Users customize recipes through the companion app: adjust spice levels, swap ingredients for allergen or dietary reasons, change serving sizes. Preferences are stored in a profile (vegetarian, vegan, Jain, preferred cuisines, spice tolerance) that filters and adapts the recipe library.

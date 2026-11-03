@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 3.0
+modified: 2026-11-04
+version: 3.1
 status: Draft
 ---
 
@@ -128,12 +128,12 @@ AC Mains (220-240V 50Hz)
 
 ### 5.1 Control Loop Architecture
 
-The STM32 runs a discrete PID controller at 10Hz (100ms period) that modulates the induction power to track the temperature setpoint commanded by the CM5 recipe engine. Instead of directly driving an IGBT gate, the PID output is sent as a power level command over CAN bus to the microwave surface module.
+The STM32 runs a discrete PID controller at 10Hz (100ms period) that modulates the induction power to track the temperature setpoint commanded by the RV1106 recipe engine. Instead of directly driving an IGBT gate, the PID output is sent as a power level command over CAN bus to the microwave surface module.
 
 ```
 ┌──────────────┐    ┌──────────┐    ┌───────────┐    ┌────────────┐    ┌──────────────┐
 │ Recipe Engine │    │  Error   │    │   PID     │    │ CAN Cmd    │    │ Microwave    │
-│ (CM5)        │──► │ e(t) =   │──► │ Kp·e +   │──► │ Power %    │──► │ Surface      │
+│ (RV1106)     │──► │ e(t) =   │──► │ Kp·e +   │──► │ Power %    │──► │ Surface      │
 │ Setpoint T*  │    │ T* - T   │    │ Ki·∫e +  │    │ (0-100%)   │    │ Module       │
 └──────────────┘    └──────────┘    │ Kd·de/dt │    └────────────┘    └──────┬───────┘
                          ▲          └───────────┘                            │
@@ -242,7 +242,7 @@ Safety is handled at two levels:
 | Module | Pot detection (internal) | No ferromagnetic pot | Module will not heat | Immediate |
 | Module | Thermal cutoff (internal) | Coil over-temperature | Module shuts down internally | <100ms |
 | Module | Overcurrent (internal) | Excessive coil current | Module shuts down internally | <10us |
-| System | Safety relay | E-stop, STM32 fault, CM5 heartbeat loss | Relay opens, cuts AC to module | <100ms |
+| System | Safety relay | E-stop, STM32 fault, RV1106 heartbeat loss | Relay opens, cuts AC to module | <100ms |
 | System | STM32 CAN command | IR temp >270C or module coil over-temp via CAN | Send HEAT_ON_OFF=0 via CAN | <100ms |
 | System | STM32 watchdog | Firmware hang | STM32 resets, relay opens (fail-safe) | 1s |
 
@@ -255,7 +255,7 @@ When any safety condition triggers, the system enters the following safe state:
 2. Relay ──► OPEN (physical disconnect of AC to module)
 3. Error flag ──► SET (logged to eMMC, displayed on UI)
 4. Buzzer ──► ALERT pattern (3 short beeps, 1s pause, repeat)
-5. CM5 notified ──► Push notification to companion app
+5. RV1106 notified ──► Push notification to companion app
 ```
 
 ## 9. Power Management
@@ -291,8 +291,8 @@ Power (W)
 
 ### 9.3 Standby Power
 
-- System standby: <5W total draw (CM5 idle, display off, module off)
-- Deep sleep: <2W (CM5 suspended, STM32 in STOP mode, relay open)
+- System standby: <5W total draw (RV1106 idle, display off, module off)
+- Deep sleep: <2W (RV1106 suspended, STM32 in STOP mode, relay open)
 
 ## 10. Software Safety
 
@@ -301,7 +301,7 @@ Power (W)
 | Mechanism | Timeout | Action on Timeout |
 |-----------|---------|-------------------|
 | STM32 IWDG (Independent Watchdog) | 1 second | Resets STM32 to safe state (CAN off command + relay open) |
-| CM5 Heartbeat | 5 seconds | STM32 sends CAN off, opens relay, enters safe standby |
+| RV1106 Heartbeat | 5 seconds | STM32 sends CAN off, opens relay, enters safe standby |
 | Maximum Cook Duration | Configurable (default 2 hours) | Graceful shutdown, alert user |
 | Temperature Rate Limiter | >30 C/s rise detected | Reduce power to 50%, flag anomaly |
 
@@ -327,15 +327,15 @@ Power (W)
 - [ ] Module's internal pot detection prevents heating without pot
 - [ ] PID tracks setpoint within +/- 5 C after settling
 - [ ] STM32 watchdog resets to safe state on firmware hang
-- [ ] CM5 heartbeat loss triggers power cutoff within 5s
+- [ ] RV1106 heartbeat loss triggers power cutoff within 5s
 - [ ] Safety relay disconnects AC on E-stop
 - [ ] Soft-start limits inrush current to acceptable levels
 - [ ] Continuous 2-hour cook session completes without fault
 
 ## 12. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture]]
 - [[02-Robotic-Arm|Robotic Arm System]]
 - [[03-Ingredient-Dispensing|Ingredient Dispensing System]]
@@ -353,3 +353,4 @@ Power (W)
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Updated CAN transceiver to ISO1050DUB (isolated); added isolation barrier to block diagram; added galvanic isolation safety note; updated wiring for single-point ground on CAN shield |
 | 3.0 | 2026-02-20 | Manas Pradhan | Updated ISO1050DUB location from Controller PCB to Driver PCB; CAN cable connects to J_CAN on Driver PCB |
+| 3.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); heating control, CAN protocol and safety logic unchanged |

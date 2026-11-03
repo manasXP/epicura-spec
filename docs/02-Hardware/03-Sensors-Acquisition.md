@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -11,7 +11,7 @@ status: Draft
 
 | Sensor | Type | Interface | Range | Accuracy | Sampling Rate | Connected To |
 |--------|------|-----------|-------|----------|---------------|--------------|
-| Camera (IMX219/477) | CMOS image sensor | MIPI CSI-2 (2-lane) | 1080p @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | CM5 CSI port |
+| Camera (SC3336) | CMOS image sensor, 3 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
 | IR Thermometer (MLX90614) | Non-contact thermopile | I2C (0x5A) | -70 to +380C | +/-0.5C | 10 Hz | STM32 I2C1 |
 | Pot Detection | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 GPIO |
 
@@ -21,19 +21,20 @@ status: Draft
 
 ### 2.1 Module Selection
 
-| Parameter | IMX219 (Standard) | IMX477 (HQ Option) |
-|-----------|-------------------|---------------------|
-| Resolution | 8 MP (3280x2464) | 12.3 MP (4056x3040) |
-| Sensor Size | 1/4" | 1/2.3" |
-| Pixel Size | 1.12 um | 1.55 um |
-| Max Video | 1080p @ 30fps | 1080p @ 30fps (4K capable) |
-| Interface | MIPI CSI-2 (2-lane) | MIPI CSI-2 (2-lane) |
-| Lens | Fixed focus, 62.2 deg FOV | C/CS mount (interchangeable) |
-| Low-Light Performance | Adequate | Better (larger pixels) |
-| Estimated Cost | $25 | $50 |
-| Recommendation | **Default choice** (cost, simplicity) | Upgrade for better CV accuracy |
+| Parameter | SC3336 (Luckfox module) |
+|-----------|-------------------------|
+| Resolution | 3 MP (2304x1296 native), run at 1280x720 |
+| Sensor Size | 1/2.8" |
+| Pixel Size | 2.0 um |
+| Max Video | 1296p @ 30fps; Epicura uses 720p @ 30fps |
+| Interface | MIPI CSI-2 (4-lane FPC to the Pico Zero CSI connector) |
+| Lens | Fixed-focus M12, approx. 80 deg diagonal with the stock lens (to be confirmed) |
+| Low-Light Performance | Good (2.0 um pixels, ISP 2D/3D noise reduction) |
+| ISP Support | RV1106 ISP tuning file shipped in the Luckfox SDK |
+| Estimated Cost | $12 (module incl. FPC) |
+| Recommendation | **Fixed choice** (IMX219/IMX477 dropped: no RV1106 ISP tuning file) |
 
-**Selection Rationale:** The IMX219 is the default choice for the prototype. Its fixed-focus lens and adequate resolution are sufficient for food color/texture classification. The IMX477 with a C-mount lens offers more flexibility if fine-grained visual analysis is needed (e.g., detecting individual spice particles or subtle color gradients).
+**Selection Rationale:** The SC3336 is the Luckfox-supported sensor with an RV1106 ISP tuning file in the SDK, so it is the fixed choice; IMX219 and IMX477 are dropped because the RV1106 ISP has no tuning file for them. Its fixed-focus lens and 3 MP resolution are sufficient for food color/texture classification. Running at 1280x720 rather than 1080p halves ISP/VI buffer memory and encoder load, and is more than sufficient for the 224x224 stage classifier and the phone preview. Dehaze, noise reduction, lens shading, sharpening, AWB and AE all run in the ISP; no CPU image processing is needed.
 
 ### 2.2 Camera Mounting
 
@@ -46,7 +47,7 @@ status: Draft
 │                                                     │
 │         ┌──────────────┐                            │
 │         │   Camera      │                           │
-│         │   (IMX219)    │                           │
+│         │   (SC3336)    │                           │
 │         │   ┌──────┐    │                           │
 │         │   │ Lens │    │   ◄── LED Ring            │
 │         │   └──┬───┘    │       (surrounding lens)  │
@@ -64,20 +65,9 @@ status: Draft
 └────────────────────────────────────────────────────┘
 ```
 
-### 2.3 Field of View Calculation
+### 2.3 Field of View
 
-At a mounting height of 25cm above a 22cm diameter pot:
-
-```
-Camera FOV (IMX219): 62.2 degrees horizontal
-Half-angle: 31.1 degrees
-Coverage at 25cm: 2 x 25 x tan(31.1) = 2 x 25 x 0.603 = 30.2 cm
-
-Result: 30.2 cm coverage > 22 cm pot diameter
-Margin: ~37% extra coverage (captures pot rim and surroundings)
-```
-
-For the IMX477 with a suitable lens, FOV can be tuned via lens selection. A 6mm lens at 25cm gives approximately 28cm coverage. A wider 3.6mm lens gives approximately 45cm coverage.
+The SC3336 is a 1/2.8" sensor with a fixed-focus M12 lens on the Luckfox module, giving approximately 80 degrees diagonal with the stock lens (to be confirmed on the physical module). At 25 cm above a 22 cm pot, an 80 degree diagonal in a 16:9 720p frame corresponds to roughly 36 cm of horizontal and 20 cm of vertical coverage, so the vertical axis is the limiting one: mount toward the top of the 20-30 cm range, or fit a wider M12 lens, if the measured FOV does not cover the full pot rim with margin. The 720p mode may also crop the native 2304x1296 frame, which narrows the effective FOV further. Measure on hardware before fixing the gantry height.
 
 ### 2.4 Lighting System
 
@@ -90,8 +80,8 @@ For the IMX477 with a suitable lens, FOV can be tuned via lens selection. A 6mm 
 | Ring Diameter | 50-60mm (surrounds camera lens) |
 | Color Temperature | Neutral white (5000-6500K, RGB mixed) |
 | Brightness | Software-adjustable, 0-100% |
-| Interface | Single-wire data (SPI/GPIO from CM5 or STM32) |
-| Power | 5V, ~60mA per LED at full white (total ~1A max) |
+| Interface | Single-wire data (800 kHz) from STM32 PB14 (TIM15_CH1 PWM + DMA) via 74AHCT1G125 3.3→5V level shifter; modes requested by the RV1106 via SET_LED |
+| Power | 5V (switched by PCF8574 #2 P3), ~60mA per LED at full white (total ~1A max) |
 
 #### 2.4.2 Lighting Design
 
@@ -270,7 +260,7 @@ Alternative: Hall effect sensor (SS49E or A3144)
 
 ### 5.1 Multi-Sensor Cooking Stage Detection
 
-The recipe engine on CM5 combines data from multiple sensors to determine the current cooking stage and trigger transitions:
+The recipe engine on the RV1106 combines data from multiple sensors to determine the current cooking stage and trigger transitions:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -282,8 +272,8 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 │  └── Bubble detection ─────────┤                        │
 │                                │                        │
 │  IR Temp (10Hz)                ├──► Stage Classifier    │
-│  ├── Surface temperature ──────┤    (CM5, TFLite/       │
-│  └── Rate of change ───────────┘     OpenCV logic)      │
+│  ├── Surface temperature ──────┤    (RV1106 NPU,        │
+│  └── Rate of change ───────────┘     RKNN INT8)         │
 │                                         │              │
 │                                         ▼              │
 │                                    Cooking Stage ID    │
@@ -348,9 +338,11 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 ### 7.1 Camera Test Procedures
 
 - [ ] Mount camera at 25cm height, verify full pot is in frame
+- [ ] Measure the actual FOV of the SC3336 stock lens at 25cm (horizontal and vertical, 720p mode); confirm pot rim margin and fix gantry height
+- [ ] Verify 1280x720 @ 30fps on the ISP main path and 224x224 self-path frames reaching the NPU at 2 Hz
 - [ ] Capture image of white card, verify white balance (R/G/B within +/-10%)
 - [ ] Capture image of X-Rite ColorChecker, verify color accuracy (deltaE < 5)
-- [ ] LED ring on: verify even illumination (no hot spots >20% variance)
+- [ ] LED ring on (SET_LED CAPTURE mode via STM32): verify even illumination (no hot spots >20% variance)
 - [ ] LED ring off: verify camera captures adequate image under typical kitchen lighting
 - [ ] Steam test: boil water for 10 minutes, verify lens does not fog (shroud effective)
 - [ ] FPS test: verify 30fps capture sustained over 30 minutes
@@ -377,7 +369,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 
 ## 8. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture & Wiring Diagrams]]
 - [[04-Mechanical-Design|Mechanical Design]]
 - [[02-Controller-Software-Architecture|Controller & Software]]
@@ -391,3 +383,4 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 3 MP at 1280x720 on the Luckfox Pico Zero (RV1106G3) 4-lane CSI with hardware ISP; IMX219/IMX477 dropped; FOV section rewritten (stock-lens FOV to be confirmed); LED ring now STM32-driven via level shifter; sensor fusion runs on the RV1106 NPU; camera test checklist updated |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 1.2
+modified: 2026-11-04
+version: 1.3
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Raspberry Pi CM5 (AI/vision processing), STM32G474RE (motor/safety control), display module, and supporting components.
+This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Luckfox Pico Zero (RV1106G3; AI/vision processing), STM32G474RE (motor/safety control), display module, and supporting components.
 
 ## 2. Compute Architecture
 
@@ -18,17 +18,17 @@ This document details the compute subsystem components for the Epicura kitchen r
 │                    Compute Subsystem                            │
 │                                                                 │
 │  ┌──────────────┐    UART     ┌──────────────┐                 │
-│  │  Raspberry   │◄───────────►│  STM32G474RE │                 │
-│  │  Pi CM5      │             │  Nucleo      │                 │
-│  │  (4GB RAM)   │             │  (FreeRTOS)  │                 │
+│  │  Luckfox     │◄───────────►│  STM32G474RE │                 │
+│  │  Pico Zero   │   1 Mbps    │  Nucleo      │                 │
+│  │  (RV1106G3)  │             │  (FreeRTOS)  │                 │
 │  └──────┬───────┘             └──────┬───────┘                 │
 │         │                            │                         │
-│    CSI-2│  HDMI/DSI              PWM │  ADC  I2C              │
+│ MIPI CSI│  SPI0/I2C3             PWM │  ADC  I2C              │
 │         │    │                    │  │    │    │               │
 │         ▼    ▼                    ▼  ▼    ▼    ▼               │
 │      Camera Display           Servos Load MLX                 │
-│      IMX219 10.1"             Arm   Cell  90614               │
-│             IPS               Gates       HX711               │
+│      SC3336 4" LCD            Arm   Cell  90614               │
+│             480x320           Gates       HX711               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,14 +38,12 @@ This document details the compute subsystem components for the Epicura kitchen r
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
-| Raspberry Pi CM5 (4GB RAM, 64GB eMMC) | SC1441 | 1 | $65.00 | $65.00 | RPi Foundation | Core compute: AI inference, vision, UI, recipe engine, Docker containers |
-| CM5IO Board (carrier) | SC1439 | 1 | $20.00 | $20.00 | RPi Foundation | Official CM5 carrier board (CM5IO) with all breakouts |
+| Luckfox Pico Zero (RV1106G3, 256MB DDR3L, 8GB eMMC) | Luckfox Pico Zero | 1 | $47.00 | $47.00 | Waveshare / Luckfox store (₹3,339 Hubtronics India) | Core compute: NPU inference, ISP vision, LVGL UI, recipe engine, cloud sync; on-board Wi-Fi 6 + BT 5.2; no carrier board needed |
 | STM32G474RE Nucleo | NUCLEO-G474RE | 1 | $18.00 | $18.00 | STMicroelectronics / Mouser | Motor controller dev board; CAN-FD + advanced timers |
-| 10.1" IPS Display (1280x800) | Waveshare 10.1" HDMI | 1 | $80.00 | $80.00 | Waveshare / Amazon | HDMI input + I2C capacitive touch; prototype display |
-| (Storage on eMMC) | - | - | - | - | Included | 64GB eMMC on CM5 module for OS and data |
-| USB-C Cable (debug/power) | - | 1 | $5.00 | $5.00 | Generic | CM5 debug console and power delivery |
-| CSI-2 Ribbon Cable (15-pin) | 15-pin FFC, 200mm | 1 | $3.00 | $3.00 | Generic | Camera module to CM5 CSI connector |
-| HDMI Cable (flat ribbon) | Micro-HDMI to HDMI | 1 | $5.00 | $5.00 | Generic | CM5 to display connection |
+| 4" IPS Display (480x320) with capacitive touch | ST7796S + FT6336 | 1 | $15.00 | $15.00 | Waveshare / AliExpress | SPI0 display (50 MHz, fbtft) + I2C3 touch (evdev); prototype and production display |
+| SC3336 Camera Module (3MP, MIPI CSI) | SC3336 | 1 | - | - | See [[03-Sensor-Components\|Sensor Components]] | Costed under Sensors ($12.00, FPC included); plugs into the Pico Zero MIPI CSI FPC connector |
+| (Storage on eMMC) | - | - | - | - | Included | 8GB eMMC on Pico Zero for A/B OS slots, models and data; microSD slot for expansion only |
+| USB-C Cable (debug/power) | - | 1 | $5.00 | $5.00 | Generic | Pico Zero power, eMMC flashing and USB debug |
 
 ---
 
@@ -53,53 +51,60 @@ This document details the compute subsystem components for the Epicura kitchen r
 
 | Item | Cost |
 |------|------|
-| Raspberry Pi CM5 (4GB, 64GB eMMC) | $65.00 |
-| CM5IO Board | $20.00 |
+| Luckfox Pico Zero (RV1106G3) | $47.00 |
 | STM32G474RE Nucleo | $18.00 |
-| 10.1" Display | $80.00 |
-| Cables | $13.00 |
-| **Category Subtotal** | **$196.00** |
+| 4" SPI Display with touch | $15.00 |
+| Cables | $5.00 |
+| **Category Subtotal** | **$85.00** |
 
 ---
 
 ## 5. Design Notes
 
-### 5.1 CM5 Selection Rationale
-- **4GB RAM** sufficient for Yocto Linux + Docker + PostgreSQL + Python services + OpenCV + TFLite
-- **64GB eMMC** provides ample space for:
-  - Base OS (~500MB)
-  - Docker images (PostgreSQL, MQTT, Python services) (~2-3GB)
-  - Recipe database with images (~5-10GB)
-  - Cooking logs and telemetry (~5GB)
-  - Firmware updates (A/B partitions) (~2GB)
-  - Remaining space for future expansion (~40GB+)
-- CM5IO carrier board provides all necessary breakouts without custom PCB
-- CM5 provides dual CSI-2 camera interfaces (one used, one spare)
-- WiFi 802.11ac + Bluetooth 5.0 built-in (no external wireless module needed)
-- 40-pin GPIO header provides UART, I2C, SPI for STM32 bridge communication
+### 5.1 RV1106 (Luckfox Pico Zero) Selection Rationale
+
+Why the RV1106G3:
+- **1 TOPS INT8 NPU** runs MobileNetV2 INT8 in 5-10 ms via `rknn_api` (target < 20 ms), against 100+ ms for CPU inference; the CPU never touches pixels
+- **5 MP hardware ISP** (3A, 2D/3D noise reduction, dehaze, LSC, sharpening) handles steam and haze over the pot in hardware; no OpenCV on the CPU
+- **~1 W class**, no heatsink or fan, -20 to +85°C ambient; suited to an enclosure next to an induction surface
+- **$47 complete board** with 256MB DDR3L in-package, 8GB eMMC, Wi-Fi 6 + BT 5.2 and antenna; replaces $85 of CM5 + CM5IO with no carrier board
+- **H.264/H.265 hardware encoder** gives the on-demand phone live view (RTSP, 720p @ 15 fps) for free
+- 40-pin RPi-style header (28 GPIO, 3.3 V): SPI0 for the display, I2C3 for touch, UART2 for the STM32 bridge, GPIO 32/38 for STM32 BOOT0/NRST
+
+What it cannot do, and how the stack adapts:
+- **256MB RAM, one Cortex-A7 @ 1.2 GHz:** no Docker, PostgreSQL, Node.js or Python on the device. One native C11 application (`epicurad`) with SQLite, libmosquitto and libcurl; steady state ~80MB, peak ~95MB
+- **No 3D GPU:** no Kivy. LVGL 9, software rendered at 20 Hz on a 480x320 framebuffer
+- **No DSI/HDMI output, and the Pico Zero does not break out the RGB LCD pins:** the 10.1" 1280x800 panel is dropped for a 4" 480x320 SPI LCD
+- **One usable SPI controller**, taken by the display: the STM32 bridge moves from SPI to UART2 at 1 Mbps (CAN remains the production alternative)
+- **Narrow camera driver list:** SC3336 is the Luckfox-supported sensor with an ISP tuning file in the SDK; IMX219/IMX477 are dropped
+- **2.4 GHz Wi-Fi only, no Ethernet on the board:** cloud sync and SSH go over Wi-Fi; UART0 is the debug console
+- **8GB eMMC:** A/B boot + rootfs slots (2x32MB + 2x256MB), 64MB `oem` (models, ISP tuning, LVGL assets), ~6GB `data`
+
+See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]] for datasheet facts and the CM5 comparison, and [[02-Controller-Software-Architecture|Controller & Software Architecture]] for the resulting stack.
 
 ### 5.2 STM32G474RE Selection Rationale
 - **Cortex-M4F @ 170 MHz** with FPU for PID calculations
 - **CAN-FD** peripheral (future production bus architecture)
 - **Advanced timers** (TIM1, TIM8) with complementary PWM for servo control
 - **12-bit ADC** (5 Msps) for analog sensor reading
-- **UART** for CM5 communication link
-- Nucleo board provides ST-Link debugger and Arduino-compatible headers
+- **USART2 (PA2/PA3)** for the RV1106 UART link at 1 Mbps; the same USART is a system-bootloader port, so it also carries STM32 firmware updates
+- Nucleo board provides ST-Link debugger and Arduino-compatible headers. Caveat: on the NUCLEO-G474RE, PA2/PA3 go to the ST-Link VCP by default; open the solder bridges and route them to the CN10 header for the prototype, or use the custom controller PCB
 
 ### 5.3 Display Choice
-- Prototype uses standalone HDMI display (simpler integration)
-- Production will use **OEM panel** with direct DSI connection to CM5
-- I2C touch controller allows CM5 to handle touch input directly
+- 4" 480x320 IPS LCD with ST7796S controller on SPI0 (fbtft, 50 MHz with DMA); the RV1106 has no DSI or HDMI output
+- Full-frame refresh is ~50 ms; LVGL partial redraws keep the UI responsive at a 20 Hz tick
+- FT6336 capacitive touch on I2C3 (evdev), read directly by the RV1106
+- The display stays SPI in production (same panel/controller, bezel-mounted)
 
 ### 5.4 Production Upgrade Path
 
 | Item | Prototype | Production |
 |------|-----------|------------|
-| CM5 carrier | CM5IO Board | CM5IO Board (off-the-shelf, same for production) |
+| Application processor | Luckfox Pico Zero (complete board) | Bare RV1106G3 (QFN128, 12.3 mm, 0.35 mm pitch) on the custom PCB, or Luckfox Core1106 SoM on the PCB |
 | STM32 | Nucleo dev board | Bare STM32G474RE on controller PCB |
-| Display | Standalone HDMI | OEM DSI panel, bezel-mounted |
-| Storage | 64GB eMMC on CM5 | 64GB/128GB eMMC on CM5 |
-| Software | Docker Compose | Docker Swarm or K3s for orchestration |
+| Display | 4" ST7796S SPI LCD module + FT6336 touch | Same 4" SPI panel, bezel-mounted; stays SPI |
+| Storage | 8GB eMMC on Pico Zero | 8GB eMMC on SoM or on PCB |
+| Software | Buildroot image, `epicurad`, swupdate A/B | Same image; no orchestration layer |
 
 ---
 
@@ -107,8 +112,8 @@ This document details the compute subsystem components for the Epicura kitchen r
 
 - [[02-Actuation-Components|Actuation Components]]
 - [[03-Sensor-Components|Sensor Components]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 
 ---
 
@@ -123,3 +128,4 @@ This document details the compute subsystem components for the Epicura kitchen r
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-02-20 | Manas Pradhan | Added ISO1050DUB isolated CAN transceiver to component list and cost summary |
 | 1.2 | 2026-02-20 | Manas Pradhan | Moved ISO1050DUB ($3.50) to Actuation Components (now on Driver PCB); subtotal $199.50 → $196.00 |
+| 1.3 | 2026-11-04 | Manas Pradhan | Replaced Raspberry Pi CM5 + CM5IO + 10.1" HDMI display with Luckfox Pico Zero (RV1106G3) + 4" ST7796S SPI LCD; CSI/HDMI cables removed; subtotal $196.00 → $85.00 |

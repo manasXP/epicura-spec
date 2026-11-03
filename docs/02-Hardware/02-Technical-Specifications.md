@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 5.0
+modified: 2026-11-04
+version: 5.1
 status: Draft
 ---
 
@@ -34,7 +34,7 @@ The primary cooking element is a commercial microwave induction surface — a se
 
 ### 1.3 PID Control Parameters
 
-- **Setpoint Source:** Recipe state machine (via CM5 command)
+- **Setpoint Source:** Recipe state machine (via RV1106 command)
 - **Feedback:** IR thermometer (primary), CAN coil temperature (secondary/safety)
 - **Loop Rate:** 10Hz (100ms period)
 - **Output:** Power level command (0-100%) via CAN bus to microwave surface module
@@ -47,13 +47,13 @@ The primary cooking element is a commercial microwave induction surface — a se
 
 | Parameter | Value |
 |-----------|-------|
-| Module | IMX219 (standard) or IMX477 (HQ option) |
-| Resolution | 1920x1080 at 30fps (1080p) |
-| Interface | MIPI CSI-2 (2-lane) to CM5 |
-| Sensor Size | 1/4" (IMX219) or 1/2.3" (IMX477) |
-| Field of View | 62.2 (IMX219) or adjustable C/CS mount (IMX477) |
-| White Balance | Auto white balance with LED ring compensation |
-| Illumination | WS2812B LED ring (12-16 LEDs) or white LED ring with diffuser |
+| Module | SC3336 3 MP camera module (Luckfox, ISP tuning file in SDK) |
+| Resolution | 1280x720 at 30fps (720p; sensor native 2304x1296) |
+| Interface | MIPI CSI-2 (4-lane FPC) to the RV1106 hardware ISP |
+| Sensor Size | 1/2.8" |
+| Field of View | Approximately 80 deg diagonal with the stock M12 lens (to be confirmed on the physical module) |
+| White Balance | ISP auto white balance with LED ring compensation |
+| Illumination | WS2812B LED ring (12-16 LEDs, STM32-driven) or white LED ring with diffuser |
 | Mounting | Overhead gantry, 20-30cm above pot center |
 | Purpose | Food color/texture analysis, stage detection via CV |
 
@@ -78,9 +78,9 @@ The primary cooking element is a commercial microwave induction surface — a se
 
 | Storage | Medium | Capacity | Purpose |
 |---------|--------|----------|---------|
-| **eMMC** | On-board CM5 carrier | 8-16 GB | OS, application, recipe DB, cooking logs |
-| **SD Card** | MicroSD slot on CM5 | 16-64 GB (optional) | Recipe backup, logs archive, user media |
-| **RAM** | LPDDR4 on CM5 | 4-8 GB | Runtime, CV inference, UI frame buffer |
+| **eMMC** | On-board Luckfox Pico Zero | 8 GB | A/B boot + rootfs (squashfs), oem, data (SQLite DB, images, logs, OTA staging), userdata |
+| **SD Card** | MicroSD slot on Pico Zero | 16-64 GB (optional) | Storage expansion only: recipe backup, logs archive, user media |
+| **RAM** | DDR3L in-package on RV1106G3 | 256 MB | Runtime, NPU inference, LVGL frame buffer (~80 MB steady, ~95 MB peak) |
 
 ### 3.2 Recipe Database
 
@@ -118,36 +118,36 @@ The primary cooking element is a commercial microwave induction surface — a se
 | **USB-C Power** | 5V from USB-C VBUS via 500mA polyfuse — enables standalone programming/debug without 24V PSU |
 | **Li-Ion Battery** | Single-cell 3.7V Li-Ion (JST-PH 2-pin) — TP4056 CC/CV charger (500mA) + DW01A/FS8205A protection + MT3608 boost to 5V — micro-UPS for STM32 RTC/state retention |
 | **3.3V Rail** | 3.3V / 500mA (LDO from 5V_MERGED on Unified PCB) — STM32, sensors, I2C devices |
-| **Standby Power** | <5W (CM5 idle, display off, induction off) |
+| **Standby Power** | <5W (RV1106 idle, display off, induction off) |
 | **PSU Type** | Mean Well enclosed AC-DC, single 24V output |
 | **Efficiency** | >87% at full load (Mean Well LRS-75 series) |
 
 ### 4.1 12V UPS Recommended Specifications
 
-An off-the-shelf 12V UPS powers the 5V rail (CM5 + STM32) independently of the 24V PSU, allowing the system to detect AC power loss, save cooking state, and gracefully pause.
+An off-the-shelf 12V UPS powers the 5V rail (RV1106 + STM32) independently of the 24V PSU, allowing the system to detect AC power loss, save cooking state, and gracefully pause.
 
 | Parameter | Minimum | Recommended | Notes |
 |-----------|---------|-------------|-------|
 | Output Voltage | 12V DC | 12V DC (regulated) | Must be within TPS54531 input range (3.5-28V) |
 | Output Current | 3A | 5A | 5V rail peak is ~4A; headroom for inrush |
-| Battery Capacity | 7Ah (84Wh) | 9Ah (108Wh) | At ~20W load (CM5 + STM32 + display), 7Ah gives ~25 min runtime |
+| Battery Capacity | 7Ah (84Wh) | 9Ah (108Wh) | At ~3W load (RV1106 + STM32 + 4" LCD), 7Ah gives many hours of runtime; capacity is no longer the sizing constraint |
 | Battery Type | Sealed lead-acid (SLA) | Lithium iron phosphate (LiFePO4) | LiFePO4: lighter, longer cycle life, flat discharge curve |
 | Charging | Integrated (AC mains) | Integrated with auto-switchover | UPS charges from AC; switches to battery on AC loss |
-| Switchover Time | <20ms | <10ms | Must be faster than CM5's hold-up (bulk caps provide ~50ms) |
+| Switchover Time | <20ms | <10ms | Must be faster than the RV1106's hold-up (bulk caps provide ~50ms) |
 | Output Connector | Bare wire or barrel jack | XT30 (to match J_12V_UPS) | Adapter cable may be needed |
 | Form Factor | — | Compact, <2kg | Must fit inside or adjacent to Epicura enclosure |
 
 **Example products:** Mini DC UPS modules (e.g., "12V 5A UPS module" on AliExpress/Amazon, ~$15-30) that accept 12V AC adapter input, contain a LiFePO4 or Li-ion battery pack, and provide uninterrupted 12V output with automatic switchover.
 
 > [!tip]
-> During AC power failure, only the 5V rail (CM5 + STM32 + display) remains powered. The 24V rail (actuators, induction) goes down immediately. The STM32 detects 24V loss via COMP1 comparator (<100µs), disables all actuators, and notifies the CM5 to save state. At ~20W idle draw, a 7Ah 12V battery provides approximately 25 minutes — enough time to save state and wait for power restoration. If power returns within 5 minutes, cooking auto-resumes; otherwise the user is prompted.
+> During AC power failure, only the 5V rail (RV1106 + STM32 + display) remains powered. The 24V rail (actuators, induction) goes down immediately. The STM32 detects 24V loss via COMP1 comparator (<100µs), disables all actuators, and notifies the RV1106 to save state. At ~3W idle draw, a 7Ah 12V battery provides many hours — far more than needed to save state and wait for power restoration. If power returns within 5 minutes, cooking auto-resumes; otherwise the user is prompted.
 
 ### 4.2 Power Budget Breakdown
 
 | Subsystem | Typical (W) | Peak (W) |
 |-----------|-------------|----------|
 | Induction heater | 600 | 1,800 |
-| CM5 + camera + display | 15 | 25 |
+| RV1106 + camera + 4" LCD | 1.5 | 3 |
 | STM32 + sensors | 2 | 3 |
 | BLDC stirring motor | 12 | 48 |
 | P-ASD pump + solenoids | 1 | 10 |
@@ -157,7 +157,7 @@ An off-the-shelf 12V UPS powers the 5V rail (CM5 + STM32) independently of the 2
 | LED ring | 2 | 5 |
 | Exhaust fan | 1 | 3 |
 | PSU losses | 10 | 30 |
-| **Total** | **644** | **1,927** |
+| **Total** | **631** | **1,905** |
 
 ## 5. Performance Requirements
 
@@ -179,18 +179,18 @@ An off-the-shelf 12V UPS powers the 5V rail (CM5 + STM32) independently of the 2
 
 | Interface | Protocol | Speed | Endpoints | Purpose |
 |-----------|----------|-------|-----------|---------|
-| CM5 <-> STM32 | UART (primary) | 115200 baud | CM5 UART0 <-> STM32 USART1 | Commands, telemetry, heartbeat |
-| CM5 <-> STM32 | CAN (alternative) | 500 kbps | CM5 SPI-CAN <-> STM32 CAN1 | Higher reliability option |
-| CM5 <-> Camera | MIPI CSI-2 | 2-lane | CM5 CSI port <-> IMX219/477 | Video frames for CV |
-| CM5 <-> Display | DSI or HDMI | 1080p/60Hz | CM5 DSI/HDMI <-> 10" panel | UI rendering |
-| CM5 <-> Touch | I2C | 400 kHz | CM5 I2C1 <-> touch controller | Touch input events |
+| RV1106 <-> STM32 | UART (primary) | 1,000,000 baud | RV1106 UART2 (header 8/10) <-> STM32 USART2 (PA2/PA3) | Commands, telemetry, heartbeat, STM32 firmware update |
+| RV1106 <-> STM32 | CAN (alternative) | 500 kbps | External CAN controller on RV1106 <-> STM32 FDCAN | Higher reliability option (production) |
+| RV1106 <-> Camera | MIPI CSI-2 | 4-lane | Pico Zero CSI FPC <-> SC3336 | 720p frames into the hardware ISP for CV |
+| RV1106 <-> Display | SPI | 50 MHz | RV1106 SPI0 <-> 4" ST7796S 480x320 | UI rendering (fbtft, LVGL) |
+| RV1106 <-> Touch | I2C | 400 kHz | RV1106 I2C3 <-> FT6336 | Touch input events |
 | STM32 <-> IR Sensor | I2C | 100 kHz | STM32 I2C1 <-> MLX90614 | Temperature readings |
 | STM32 <-> SLD Load Cells | SPI-like GPIO | 10 Hz | STM32 GPIO <-> 2× HX711 | SLD reservoir weight measurements |
 | STM32 <-> BLDC Motor | PWM + GPIO | 10 kHz + digital | STM32 TIM1_CH1 (PA8) + PA4 (EN) + PA5 (DIR) | Stirring motor speed, enable, direction |
 | STM32 <-> Microwave Surface | CAN 2.0B | 500 kbps | STM32 FDCAN1 (PB8/PB9) via J_STACK → Driver PCB ISO1050DUB → J_CAN <-> module CAN port | Induction power control via CAN; 5 kV isolation on Driver PCB |
 | STM32 <-> Exhaust Fan | PWM | 25 kHz | STM32 TIM4 CH3 <-> fan 4-pin | Fume extraction speed |
-| CM5 <-> WiFi | 802.11ac | Up to 867 Mbps | Onboard CM5 radio | App, cloud, OTA |
-| CM5 <-> BT | BLE 5.0 | 2 Mbps | Onboard CM5 radio | Initial app pairing, proximity |
+| RV1106 <-> WiFi | 802.11ax (WiFi 6, 2.4 GHz) | - | Onboard Pico Zero radio | Cloud, OTA, on-demand RTSP live view |
+| RV1106 <-> BT | BLE 5.2 | 2 Mbps | Onboard Pico Zero radio | Initial app pairing, WiFi provisioning |
 
 ## 7. Related Documentation
 
@@ -198,7 +198,7 @@ An off-the-shelf 12V UPS powers the 5V rail (CM5 + STM32) independently of the 2
 - [[03-Sensors-Acquisition|Sensors & Data Acquisition]]
 - [[04-Mechanical-Design|Mechanical Design]]
 - [[05-Exhaust-Fume-Management|Exhaust & Fume Management]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
 
 #epicura #technical-specifications #hardware
 
@@ -213,3 +213,4 @@ An off-the-shelf 12V UPS powers the 5V rail (CM5 + STM32) independently of the 2
 | 3.0 | 2026-02-20 | Manas Pradhan | Updated CAN interface row: transceiver (ISO1050DUB) now on Driver PCB, FDCAN1 signals route via J_STACK pins 19-20 |
 | 5.0 | 2026-03-09 | Manas Pradhan | Updated power specifications for 3-source 5V architecture (USB-C + Li-Ion battery + UPS), added USB-C and battery power entries |
 | 4.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo with 24V BLDC motor in communication interfaces and power budget; servo PWM row → BLDC PWM+EN+DIR row |
+| 5.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to Luckfox Pico Zero (RV1106G3): SC3336 camera at 720p, 8 GB eMMC / 256 MB RAM, 4" ST7796S SPI LCD + FT6336 touch, UART 1 Mbps bridge on USART2, Wi-Fi 6 / BT 5.2; power budget and UPS runtime updated |

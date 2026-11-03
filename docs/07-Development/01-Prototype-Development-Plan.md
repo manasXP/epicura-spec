@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -17,10 +17,10 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 ## 2. Project Links
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[02-Controller-Software-Architecture|Software Architecture]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
 
 ---
 
@@ -29,20 +29,21 @@ This document outlines the comprehensive plan for building a functional Epicura 
 ### 3.1 Phase 1: Hardware Setup & Bring-up (Weeks 1-4)
 
 #### 3.1.1 Objectives
-- Set up Raspberry Pi CM5 with Yocto Linux image
+- Set up Luckfox Pico Zero (RV1106G3) with a Buildroot Linux image
 - Set up STM32G474RE with FreeRTOS
-- Establish CM5-to-STM32 communication link
+- Establish RV1106-to-STM32 UART communication link
 - Validate basic I/O and power supply
 
 #### 3.1.2 Tasks
 
-**Week 1: CM5 Bring-up**
-- [ ] Acquire CM5 module + IO carrier board
-- [ ] Build Yocto image for CM5 (minimal + Python + OpenCV)
-- [ ] Flash image to microSD, verify boot
-- [ ] Establish SSH access over Ethernet/WiFi
-- [ ] Test GPIO, I2C, SPI, UART from Linux userspace
-- [ ] Install libcamera and verify CSI-2 camera interface
+**Week 1: RV1106 Bring-up**
+- [ ] Acquire Luckfox Pico Zero + SC3336 camera module + 4" ST7796S SPI LCD (FT6336 touch)
+- [ ] Build Buildroot image from the Luckfox SDK inside the `luckfoxtech/luckfox_pico:1.0` Docker image (kernel 5.10, busybox init, squashfs rootfs; packages: sqlite, libyaml, cjson, libmosquitto, libcurl, mbedtls, lvgl, swupdate, wpa_supplicant, bluez5, rockit, rknn)
+- [ ] Flash image to eMMC over USB-C, verify boot
+- [ ] Establish SSH access over Wi-Fi (no Ethernet on the Pico Zero); UART0 debug console as fallback
+- [ ] Test GPIO, I2C3, SPI0, UART2 from Linux userspace
+- [ ] Bring up the 4" LCD on fbtft (SPI0, 50 MHz, DMA) and FT6336 touch on I2C3 (evdev)
+- [ ] Verify SC3336 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
 
 **Week 2: STM32 Bring-up**
 - [ ] Acquire NUCLEO-G474RE development board
@@ -54,31 +55,31 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Test PWM output (servo signal generation)
 
 **Week 3: Inter-Processor Communication**
-- [ ] Wire UART between CM5 (UART TX/RX) and STM32 (USART2)
-- [ ] Define message protocol (header, command ID, payload, CRC)
+- [ ] Wire UART between RV1106 (UART2: header pins 8 TX / 10 RX) and STM32 (USART2: PA2/PA3), 1,000,000 baud 8N1, 3.3 V; on the Nucleo, open the solder bridges so PA2/PA3 reach the CN10 header instead of the ST-Link VCP
+- [ ] Define message protocol (SOF 0x7E, byte stuffing, msg ID, type, payload, CRC-16)
 - [ ] Implement protocol on STM32 (C, interrupt-driven UART)
-- [ ] Implement protocol on CM5 (Python, pyserial)
-- [ ] Test bidirectional echo: CM5 sends command, STM32 responds
+- [ ] Implement protocol on RV1106 (C, `epicurad` bridge thread, termios at 1 Mbps)
+- [ ] Test bidirectional echo: RV1106 sends command, STM32 responds
 - [ ] Measure round-trip latency (target: < 10 ms)
 
 **Week 4: Power Supply & Integration**
-- [ ] Use bench PSU initially (5V/3A for CM5, 6V for servos, 3.3V for STM32)
+- [ ] Use bench PSU initially (5V over USB-C for the Pico Zero (~1 W), 6V for servos, 3.3V for STM32)
 - [ ] Design power distribution board (or use prototype PSU module)
 - [ ] Wire all subsystems to common power rail
 - [ ] Verify power consumption under load
-- [ ] Stress test: run CM5 + STM32 + servo simultaneously for 1 hour
+- [ ] Stress test: run RV1106 + STM32 + servo simultaneously for 1 hour
 
 **Deliverables:**
 
 | Deliverable | Success Criteria |
 |-------------|-----------------|
-| CM5 running Yocto Linux | Boot < 30s, SSH accessible, camera streaming |
+| RV1106 running Buildroot Linux | Boot < 30s, SSH accessible, ISP camera frames, LVGL test screen on the 4" LCD |
 | STM32 running FreeRTOS | 4+ tasks running, UART responsive |
-| CM5-STM32 link | Bidirectional messaging, < 10 ms round-trip |
+| RV1106-STM32 UART link | Bidirectional messaging, < 10 ms round-trip |
 | Power distribution | All subsystems powered, no brownouts under load |
 
 **Risks:**
-- CM5 Yocto build complexity → Fallback: use Raspberry Pi OS (Debian)
+- Luckfox SDK / Buildroot build issues → Fallback: start from the prebuilt Luckfox Pico Zero image and add packages incrementally
 - UART reliability → Fallback: add hardware flow control (RTS/CTS)
 
 ---
@@ -226,22 +227,21 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.4.2 Tasks
 
 **Week 11: Camera Setup**
-- [ ] Mount IMX219 camera module above pot (overhead view)
-- [ ] Install LED ring (WS2812B, 12-LED NeoPixel) around camera
-- [ ] Configure libcamera on CM5 for 1080p @ 30fps capture
-- [ ] Implement white balance and exposure control
+- [ ] Mount SC3336 camera module above pot (overhead view)
+- [ ] Install LED ring (WS2812B, 12-LED NeoPixel) around camera; wire data to STM32 PB14 via 74AHCT1G125 and implement SET_LED (0x20) over the bridge
+- [ ] Configure rockit VI/ISP on the RV1106 for 1280x720 @ 30fps capture (main path NV12) plus a 224x224 RGB888 self-path
+- [ ] ISP tuning check: load the SC3336 tuning file from the Luckfox SDK; verify AWB/AE, dehaze and 3DNR behaviour over a steaming pot
 - [ ] Test image quality under LED illumination (consistent lighting)
 - [ ] Capture test images at various cooking stages
 
-**Week 12: Image Preprocessing**
-- [ ] Build OpenCV pipeline on CM5 (Python):
-  - Color space conversion (BGR → HSV, LAB)
-  - Region of interest (ROI) extraction (pot area only)
-  - Noise reduction (Gaussian blur, bilateral filter)
-  - Color histogram extraction
-  - Texture analysis (LBP or Gabor features)
-  - Steam/bubble detection (motion analysis)
-- [ ] Benchmark pipeline: target < 100 ms per frame on CM5
+**Week 12: ISP Pipeline & Preview**
+- [ ] Configure the ISP hardware pipeline on the RV1106 (no CPU image processing):
+  - Dehaze and 2D/3D noise reduction (steam)
+  - Lens shading correction and sharpening
+  - AWB/AE locked for consistent colour under the LED ring
+  - Self-path crop/scale to the pot ROI at 224x224 RGB888
+- [ ] LCD "view pot" preview: ISP main path → RGA scale to 480x320 → framebuffer, ≤ 10 fps, on demand only
+- [ ] Benchmark: self-path frame delivered to the NPU with zero CPU copies; CPU load < 10% during capture
 
 **Week 13: Training Data Collection**
 - [ ] Cook 20+ dishes manually, capturing images every 10 seconds
@@ -258,27 +258,27 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 14: Model Training & Deployment**
 - [ ] Transfer learning: MobileNetV2 pretrained on ImageNet
-- [ ] Fine-tune on cooking stage dataset (TensorFlow/Keras)
-- [ ] Convert to TFLite (quantized INT8 for CM5)
-- [ ] Deploy on CM5: inference time target < 200 ms per frame
-- [ ] Validate accuracy: target > 85% on held-out test set
-- [ ] Implement rule-based fallback (color thresholds + temperature)
+- [ ] Fine-tune on cooking stage dataset (TensorFlow/Keras, on PC)
+- [ ] RKNN model conversion: export TFLite/ONNX, convert to INT8 `.rknn` with RKNN-Toolkit2 using a calibration image set
+- [ ] Deploy on the RV1106 NPU (`/oem/models/stage_mnv2_int8.rknn`): inference time target < 20 ms per frame at 2 Hz
+- [ ] Validate accuracy: target > 85% on held-out test set (INT8 `.rknn` vs float model)
+- [ ] Implement rule-based fallback (timer + temperature thresholds when confidence < 0.6)
 
 ```
 ┌─────────────────────────────────────────────────────┐
 │              Vision Pipeline                        │
 │                                                     │
-│  Camera ──► Preprocess ──► Model ──► Stage Label    │
-│  (30fps)    (OpenCV)       (TFLite)   (7 classes)   │
-│                │                          │         │
+│  SC3336 ──► ISP (hw) ──► NPU (RKNN) ──► Stage Label │
+│  (720p)     dehaze/3DNR  (MobileNetV2   (7 classes) │
+│                │         INT8, 2 Hz)      │         │
 │                ▼                          ▼         │
-│         Color Histogram          Recipe State       │
-│         Texture Features         Machine Input      │
-│         Motion (steam)                              │
+│         Self-path 224x224        Recipe State       │
+│         RGB888 (zero copy)       Machine Input      │
+│         Main path → VENC / RGA                      │
 │                │                                    │
 │                ▼                                    │
 │         Rule-Based Fallback                         │
-│         (if model confidence < 70%)                 │
+│         (if model confidence < 60%)                 │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -287,9 +287,9 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Deliverable | Success Criteria |
 |-------------|-----------------|
 | Camera + LED ring | Consistent overhead imaging, no shadows |
-| Preprocessing pipeline | < 100 ms/frame, robust ROI extraction |
+| ISP pipeline | Hardware dehaze/3DNR verified, 224x224 self-path to NPU with no CPU copies |
 | Training dataset | 2,000+ labeled images, 5-7 stage classes |
-| Deployed TFLite model | > 85% accuracy, < 200 ms inference on CM5 |
+| Deployed RKNN model | > 85% accuracy, < 20 ms inference on the RV1106 NPU |
 | Rule-based fallback | Works when model confidence is low |
 
 ---
@@ -318,7 +318,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
       actions: [dispense: {subsystem: "ASD", id: 1, weight_g: 5}]
       ...
   ```
-- [ ] Implement state machine on CM5 (Python):
+- [ ] Implement state machine on the RV1106 (C, `epicurad` engine thread, libyaml):
   - Load recipe YAML
   - Execute stages sequentially
   - Transition on CV detection OR timeout OR weight confirmation
@@ -386,52 +386,48 @@ This document outlines the comprehensive plan for building a functional Epicura 
 ### 3.6 Phase 6: UI & Companion App (Weeks 18-20)
 
 #### 3.6.1 Objectives
-- Build touchscreen UI on CM5 with 5 core screens
+- Build touchscreen UI on the RV1106 4" LCD with 5 core screens (LVGL)
 - Build basic native companion mobile apps (iOS + Android)
-- Connect app to CM5 via REST API
+- Connect app to the device through the cloud REST API and MQTT (no device-hosted API)
 
 #### 3.6.2 Tasks
 
 **Week 18: Touchscreen UI**
-- [ ] Set up Kivy framework on CM5
-- [ ] Implement 5 core screens:
+- [ ] Set up LVGL 9 on the RV1106 (fbtft framebuffer, evdev touch, 20 Hz tick, software rendering)
+- [ ] Implement 5 core screens at 480x320:
   1. **Home:** Recipe selection grid with images
   2. **Recipe Detail:** Ingredients, servings, estimated time, start button
-  3. **Cooking:** Live camera feed, current stage, progress bar, temperature
+  3. **Cooking:** Current stage, progress bar, temperature; optional "view pot" preview
   4. **Settings:** WiFi, language, spice level, allergen preferences
   5. **History:** Past cook logs with timestamps and results
 - [ ] Wire UI events to recipe state machine
 - [ ] Display real-time sensor data (temperature, weight, arm status)
 
-**Week 19: Camera Feed & REST API**
-- [ ] Embed live camera feed in Cooking screen (MJPEG or V4L2 widget)
-- [ ] Overlay CV annotations (stage label, confidence, temperature)
-- [ ] Deploy Fastify API on CM5 (same codebase as cloud, minus admin module):
-  - `GET /recipes` - List available recipes
-  - `GET /status` - Current cooking state, temperature, stage
-  - `POST /cook/start` - Start cooking a recipe
-  - `POST /cook/stop` - Emergency stop
-  - `GET /camera/stream` - MJPEG camera stream
-- [ ] Test API with curl and Postman
+**Week 19: Live View & Cloud Sync**
+- [ ] Implement the on-demand LCD "view pot" preview (ISP main path → RGA 480x320 → framebuffer, ≤ 10 fps)
+- [ ] Overlay CV annotations (stage label, confidence, temperature) on the Cooking screen
+- [ ] Implement on-demand phone live view: `live_view_start` over MQTT → bind VENC H.264 720p @ 15 fps → spawn `rtsp-stream` (`rtsp://<device>:554/pot`); teardown after 60 s with no client or on `live_view_stop`
+- [ ] Implement cloud sync in `epicurad`: `GET /recipes/sync?since=` pull, `sync_outbox` push over REST, MQTT telemetry every 10 s while cooking
+- [ ] Test against the cloud API (`epicura-api`) with curl, and the stream with an RTSP client (VLC)
 
 **Week 20: Native Companion Mobile Apps**
 - [ ] Create native app projects (Swift/SwiftUI for iOS, Kotlin/Compose for Android)
 - [ ] Implement 4 screens:
-  1. **Discovery:** Find Epicura on local network (mDNS)
-  2. **Recipe Browse:** List and detail view from API
-  3. **Live Cook:** Camera feed + status from API
+  1. **Discovery:** BLE scan and pairing with the device
+  2. **Recipe Browse:** List and detail view from the cloud API
+  3. **Live Cook:** RTSP live view (same LAN, or cloud relay) + status from the cloud
   4. **Controls:** Start/stop, spice level adjustment
-- [ ] WiFi AP mode pairing flow: CM5 creates AP, app connects, configures home WiFi
+- [ ] BLE provisioning flow: app connects over BLE (BT 5.2), sends home WiFi credentials, device joins via wpa_supplicant
 - [ ] Test on Android device (physical)
 
 **Deliverables:**
 
 | Deliverable | Success Criteria |
 |-------------|-----------------|
-| Touchscreen UI | 5 screens, responsive touch, camera feed |
-| REST API | All endpoints functional, < 500 ms response |
-| Native mobile apps | Recipe browse, live camera, start/stop cooking |
-| WiFi pairing | AP mode → home WiFi configuration works |
+| Touchscreen UI | 5 LVGL screens on the 4" LCD, responsive touch, pot preview |
+| Cloud sync | Recipe pull, outbox push and MQTT telemetry working against the cloud API |
+| Native mobile apps | Recipe browse, live view (RTSP), start/stop cooking |
+| BLE provisioning | BLE pairing → home WiFi configuration works |
 
 ---
 
@@ -471,7 +467,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 **Week 24: Reliability & Documentation**
 - [ ] 24-hour continuous operation test (cycle through recipes)
 - [ ] 50+ cook cycle endurance test
-- [ ] Memory leak testing on CM5 (Python processes)
+- [ ] Memory profiling on the RV1106 (`epicurad` RSS and CMA usage; stay within the ~95 MB peak budget)
 - [ ] Power consumption profiling (average and peak)
 - [ ] Bug fixing and optimization
 - [ ] Prepare demo: 3 recipes cooked live, camera + UI + app shown
@@ -493,16 +489,16 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Category | Items | Estimated Cost |
 |----------|-------|----------------|
-| Compute | CM5 + carrier board + STM32 Nucleo dev board | $200-300 |
+| Compute | Luckfox Pico Zero (RV1106G3) + STM32 Nucleo dev board | $65-80 |
 | Actuation | 24V BLDC motor + ASD servos + CID actuators + SLD pumps/solenoids + induction hob | $200-300 |
-| Sensors | IMX219 camera + MLX90614 + reed switch + LED ring | $50-80 |
+| Sensors | SC3336 camera + MLX90614 + reed switch + LED ring + level shifter | $30-50 |
 | Mechanical | 3D printing (PETG filament) + stainless steel shaft + fasteners + brackets | $100-200 |
-| Display | 10.1" IPS touchscreen (HDMI + I2C touch) | $80-120 |
+| Display | 4" ST7796S SPI IPS touchscreen (FT6336 I2C touch) | $15-20 |
 | Power | Bench PSU + prototype PSU board + cables + connectors | $50-80 |
 | Tools | Soldering station + multimeter + oscilloscope + 3D printer access | $100-200 |
 | Consumables | Ingredients (20+ cook sessions) + thermal paper + misc | $50-100 |
 | Miscellaneous | PCBs (JLCPCB) + shipping + contingency | $200-400 |
-| **Total** | | **$1,010-1,770** |
+| **Total** | | **$790-1,420** |
 
 ---
 
@@ -515,8 +511,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Induction control difficulty | Medium | High | Start with relay on/off, upgrade to PWM injection; worst case: use commercial hob with manual power setting |
 | CV accuracy insufficient | Medium | Medium | Rule-based fallback (color + temperature thresholds); collect more training data; use ensemble of simple classifiers |
 | Mechanical assembly issues | Low | Medium | Iterate 3D prints rapidly; consult maker community; use off-the-shelf brackets where possible |
-| CM5 performance bottleneck | Low | Medium | Optimize TFLite inference (INT8 quantization); offload preprocessing to GPU; consider Jetson Nano as backup |
-| Integration complexity | High | High | Test each subsystem independently before integrating; define clear interfaces (UART protocol, API); CI/CD for CM5 software |
+| RV1106 resource limits (256 MB RAM, single Cortex-A7) | Medium | Medium | Keep all image work in the ISP/NPU/RGA/VENC hardware blocks; verify the ~95 MB peak memory budget on hardware; phone streaming on demand only; memory-pressure fallback kills `rtsp-stream` |
+| Integration complexity | High | High | Test each subsystem independently before integrating; define clear interfaces (UART protocol, API); CI/CD for RV1106 software |
 | Servo arm reliability | Medium | Medium | Use BLDC motor with integrated ESC; add mechanical end-stops; monitor motor current for early failure detection |
 | Recipe state machine bugs | Medium | Medium | Extensive unit testing; timeout fallbacks on every state; manual override via UI |
 
@@ -525,7 +521,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
 | Component delivery delays | Medium | High | Order early (Week 0); identify backup suppliers; use dev boards initially |
-| Yocto build issues | Medium | Medium | Fallback to Raspberry Pi OS; pre-built Yocto images for CM5 may be available |
+| Luckfox SDK / Buildroot build issues | Medium | Medium | Build inside the `luckfoxtech/luckfox_pico:1.0` Docker image; start from the prebuilt Luckfox Pico Zero image and add packages incrementally |
 | Scope creep | Medium | Medium | Strict MVP definition; defer nice-to-haves to post-prototype |
 | Testing takes longer than planned | High | Medium | Start testing during development (not only at end); automate where possible |
 
@@ -536,7 +532,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 ### 6.1 Minimum Viable Prototype (MVP)
 - [ ] Cook 3 recipes end-to-end autonomously
 - [ ] Temperature control within ±10°C of target
-- [ ] Basic touchscreen UI: recipe select, cooking screen, camera feed
+- [ ] Basic touchscreen UI: recipe select, cooking screen, pot preview
 - [ ] Safety interlocks functional (pot detect, overtemp shutoff)
 - [ ] Dispensing works for all 3 subsystems (ASD, CID, SLD)
 
@@ -560,7 +556,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Category | Estimated Cost |
 |----------|---------------|
-| Electronic Components (BOM) | $614 |
+| Electronic Components (BOM) | $431 |
 | Tools & Equipment | $100-200 |
 | 3D Printing & Mechanical | $100-200 |
 | Consumables (ingredients, filament) | $50-100 |
@@ -575,7 +571,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 ### 8.1 Alpha Phase Preparation
 - Identify improvements from prototype testing
-- Design custom carrier PCB (combine CM5 + STM32 + power on single board)
+- Design custom carrier PCB (combine bare RV1106G3 or Core1106 SoM + STM32 + power on single board)
 - Plan injection-molded enclosure design
 - Begin BIS certification process (India)
 
@@ -589,14 +585,14 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 ## 9. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[02-Controller-Software-Architecture|Software Architecture]]
 - [[01-Safety-Compliance|Safety & Compliance]]
 - [[01-Compute-Module-Components|Compute Module Components]]
 - [[02-Actuation-Components|Actuation Components]]
 - [[03-Sensor-Components|Sensor Components]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
 
 ---
 
@@ -609,3 +605,4 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed to Luckfox Pico Zero (RV1106G3): Buildroot bring-up, UART bridge, SC3336 + ISP tuning, RKNN NPU model, LVGL on 4" LCD, cloud-only API and RTSP live view; budgets recomputed |

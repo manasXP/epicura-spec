@@ -35,7 +35,7 @@ app/src/main/java/io/epicura/app/
 │   │   ├── AuthInterceptor.kt           OkHttp interceptor: JWT + 401 refresh
 │   │   ├── ApiResponse.kt               Sealed class for API responses
 │   │   ├── WebSocketManager.kt          OkHttp WebSocket + event parsing
-│   │   └── MjpegStreamDecoder.kt        MJPEG frame parser → Bitmap Flow
+│   │   └── RtspPlayerView.kt             Media3 ExoPlayer RtspMediaSource (on-demand live view)
 │   │
 │   ├── ble/
 │   │   ├── BleManager.kt                CompanionDeviceManager + GATT client
@@ -128,6 +128,7 @@ app/src/main/java/io/epicura/app/
 | **Hilt** | 2.51+ | Dependency injection |
 | **Retrofit** | 2.11+ | Type-safe REST API client |
 | **OkHttp** | 4.12+ | HTTP client, WebSocket, interceptors |
+| **Media3 (ExoPlayer)** | 1.3+ | RTSP live view player (`RtspMediaSource`), LAN or cloud relay |
 | **Moshi** / **Kotlinx Serialization** | Latest | JSON parsing |
 | **Room** | 2.6+ | Local SQLite database (recipes, history) |
 | **Coil** | 2.7+ | Image loading and caching (Compose integration) |

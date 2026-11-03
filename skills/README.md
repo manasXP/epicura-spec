@@ -14,16 +14,17 @@ ln -s ../epicura-spec/skills/safety-compliance .claude/skills/
 ln -s ../epicura-spec/skills/mqtt-iot .claude/skills/
 ```
 
-### `epicura-cm5` (Python Docker services)
+### `epicura-rv1106` (C11 application on Buildroot, Luckfox Pico Zero)
 ```bash
-ln -s ../epicura-spec/skills/yocto-platform .claude/skills/
+ln -s ../epicura-spec/skills/buildroot-platform .claude/skills/
+ln -s ../epicura-spec/skills/lvgl-ui .claude/skills/
 ln -s ../epicura-spec/skills/computer-vision-edge .claude/skills/
 ln -s ../epicura-spec/skills/recipe-engine .claude/skills/
-ln -s ../epicura-spec/skills/kivy-ui .claude/skills/
 ln -s ../epicura-spec/skills/mqtt-iot .claude/skills/
-ln -s ../epicura-spec/skills/postgres-pro .claude/skills/
+ln -s ../epicura-spec/skills/embedded-systems .claude/skills/
 ln -s ../epicura-spec/skills/devops-engineer .claude/skills/
 ```
+> Note: `devops-engineer` covers the CI that builds the image inside the `luckfoxtech/luckfox_pico:1.0` Docker image on the build host. Docker never runs on the device.
 
 ### `epicura-api` (Fastify + Next.js monorepo)
 ```bash
@@ -64,23 +65,23 @@ ln -s ../epicura-spec/skills/safety-compliance .claude/skills/
 
 | Skill | Type | Repos |
 |-------|------|-------|
-| `embedded-systems` | Marketplace | firmware |
+| `embedded-systems` | Marketplace | firmware, rv1106 |
 | `stm32-firmware` | Marketplace | firmware |
 | `pid-control` | Epicura | firmware |
 | `dispensing-systems` | Epicura | firmware |
 | `safety-compliance` | Epicura | firmware, pcb |
-| `yocto-platform` | Epicura | cm5 |
-| `computer-vision-edge` | Epicura | cm5 |
-| `recipe-engine` | Epicura | cm5 |
-| `kivy-ui` | Epicura | cm5 |
-| `mqtt-iot` | Epicura | firmware, cm5, api |
+| `buildroot-platform` | Epicura | rv1106 |
+| `computer-vision-edge` | Epicura | rv1106 |
+| `recipe-engine` | Epicura | rv1106 |
+| `lvgl-ui` | Epicura | rv1106 |
+| `mqtt-iot` | Epicura | firmware, rv1106, api |
 | `fastify-api` | Epicura | api |
 | `nextjs-developer` | Marketplace | api |
 | `typescript-pro` | Marketplace | api |
-| `postgres-pro` | Marketplace | cm5, api |
+| `postgres-pro` | Marketplace | api |
 | `api-designer` | Marketplace | api, ios, android |
 | `react-expert` | Marketplace | api |
-| `devops-engineer` | Marketplace | cm5, api |
+| `devops-engineer` | Marketplace | rv1106, api |
 | `swift-expert` | Marketplace | ios |
 | `axiom-ios-ui` | Marketplace | ios |
 | `swiftui-liquid-glass` | Marketplace | ios |

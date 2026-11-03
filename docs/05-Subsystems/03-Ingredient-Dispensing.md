@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-03-11
-version: 6.0
+modified: 2026-11-04
+version: 7.0
 status: Draft
 ---
 
@@ -9,13 +9,17 @@ status: Draft
 
 ## 1. Overview
 
-The ingredient dispensing system is divided into three purpose-built subsystems, each optimized for a different ingredient class. Together they surround the cooking pot and are orchestrated by the STM32 controller under commands from the CM5 recipe engine.
+The ingredient dispensing system is divided into three purpose-built subsystems, each optimized for a different ingredient class. Together they surround the cooking pot and are orchestrated by the STM32 controller under commands from the RV1106 recipe engine.
+
+The FID and CID share one mechanical concept (a servo-indexed carousel) and one electrical control block (the **Dispenser Servo Block, DSB**): four identical hobby-class servos driven from a single PCA9685 PWM driver on I2C1, powered from one switched 6.5 V rail. The SLD keeps its own pump/valve/load-cell hardware.
 
 | Subsystem | Full Name | Purpose | Actuators | Metering |
 |-----------|-----------|---------|-----------|----------|
-| **P-ASD** | Pneumatic Advanced Seasoning Dispenser | Ground/powdered spices (turmeric, chili, cumin, salt, garam masala, coriander) | 6 Solenoid Valves + Micro Diaphragm Pump | Pressure-and-time-based (ADS1015 feedback) |
-| **CID** | Coarse Ingredients Dispenser | Pre-cut vegetables, meat, paneer, dal, rice | CID-1: NEMA 23 stepper + ext. driver; CID-2: DC linear actuator (slider mechanism) | Timed/position-based |
+| **FID** | Fine Ingredients Dispenser | Powdered spices, salt, sugar, dry seasonings (6 canisters) | 3 servos on the DSB: F1 carousel index, F2 dose, F3 steam gate | Volumetric, ¼ tsp per dose stroke (open loop, ±10%) |
+| **CID** | Coarse Ingredients Dispenser | Pre-cut vegetables, meat, paneer, dal, rice (5 slots) | 1 servo on the DSB: C1 carousel index | Whole slot per dispense (user pre-measured) |
 | **SLD** | Standard Liquid Dispenser | Oil and water | 2 Peristaltic Pumps + 2 Solenoid Valves + 2 Load Cells (one per reservoir) | Closed-loop weight feedback + low-level alerts |
+
+Box and slot numbering matches the recipe contract already used by the cloud schema and recipe schema: FID **Box1–Box6** dosed in multiples of ¼ tsp, CID **Slot1–Slot5** dispensed whole (see [[02-Database-Schema|Database Schema]] §3.6).
 
 ## 2. Layout
 
@@ -25,43 +29,37 @@ The ingredient dispensing system is divided into three purpose-built subsystems,
 ┌───────────────────────────────────────────────────────┐
 │                    REAR OF UNIT                        │
 │                                                        │
-│       ┌──────────────────────────────────────────┐     │
-│       │        P-ASD (Pneumatic Seasonings)       │     │
-│       │  ┌────────┐ ┌────────┐ ┌────────┐        │     │
-│       │  │P-ASD-1 │ │P-ASD-2 │ │P-ASD-3 │ Row A  │     │
-│       │  │Turmeric│ │ Chili  │ │ Cumin  │ (rear) │     │
-│       │  │(60 mL) │ │(60 mL) │ │(60 mL) │        │     │
-│       │  └───┬────┘ └───┬────┘ └───┬────┘        │     │
-│       │  ┌───┴────┐ ┌───┴────┐ ┌───┴────┐        │     │
-│       │  │P-ASD-4 │ │P-ASD-5 │ │P-ASD-6 │ Row B  │     │
-│       │  │  Salt  │ │ Garam  │ │Coriand.│ (front)│     │
-│       │  │(60 mL) │ │ Masala │ │(60 mL) │        │     │
-│       │  └───┬────┘ └───┬────┘ └───┬────┘        │     │
-│       └──────┼──────────┼──────────┼──────────────┘     │
-│              ▼          ▼          ▼                    │
+│            FID carousel (6 canisters, Ø170 mm)         │
+│                  ┌───────────────┐                     │
+│               ┌──┤ Box 4 │ Box 3 ├──┐                  │
+│               │ Box 5 ──┼── Box 2  │   F1 index servo  │
+│               └──┤ Box 6 │ Box 1 ├──┘   (4:3 gear-up)  │
+│                  └───────┬───────┘                     │
+│                 dosing station (F2 dose, F3 gate)      │
+│                          ▼ chute                       │
 │  ┌─────┐ ┌──────────────────────────────────┐ ┌─────┐ │
 │  │ SLD │ │                                  │ │ SLD │ │
 │  │Oil  │ │          COOKING POT             │ │Water│ │
 │  │Pump │►│          (Center)                │◄│Pump │ │
 │  │     │ │                                  │ │     │ │
 │  └─────┘ └──────────────────────────────────┘ └─────┘ │
-│              ▲                       ▲                  │
-│       ┌──────┴───────────────────────┴─────────┐       │
-│       │           CID (Coarse)                 │       │
-│       │  ┌──────────────┐  ┌──────────────┐    │       │
-│       │  │    CID-1     │  │    CID-2     │    │       │
-│       │  │  Vegetables  │  │  Dal / Rice  │    │       │
-│       │  │ / Meat (400mL│  │  / Paneer    │    │       │
-│       │  │  tray)       │  │  (400mL tray)│    │       │
-│       │  └──────────────┘  └──────────────┘    │       │
-│       └────────────────────────────────────────┘       │
+│                          ▲ chute                       │
+│                  drop aperture (fixed base plate)      │
+│                  ┌───────┴───────┐                     │
+│               ┌──┤Slot 3 │Slot 2 ├──┐                  │
+│               │Slot 4 ──┼── Slot 1 │   C1 index servo  │
+│               └──┤Slot 5 │ COVER ├──┘   (4:3 gear-up)  │
+│                  └───────────────┘                     │
+│            CID carousel (5 slots + cover, Ø230 mm)     │
 │                    FRONT OF UNIT                        │
 └───────────────────────────────────────────────────────┘
 ```
 
+Both carousels sit above pot-rim height; the station/aperture edge of each ring overhangs the pot rim so that material free-falls through a short 45° chute into the pot.
+
 ### 2.2 Side-View Cross Sections
 
-**P-ASD (Pneumatic Puff-Dosing):**
+**FID (servo carousel + per-canister ¼ tsp measure):**
 
 ```
               ┌──── Threaded cap + silicone O-ring seal
@@ -69,27 +67,25 @@ The ingredient dispensing system is divided into three purpose-built subsystems,
               ▼     ▼
        ┌───────────────────┐
        │  ╔═══════════════╗│
-       │  ║               ║│  45 mm dia × 50 mm tall
-       │  ║   SPICE       ║│  60 mL capacity
-       │  ║   POWDER      ║│  Food-grade PP, translucent
-       │  ║               ║│
-       │  ╚═══╤═══════╤═══╝│
-       │      │  AIR ► │    │ ◄── Air inlet barb (4mm, side wall)
-       │      └───┬───┘    │
-       │     ┌────▼────┐   │
-       │     │ 5mm     │   │ ◄── Discharge orifice + 200-mesh SS screen
-       │     │ orifice │   │
+       │  ║   SPICE       ║│  45 mm dia × 60 mm tall
+       │  ║   POWDER      ║│  60 mL capacity
+       │  ║               ║│  Food-grade PP, translucent
+       │  ╚═══╲       ╱═══╝│  60° internal cone
+       │       ╲     ╱     │
+       │     ┌──▼───▼──┐   │
+       │     │ MEASURE │   │ ◄── Rotary measure wheel, one 1.23 mL (¼ tsp)
+       │     │  WHEEL  │   │     pocket; seals outlet in every position
        │     └────┬────┘   │
        └──────────┼────────┘
-                  │
+         blade ───┤◄────── F2 DOSE servo coupling (engages only at station)
+         coupling │
            ┌──────▼──────┐
-           │  Bayonet    │ ◄── Quarter-turn lock into docking station
-           │  collar     │
+           │ Steam gate  │ ◄── F3 GATE servo flap, spring-closed, opens 70°
+           │ flap        │     only while dosing
            └──────┬──────┘
                   │
            ┌──────▼──────┐
-           │ Chute /     │ ◄── Shared collection funnel
-           │ Funnel      │
+           │ Chute       │ ◄── Removable, 45° into pot
            └──────┬──────┘
                   ▼
        ┌────────────────────┐
@@ -97,27 +93,32 @@ The ingredient dispensing system is divided into three purpose-built subsystems,
        └────────────────────┘
 ```
 
-**CID (Stepper/Linear Actuator Slider):**
+**CID (servo carousel over fixed base plate):**
 
 ```
-       ┌──────────────────────────────────────┐
-       │          TRAY (removable)            │
-       │  ┌──────────────────────────┐        │
-       │  │  Pre-cut ingredients     │  PUSH  │
-       │  │  (vegetables, dal, etc.) │◄──PLATE│
-       │  └──────────────┬───────────┘   │    │
-       │                 │               │    │
-       │                 ▼             ──┤    │
-       │           ┌──────────┐     Linear    │
-       │           │  Drop-off│     Actuator  │
-       │           │  Edge    │     (12V DC)  │
-       │           └─────┬────┘               │
-       └─────────────────┼────────────────────┘
-                         ▼
-                ┌────────────────────┐
-                │    COOKING POT     │
-                └────────────────────┘
+   F1/C1 servo ──► 4:3 gear-up ──► ring gear on carousel hub
+                                        │
+       ┌────────────────────────────────▼───────────────────┐
+       │   Slot 1   │   Slot 2   │  ...  │   COVER sector   │  lift-off ring,
+       │  (open-    │  (open-    │       │  (solid floor,   │  5 bins × 200 mL,
+       │   bottom)  │   bottom)  │       │   home position) │  45 mm tall
+       ├────────────┴────────────┴───────┴──────────────────┤
+       │            FIXED BASE PLATE (thin-section bearing) │
+       │                      ┌─────────────┐               │
+       │                      │  APERTURE   │ ◄── one 50° sector opening at the
+       │                      │  (station)  │     rear edge, over the pot rim
+       └──────────────────────┴──────┬──────┴───────────────┘
+                                     ▼
+                              ┌─────────────┐
+                              │   Chute     │ ◄── 45° into pot
+                              └──────┬──────┘
+                                     ▼
+                          ┌────────────────────┐
+                          │    COOKING POT     │
+                          └────────────────────┘
 ```
+
+Rotating a bin over the aperture drops its contents; the COVER sector closes the aperture at the home position (loading, idle, steam shielding).
 
 **SLD (Peristaltic Pump + Solenoid):**
 
@@ -152,196 +153,129 @@ The ingredient dispensing system is divided into three purpose-built subsystems,
     └──────────────┘  └──────────────┘
 ```
 
-## 3. P-ASD — Pneumatic Advanced Seasoning Dispenser
+## 3. Common Carousel Design (FID and CID)
 
-### 3.1 Mechanism Overview
+### 3.1 Servo
 
-The P-ASD uses **puff-dosing** — a micro diaphragm pump pressurizes a small accumulator to ~1.0 bar. Individual solenoid valves open briefly (100–400 ms), delivering calibrated air bursts into sealed cartridges. The pressure forces powder through a 5 mm bottom orifice into a shared funnel chute leading to the pot. This eliminates all moving parts from the powder path, dramatically improving reliability with sticky Indian spices like turmeric and chili.
-
-### 3.2 Cartridge Specifications
+All four DSB servos are the same part, so the firmware uses one angle table and one driver.
 
 | Parameter | Value |
 |-----------|-------|
-| Cartridges | 6 (P-ASD-1 through P-ASD-6) |
+| Type | DS3218-class digital servo, metal gear, 270° travel |
+| Torque | 20 kg·cm at 6.8 V (≈ 18 kg·cm at 6.5 V) |
+| Speed | ~0.16 s / 60° (no load) |
+| Signal | 50 Hz PWM, 500–2500 µs pulse (0–270°) |
+| Supply | 6.5 V DSB rail (MP1584EN #2 buck, 3 A) |
+| Current | ~0.1 A holding, ~1.5 A moving, ~2.5 A stall |
+| Position feedback | None external (internal potentiometer, absolute); open loop at the STM32 |
+| Cost | ~$10 each |
+
+### 3.2 Index Drive (C1, F1)
+
+| Parameter | Value |
+|-----------|-------|
+| Coupling | 4:3 spur gear-up (servo 32T → carousel ring gear 24T), POM or printed |
+| Travel | Servo 0–225° → carousel 0–300° (six 60° positions) |
+| Carousel torque | ≈ 13 kg·cm at 6.5 V (ample; ring runs on a thin-section ball bearing) |
+| Resolution | 4.9 µs PWM step ≈ 0.66° servo ≈ 0.9° carousel |
+| Homing | None required: gear mesh is assembled at marked teeth, servo position is absolute |
+| Position table | pos 0 = 0°, pos 1 = 45°, pos 2 = 90°, pos 3 = 135°, pos 4 = 180°, pos 5 = 225° (servo angles) |
+
+Moves are ramp-limited in firmware (≤ 3° servo per 20 ms tick, ≈ 1.5 s for a 60° carousel step) so that loaded bins do not slosh and the rail current stays under 2 A.
+
+### 3.3 Rules shared by both carousels
+
+- Only one DSB servo moves at a time (firmware mutex); the 6.5 V rail is switched on for the duration of a dispense and off when idle (no holding buzz, no idle heat).
+- PCA9685 OE is driven high (all outputs off, servos limp) in the boot-safe state and on E-stop; the rail is also switched off.
+- Rings are lift-off, dishwasher-safe parts keyed to the hub so that slot/box 1 always indexes to the same angle.
+
+## 4. FID — Fine Ingredients Dispenser
+
+### 4.1 Canister Specifications
+
+| Parameter | Value |
+|-----------|-------|
+| Canisters | 6 (Box1 through Box6) |
 | Capacity | 60 mL each |
-| Dimensions | 45 mm diameter × 50 mm tall (cylindrical) |
+| Dimensions | 45 mm diameter × 60 mm tall (cylindrical, 60° internal cone) |
 | Material | Food-grade polypropylene (PP), translucent |
-| Removable | Yes (quarter-turn bayonet lock for quick swap) |
+| Removable | Yes (lift out of carousel bay; keyed so the measure wheel faces the station) |
 | Lid | Threaded screw-cap with silicone O-ring seal, desiccant pocket |
-| Orifice | 5 mm diameter bottom opening with 200-mesh SS anti-clog screen |
-| Air Inlet | 4 mm barb on side wall (above powder line), self-sealing push-fit |
-| Weight (empty) | ~25 g |
+| Measure | Integral rotary measure wheel in the base, one 1.23 mL (¼ tsp) pocket; outlet is sealed in every wheel position |
+| Coupling | Tangential blade on the wheel axle; the station's F2 coupling parks at 0° so a canister can slide in and out of the station without tools |
+| Weight (empty) | ~30 g |
 
-### 3.3 Default Cartridge Assignment
+### 4.2 Default Canister Assignment
 
-| Cartridge | Position | Default Spice |
-|-----------|----------|---------------|
-| P-ASD-1 | Row A, Left | Turmeric powder |
-| P-ASD-2 | Row A, Center | Chili powder |
-| P-ASD-3 | Row A, Right | Cumin powder |
-| P-ASD-4 | Row B, Left | Salt (fine) |
-| P-ASD-5 | Row B, Center | Garam masala |
-| P-ASD-6 | Row B, Right | Coriander powder |
+| Box | Default Spice | Bulk Density (g/mL) | Mass per ¼ tsp dose (g) |
+|-----|---------------|---------------------|-------------------------|
+| Box1 | Turmeric powder | 0.55 | 0.68 |
+| Box2 | Chili powder | 0.45 | 0.55 |
+| Box3 | Cumin powder | 0.40 | 0.49 |
+| Box4 | Salt (fine) | 1.20 | 1.48 |
+| Box5 | Garam masala | 0.50 | 0.62 |
+| Box6 | Coriander powder | 0.35 | 0.43 |
 
-### 3.4 Pneumatic System
+Mass per dose = 1.23 mL × bulk density. The recipe engine stores quantities in ¼ tsp; grams are derived for logging and the UI only.
 
-#### 3.4.1 Air Source
+### 4.3 Dosing Station
 
-| Parameter | Value |
-|-----------|-------|
-| Type | 12V micro diaphragm pump (e.g., SC3701PM or equivalent) |
-| Max Pressure | 2.0 bar (200 kPa) |
-| Free Flow | 3–4 L/min |
-| Voltage | 12V DC |
-| Current | 0.5–0.8 A |
-| Noise | <45 dB |
-| Size | 65 × 40 × 40 mm |
+| Element | Servo | Motion | Purpose |
+|---------|-------|--------|---------|
+| Carousel index | F1 | 0–225° (6 positions via 4:3 gear-up) | Brings the selected canister over the station |
+| Dose | F2 | 0° ↔ 180° swing per dose | Rotates the canister's measure wheel: pocket fills under the outlet at 0°, discharges into the chute at 180° |
+| Steam gate | F3 | 0° (closed) ↔ 70° (open) | Spring-assisted flap at the chute mouth; open only while dosing so pot steam does not reach the powder path |
 
-#### 3.4.2 Accumulator & Regulation
+Anti-bridging is done in software with no extra hardware: before each dose F2 jiggles the measure wheel ±15° three times (shears any arch at the outlet) and F1 wiggles the carousel ±2° twice.
 
-| Component | Specification |
-|-----------|---------------|
-| Accumulator | 100 mL sealed aluminum cylinder, 1.5 bar max |
-| Pressure Regulator | Miniature inline, adjustable 0.3–2.0 bar |
-| Pressure Sensor | ADS1015 (I2C) + MPXV5100GP analog, on I2C1 bus (address 0x48) |
-| Relief Valve | 2.0 bar pop-off safety valve on accumulator |
-| Operating Pressure | 0.8–1.2 bar nominal |
+### 4.4 Dose Sequence
 
-#### 3.4.3 Solenoid Valves (×6)
+1. RV1106 sends `DISPENSE_FID(box_id, qty_quarter_tsp)`
+2. STM32 switches the DSB rail on, indexes F1 to `box_id` (ramped)
+3. F3 opens the steam gate (70°)
+4. For each dose: F2 jiggle (±15° × 3), F2 to 180° (discharge), F2 back to 0° (refill) — ≈ 0.8 s per dose
+5. F3 closes the gate, rail off
+6. ACK with `doses_done` and the estimated mass (dose count × calibrated mass per dose)
 
-| Parameter | Value |
-|-----------|-------|
-| Type | 2-way normally-closed, direct-acting, 12V DC |
-| Response Time | <20 ms open, <30 ms close |
-| Orifice | 2–3 mm (sufficient for air burst) |
-| Power | ~4W when energized (one at a time) |
-| Driver | IRLML6344 N-MOSFET (SOT-23) with flyback diode on Driver PCB |
-| Cost | ~$3.50 each |
+A stall or I2C NACK during any move aborts the sequence (rail off, OE high) and raises `DSB_STALL` (0x12) to the RV1106.
 
-#### 3.4.4 Pneumatic Circuit
+### 4.5 Metering Strategy
 
-```
-12V ───► Micro Diaphragm Pump (3-4 L/min, <45 dB)
-              │
-              ▼
-         Accumulator (100 mL, 1.5 bar max)
-              │
-              ▼
-         Pressure Regulator (set 1.0 bar) + Relief Valve (2.0 bar)
-              │
-              ▼
-         Pressure Sensor ──► STM32 via I2C1 (ADS1015 @ 0x48)
-              │
-              ▼
-         ┌─── 6-Way Manifold (3D-printed nylon PA12) ───┐
-         │                                               │
-    ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐
-    │V1│ │V2│ │V3│ │V4│ │V5│ │V6│   6× 12V NC solenoid valves
-    └┬─┘ └┬─┘ └┬─┘ └┬─┘ └┬─┘ └┬─┘
-     ▼    ▼    ▼    ▼    ▼    ▼
-   C-1  C-2  C-3  C-4  C-5  C-6     Cartridges
-```
+FID uses **volumetric dosing in ¼ tsp increments**: accuracy ±10% of the volume per dose; mass accuracy depends on how well the stored bulk density matches the loaded spice (typically ±15%). Maximum 40 doses (10 tsp) per command.
 
-### 3.5 Anti-Clog Design
+## 5. CID — Coarse Ingredients Dispenser
 
-Pneumatic dispensing inherently prevents clogging — the primary failure mode of gravity-fed systems:
-
-| Advantage | Mechanism |
-|-----------|-----------|
-| Bridge breaking | Pressurized air shatters powder arches over the orifice |
-| Humidity tolerance | Forced airflow pushes damp/sticky powder through |
-| No residue buildup | No gate in powder path; orifice air-cleared after every dispense |
-| Self-clearing nozzle | Post-dispense purge (200 ms at 1.2 bar) cleans orifice |
-| 200-mesh SS screen | Prevents large clumps from blocking the 5 mm orifice |
-| 60° cone angle | Internal cartridge geometry prevents dead zones |
-
-**Clog Recovery (if no pressure drop after 3 pulses):** Rapid 50 ms on/off oscillating air pulses to vibrate powder loose — pneumatic equivalent of vibration motors, but with no additional hardware.
-
-### 3.6 Metering Strategy
-
-P-ASD uses **calibrated puff-dosing with pressure-drop verification**:
-
-**Primary control:** Timed air pulses calibrated per spice type:
-
-| Spice | Bulk Density (g/mL) | Pulse Duration for ~1g (ms) | Pressure (bar) |
-|-------|--------------------|-----------------------------|-----------------|
-| Turmeric powder | 0.55 | 200–300 | 1.0 |
-| Chili powder | 0.45 | 250–350 | 1.0 |
-| Cumin powder | 0.40 | 300–400 | 1.0 |
-| Salt (fine) | 1.20 | 100–150 | 0.8 |
-| Garam masala | 0.50 | 200–300 | 1.0 |
-| Coriander powder | 0.35 | 300–400 | 1.0 |
-
-**Secondary control (pressure-drop verification):** ADS1015 pressure sensor confirms powder ejection:
-
-1. Record pre-dispense accumulator pressure via ADS1015 → P_initial
-2. Pre-purge: 100 ms pulse at 0.3 bar (loosen packed powder)
-3. Main dispense: open solenoid for calibrated duration
-4. Read post-pulse pressure → P_final; verify pressure drop ≥ threshold (confirms air flowed through powder bed)
-5. If pressure drop < threshold → additional 50 ms pulses (up to 3 retries)
-6. Post-dispense purge: 200 ms at 1.2 bar (clear orifice)
-7. Log estimated dispensed amount (pulse count × calibrated mass per pulse)
-
-Accuracy: ~±20% of target weight (pressure-and-time-based, no direct weight feedback).
-
-## 4. CID — Coarse Ingredients Dispenser
-
-### 4.1 Tray Specifications
+### 5.1 Carousel Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| Trays | 2 (CID-1, CID-2) |
-| Capacity | 400 mL each (shallow tray, ~200×100×20 mm) |
-| Material | Food-grade PP (removable, dishwasher-safe) |
-| Removable | Yes (slide-out tray) |
+| Slots | 5 (Slot1 through Slot5) + 1 solid COVER sector |
+| Capacity | ~200 mL per slot (~1 L total; 60° sector, Ø230 mm ring, Ø80 mm hub, 45 mm tall) |
+| Material | Food-grade PP (single lift-off ring, dishwasher-safe) |
+| Base plate | Fixed, with one 50° aperture at the rear station over the pot rim; removable for washing together with the chute |
 | Ingredient Types | Pre-cut vegetables, meat, paneer, dal, rice |
 
-### 4.2 Actuators
+### 5.2 Dispense Sequence
 
-**CID-1: NEMA 23 Stepper Motor + External Driver**
+1. RV1106 sends `DISPENSE_CID(slot_id)`
+2. STM32 rejects (NACK) if `slot_id` is not greater than the current carousel position
+3. Rail on; C1 indexes the carousel (ramped) so `slot_id` sits over the aperture — contents free-fall through the chute
+4. Dwell 2 s, then wiggle ±5° three times to clear residue
+5. Rail off; ACK with the new position
 
-| Parameter | Value |
-|-----------|-------|
-| Motor | NEMA 23, 1.8°/step (200 steps/rev), ~2A/phase |
-| Driver | External DM542/TB6600-class (pulse/dir/enable, 24V input) |
-| Control | TIM1_CH3 (PA10) PUL+, GPIO (PB4) DIR+, PCF8574 P7 ENA+ — all via 100R series resistors |
-| Position Feedback | Home limit switch only (PB6); step counting for travel distance |
-| Supply | 24V from input rail via J_CID (2–3A to external driver) |
-| Cost | ~$15 (motor) + ~$10 (driver) |
+At the end of a recipe (or on `DISPENSER_HOME`) the carousel returns to position 0, placing the COVER sector over the aperture for loading and steam shielding.
 
-**CID-2: 12V DC Linear Actuator (unchanged)**
+### 5.3 Dispense-Order Constraint
 
-| Parameter | Value |
-|-----------|-------|
-| Type | 12V DC linear actuator, 50 mm stroke |
-| Force | 20–50 N (sufficient to push 500g of chopped vegetables) |
-| Speed | ~10 mm/s |
-| Control | H-bridge motor driver (DRV8876RGTR #2), EN/PH direction + PWM |
-| Position Feedback | Limit switches at home and full-extend positions |
-| Supply | 12V from PSU rail |
-| Cost | ~$8 |
+Every bin that passes over the aperture empties. Slots are therefore dispensed in **ascending order** (1 → 5) and a recipe may skip a slot only if it was left empty. The ingredient-loading screen enforces this by assigning ingredients to slots in order of use, and the recipe engine validates segment order before `COOKING` starts.
 
-### 4.3 Dispensing Mechanism
+### 5.4 Metering Strategy
 
-The push-plate slides along the tray, sweeping ingredients off the drop-off edge into the pot:
+CID dispenses a **whole slot** per command; quantities are pre-measured by the user when loading (as before, no closed-loop weight verification).
 
-1. CM5 sends CID dispense command with tray ID
-2. STM32 drives actuator forward: CID-1 via stepper pulses (TIM1_CH3), CID-2 via DRV8876 PWM
-3. Ingredients fall off tray edge into pot
-4. CID-1: step count reaches travel target → reverse to home; CID-2: full-extend limit switch → retract to home
-5. Dispense confirmed by home switch
+## 6. SLD — Standard Liquid Dispenser
 
-### 4.4 Metering Strategy
-
-CID uses **position-based / timed dispensing**:
-
-- Full push = entire tray contents dumped at once (typical usage)
-- Partial push = actuator extends to a specified position (for partial dispense)
-- No closed-loop weight verification (coarse items are pre-measured by user when loading tray)
-
-## 5. SLD — Standard Liquid Dispenser
-
-### 5.1 Channel Specifications
+### 6.1 Channel Specifications
 
 | Parameter | Oil Channel (SLD-OIL) | Water Channel (SLD-WATER) |
 |-----------|----------------------|--------------------------|
@@ -351,7 +285,7 @@ CID uses **position-based / timed dispensing**:
 | Valve | 12V NC solenoid (drip prevention) | 12V NC solenoid (drip prevention) |
 | Nozzle | Directed into pot center | Directed into pot center |
 
-### 5.2 Actuators
+### 6.2 Actuators
 
 **Peristaltic Pump (×2):**
 
@@ -375,7 +309,7 @@ CID uses **position-based / timed dispensing**:
 | Driver | N-channel MOSFET (IRLZ44N) with flyback diode |
 | Cost | ~$4 each |
 
-### 5.3 Dedicated Load Cells (2×)
+### 6.3 Dedicated Load Cells (2×)
 
 | Parameter | Value |
 |-----------|-------|
@@ -385,10 +319,10 @@ CID uses **position-based / timed dispensing**:
 | Capacity | 2 kg per load cell (accommodates full reservoir + container weight) |
 | Accuracy | ±1 g (24-bit HX711 with averaging) |
 | Sampling | 10 Hz |
-| Low-Level Alert | Configurable threshold per channel (default: 50 g remaining); alert sent to CM5 + UI when level drops below threshold |
+| Low-Level Alert | Configurable threshold per channel (default: 50 g remaining); alert sent to RV1106 + UI when level drops below threshold |
 | Cost | ~$5 (load cell) × 2 + ~$3 (HX711) × 2 = ~$16 total |
 
-### 5.4 Metering Strategy (Closed-Loop)
+### 6.4 Metering Strategy (Closed-Loop)
 
 SLD uses **two dedicated load cells** (one under each reservoir) for independent closed-loop dispensing and level monitoring:
 
@@ -428,197 +362,193 @@ SLD uses **two dedicated load cells** (one under each reservoir) for independent
 │ final weight  │──► W_actual = W_initial - sld_load_cell[channel].read()
 │ and log       │    log(channel, target_g, W_actual)
 │               │    IF sld_load_cell[channel].read() < LOW_LEVEL_THRESHOLD:
-│               │        send SLD_LOW_LEVEL alert to CM5
+│               │        send SLD_LOW_LEVEL alert to RV1106
 └───────────────┘
 ```
 
-Accuracy: ±5% of target weight (significantly better than ASD due to dedicated load cell and controllable flow rate).
+Accuracy: ±5% of target weight (dedicated load cell and controllable flow rate).
 
-## 6. STM32 Control Interface
+## 7. STM32 Control Interface
 
-### 6.1 GPIO and PWM Assignments
+### 7.1 Dispenser Servo Block (DSB)
+
+The FID and CID are one electrical block on the Unified PCB:
+
+```
+  24V Rail ──► MP1584EN #2 (6.5 V, 3 A) ──► P-MOSFET high-side switch ──► 6.5 V DSB rail
+                                               ▲                            │  1000 µF bulk + 3 A PTC
+                                   PCF8574 #2 P4 (rail enable)              │
+                                                                            ▼
+  I2C1 (PA15/PB7) ──► PCA9685 (addr 0x41) ──┬── CH0 ──► J_DSB1 ──► C1  CID index servo
+                                            ├── CH1 ──► J_DSB2 ──► F1  FID index servo
+  PB4 (GPIO) ──► PCA9685 OE (active-low)    ├── CH2 ──► J_DSB3 ──► F2  FID dose servo
+                                            └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo
+                                                 CH4–CH15 spare
+```
+
+| Element | Part | Notes |
+|---------|------|-------|
+| PWM driver | PCA9685PW (TSSOP-28), I2C1 addr 0x41 | 16 channels, 12-bit, 50 Hz; CH0–CH3 used |
+| Output enable | PB4 → OE (active-low) | High in boot-safe state and on E-stop |
+| Rail | MP1584EN #2 set to 6.5 V (previously retained for future use) | Switched by PCF8574 #2 P4 via AO3401-class P-MOSFET; 3 A PTC; 1000 µF bulk |
+| Connectors | J_DSB1–4, 3-pin JR (signal / 6.5 V / GND), 2.54 mm, keyed | Standard servo leads, 300 mm extensions |
+| Fault detection | INA219 24 V rail current window during moves + move timeout + PCA9685 I2C NACK | Raises `DSB_STALL` (0x12) |
+
+### 7.2 GPIO and PWM Assignments
 
 | Subsystem | Actuator | STM32 Pin | Interface | Notes |
 |-----------|----------|-----------|-----------|-------|
-| **P-ASD** | Diaphragm Pump Motor | PA0 (TIM2_CH1) | PWM | 12V pump speed control via MOSFET |
-| **P-ASD** | Solenoid Valves V1-V6 | PCF8574 P0-P5 (I2C1, addr 0x20) | Digital output via MOSFET | 12V NC solenoids, cartridges 1-6; PCF8574 on Driver PCB |
-| **P-ASD** | Pressure Sensor | I2C1 (PA15/PB7) | I2C via ADS1015 | Accumulator pressure, addr 0x48 |
-| **CID** | CID-1 Stepper PUL+ | PA10 (TIM1_CH3) | PWM (200 Hz–10 kHz) | Step pulse to external driver via 100R |
-| **CID** | CID-1 Stepper DIR+ | PB4 (GPIO) | Digital output | Direction to external driver via 100R |
-| **CID** | CID-1 Stepper ENA+ | PCF8574 P7 (I2C1, addr 0x20) | Digital output via I2C | Enable to external driver via 100R |
-| **CID** | Linear Actuator CID-2 EN | PB5 (GPIO) | PWM/GPIO | DRV8876 #2 enable/speed |
-| **CID** | Linear Actuator CID-2 PH | PC2 (GPIO) | Digital output | DRV8876 #2 phase/direction |
+| **FID/CID** | Servos C1, F1, F2, F3 | PCA9685 CH0–CH3 (I2C1, addr 0x41) | 50 Hz PWM, 500–2500 µs | One part number, one angle table |
+| **FID/CID** | PCA9685 OE | PB4 (GPIO) | Digital output, active-low | High = all servo outputs off |
+| **FID/CID** | DSB 6.5 V rail enable | PCF8574 #2 P4 (I2C1, addr 0x21) | Digital output via P-MOSFET | On only during a dispense |
 | **SLD** | Pump Motor SLD-OIL (PWM) | PC3 (GPIO) | PWM (motor speed) | TB6612 PWMA via MOSFET |
 | **SLD** | Pump Motor SLD-OIL (DIR) | PC4 (GPIO) | Digital output | TB6612 AIN1 direction |
 | **SLD** | Pump Motor SLD-WATER (PWM) | PC5 (GPIO) | PWM (motor speed) | TB6612 PWMB via MOSFET |
 | **SLD** | Pump Motor SLD-WATER (DIR) | PC6 (GPIO) | Digital output | TB6612 BIN1 direction |
-| **SLD** | Solenoid SLD-OIL | PCF8574 #2 P0 (I2C1, addr 0x21) | Digital output via MOSFET | 12V NC solenoid, flyback diode; moved from PA7 |
-| **SLD** | Solenoid SLD-WATER | PCF8574 #2 P1 (I2C1, addr 0x21) | Digital output via MOSFET | 12V NC solenoid, flyback diode; moved from PA9 |
+| **SLD** | Solenoid SLD-OIL | PCF8574 #2 P0 (I2C1, addr 0x21) | Digital output via MOSFET | 12V NC solenoid, flyback diode |
+| **SLD** | Solenoid SLD-WATER | PCF8574 #2 P1 (I2C1, addr 0x21) | Digital output via MOSFET | 12V NC solenoid, flyback diode |
 | **SLD** | HX711 #1 SCK (oil) | PC11 (GPIO) | Clock out | SLD oil reservoir load cell (2 kg) |
 | **SLD** | HX711 #1 DOUT (oil) | PC12 (GPIO) | Data in | SLD oil reservoir load cell (2 kg) |
 | **SLD** | HX711 #2 SCK (water) | PC9 (GPIO) | Clock out | SLD water reservoir load cell (2 kg) |
 | **SLD** | HX711 #2 DOUT (water) | PC10 (GPIO) | Data in | SLD water reservoir load cell (2 kg) |
 
-> **Note:** Pin assignments match [[01-Unified-PCB-Design|Unified PCB Design]] document. P-ASD solenoid valves are driven by IRLML6344 MOSFETs on the Unified PCB, with gates controlled by a PCF8574 I2C GPIO expander (addr 0x20) instead of direct STM32 GPIO. PCF8574 #1 P7 is allocated to CID-1 stepper ENA+ (all 8 pins in use: P0-P5 solenoids, P6 CID-2 extend limit, P7 CID-1 stepper enable). A second PCF8574 #2 (addr 0x21) drives SLD solenoids (P0-P1), status LED (P2), and LED ring power (P3), with P4-P7 reserved. I2C1 bus devices: PCF8574 #1 (0x20), PCF8574 #2 (0x21), INA219 (0x40), ADS1015 (0x48), MLX90614 (0x5A). PC0/PC1 are available (pot load cells removed).
+> **Note:** Pin assignments match [[01-Unified-PCB-Design|Unified PCB Design]] document. Replacing the P-ASD pneumatics and the stepper/linear-actuator CID with the DSB removes PCF8574 #1 (0x20), the ADS1015 (0x48), DRV8876 #2, the six IRLML6344 solenoid MOSFETs, the pump MOSFET and connector J_CID, and frees PA0, PA10, PB5, PB6, PB11, PC2 and PD2. I2C1 bus devices are now four: PCF8574 #2 (0x21), INA219 (0x40), PCA9685 (0x41), MLX90614 (0x5A). PCF8574 #2 P4 (previously reserved) is the DSB rail enable.
 
-### 6.2 Dispensing Command Protocol (CM5 → STM32)
+### 7.3 Dispensing Command Protocol (RV1106 → STM32)
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
-| DISPENSE_PASD | 0x30 | cartridge_id (1 byte: 1–6), target_weight_g (2 bytes) | ACK + pulse_count + pressure_delta | Dispense seasoning via pneumatic puff-dose, pressure-drop verified by ADS1015 |
-| DISPENSE_CID | 0x31 | cid_id (1 byte: 1–2), mode (1 byte: FULL/PARTIAL), position_mm (1 byte) | ACK + status | Push tray contents into pot via linear actuator |
+| DISPENSE_FID | 0x30 | box_id (1 byte: 1–6), qty_quarter_tsp (1 byte: 1–40) | ACK + doses_done (1 byte) + est_mass_dg (2 bytes, 0.1 g) | Index canister, open gate, N dose strokes, close gate |
+| DISPENSE_CID | 0x31 | slot_id (1 byte: 1–5) | ACK + cid_pos (1 byte); NACK if slot_id ≤ current position | Rotate slot over the aperture, dwell, wiggle |
 | DISPENSE_SLD | 0x32 | channel (1 byte: OIL=1, WATER=2), target_weight_g (2 bytes) | ACK + actual_weight_g | Pump liquid, closed-loop via dedicated load cell |
-| PURGE_PASD | 0x38 | cartridge_id (1 byte: 1–6, or 0xFF=all) | ACK | Post-dispense air purge to clear orifice |
-| PRESSURE_STATUS | 0x39 | — | pressure_bar (2 bytes, fixed-point) | Read accumulator pressure |
 | QUERY_WEIGHT | 0x35 | source (1 byte: SLD_OIL=1, SLD_WATER=2) | weight_g (4 bytes) | Read weight from individual SLD load cell |
 | PREFLIGHT | 0x36 | subsystem_mask (1 byte) | status per subsystem | Check if required subsystems are loaded/ready |
 | TARE | 0x37 | source (1 byte: SLD_OIL=1, SLD_WATER=2) | ACK | Zero the specified SLD load cell readings |
+| DISPENSER_HOME | 0x38 | target (1 byte: CID=1, FID=2, 0xFF=both) | ACK | CID → COVER over aperture (pos 0); FID → gate closed, measure at fill, carousel to Box1 |
+| DISPENSER_STATUS | 0x39 | — | cid_pos, fid_box, gate_open, rail_on, busy (1 byte each) | Carousel positions for the loading screen |
 
-## 7. Clog Prevention (P-ASD)
-
-### 7.1 Clog Detection and Recovery Flow
+## 8. Fault Handling (DSB)
 
 ```
 ┌──────────────┐     ┌───────────────┐     ┌──────────────┐
-│ Pre-purge    │────►│ Main dispense │────►│ Pressure     │
-│ (100ms,0.3bar│     │ pulse         │     │ Drop         │
-└──────────────┘     └───────────────┘     │ Detected?    │
+│ Rail on,     │────►│ Ramped move   │────►│ Move done    │
+│ OE low       │     │ (≤3°/tick)    │     │ within       │
+└──────────────┘     └───────────────┘     │ timeout?     │
                                            └──────┬───────┘
                                                    │
-                                          Yes ◄────┴────► No
-                                           │              │
+                                          Yes ◄────┴────► No (INA219 > 2.5 A for 300 ms,
+                                           │                  I2C NACK, or > 3 s)
                                            ▼              ▼
                                     ┌──────────┐   ┌──────────────┐
-                                    │ Continue │   │ Retry #1:    │
-                                    │ Normally │   │ Increase     │
-                                    └──────────┘   │ pressure to  │
-                                                   │ 1.2 bar,     │
-                                                   │ repeat pulse │
-                                                   └──────┬───────┘
-                                                          │
-                                                          ▼
-                                                   ┌──────────────┐
-                                                   │ Pressure     │
-                                                   │ Drop         │
-                                                   │ Detected?    │
+                                    │ Continue │   │ Retry once:  │
+                                    │ sequence │   │ back off 10°,│
+                                    └──────────┘   │ re-approach  │
                                                    └──────┬───────┘
                                                           │
                                                  Yes ◄────┴────► No
                                                   │              │
                                                   ▼              ▼
                                            ┌──────────┐   ┌──────────────┐
-                                           │ Continue │   │ Retry #2:    │
-                                           │ Normally │   │ Rapid 50ms   │
-                                           └──────────┘   │ on/off pulses│
-                                                          │ (5 cycles)   │
-                                                          └──────┬───────┘
-                                                                 │
-                                                                 ▼
-                                                          ┌──────────────┐
-                                                          │ Pressure     │
-                                                          │ Drop         │
-                                                          │ Detected?    │
-                                                          └──────┬───────┘
-                                                                 │
-                                                        Yes ◄────┴────► No
-                                                         │              │
-                                                         ▼              ▼
-                                                  ┌──────────┐   ┌──────────┐
-                                                  │ Continue │   │ CLOG     │
-                                                  │ Normally │   │ ERROR    │
-                                                  └──────────┘   │ Alert    │
-                                                                 │ User     │
-                                                                 └──────────┘
+                                           │ Continue │   │ DSB_STALL    │
+                                           │ sequence │   │ 0x12: rail   │
+                                           └──────────┘   │ off, OE high,│
+                                                          │ alert user   │
+                                                          └──────────────┘
 ```
 
-## 8. Metering Accuracy Summary
+Because the servos are open loop, a jammed carousel is detected by current and time, not position. The user is prompted to clear the jam and tap Resume; the sequence then restarts from `DISPENSER_HOME`.
 
-| Factor | P-ASD Impact | CID Impact | SLD Impact | Mitigation |
-|--------|-------------|-----------|-----------|------------|
-| In-flight material | Powder still in chute after solenoid closes | N/A (push mechanism) | Fluid in tube after pump stops | P-ASD: close at 90% target. SLD: close at 95% target |
-| Pressure sensor noise | ±0.02 bar (ADS1015) | N/A | ±1 g (dedicated cell) | Moving average filter (3 samples) |
-| Vibration | Minimal (pressure-based, not weight-based) | N/A | Dedicated cell isolated from pot | N/A |
-| Sticky ingredients | Pressurized air forces through orifice | Pieces stick to tray | Oil residue in tube | P-ASD: post-dispense purge. CID: angled tray. SLD: tube replacement |
-| Fill level variance | Air pressure compensates (consistent regardless of fill) | N/A | Pump rate independent of level | P-ASD: pressure regulation maintains consistent force |
+## 9. Metering Accuracy Summary
 
-## 9. Recipe Integration
+| Factor | FID Impact | CID Impact | SLD Impact | Mitigation |
+|--------|-----------|-----------|-----------|------------|
+| In-flight material | Powder in chute after last dose | Pieces still falling during wiggle | Fluid in tube after pump stops | FID: gate closes 300 ms after last dose. CID: 2 s dwell. SLD: close at 95% target |
+| Pocket fill variance | ±10% per dose (packing) | N/A | ±1 g (dedicated cell) | FID: jiggle before each dose levels the pocket |
+| Bulk density drift | Mass per dose off by stored density error | N/A | N/A | Per-spice density table, user-editable |
+| Sticky ingredients | Arches at canister outlet | Pieces stick to bin floor/base plate | Oil residue in tube | FID: jiggle + 60° cone. CID: wiggle, smooth PP. SLD: tube replacement |
+| Steam ingress | Caking at outlet | Minor | N/A | FID: steam gate closed except while dosing. CID: COVER sector at home |
 
-### 9.1 Dispensing Sequence Example (Dal Tadka)
+## 10. Recipe Integration
+
+### 10.1 Dispensing Sequence Example (Dal Tadka)
 
 ```
 Step 1:  DISPENSE_SLD(OIL, 30g)                ──► Oil into hot pot
 Step 2:  Wait for sear temp (200°C)             ──► IR sensor confirms
-Step 3:  DISPENSE_PASD(P-ASD-1, 3g)             ──► Turmeric powder
-Step 4:  DISPENSE_PASD(P-ASD-2, 5g)             ──► Chili powder
+Step 3:  DISPENSE_FID(Box1, 4)                 ──► Turmeric, 1 tsp (~2.7 g)
+Step 4:  DISPENSE_FID(Box2, 8)                 ──► Chili powder, 2 tsp (~4.4 g)
 Step 5:  Stir briefly                           ──► Arm mixes spices into oil
-Step 6:  DISPENSE_CID(CID-1, FULL)             ──► Chopped onions, tomatoes
+Step 6:  DISPENSE_CID(Slot1)                   ──► Chopped onions, tomatoes
 Step 7:  Wait for browning (CV detection)       ──► Camera detects golden color
-Step 8:  DISPENSE_PASD(P-ASD-4, 5g)             ──► Salt
-Step 8b: DISPENSE_PASD(P-ASD-5, 3g)             ──► Garam masala
-Step 9:  DISPENSE_CID(CID-2, FULL)             ──► Toor dal (200g, pre-measured)
+Step 8:  DISPENSE_FID(Box4, 3)                 ──► Salt, ¾ tsp (~4.4 g)
+Step 8b: DISPENSE_FID(Box5, 5)                 ──► Garam masala, 1¼ tsp (~3.1 g)
+Step 9:  DISPENSE_CID(Slot2)                   ──► Toor dal (200g, pre-measured)
 Step 10: DISPENSE_SLD(WATER, 400g)              ──► Water
 Step 11: Simmer until done (CV + timer)         ──► Camera detects thickening
 ```
 
-### 9.2 Ingredient Loading Configuration
+### 10.2 Ingredient Loading Configuration
 
 Users configure subsystem contents when loading ingredients before cooking:
 
 | Field | Example Value | Source |
 |-------|---------------|--------|
-| Subsystem | P-ASD-2 | Fixed by hardware position |
+| Subsystem | FID Box2 / CID Slot1 / SLD-OIL | Fixed by hardware position |
 | Ingredient Name | "Chili Powder" | From recipe ingredient list |
-| Target Weight (g) | 5 | From recipe (adjusted for servings) |
+| Quantity | 8 × ¼ tsp (FID), whole slot pre-measured 150 g (CID), 30 mL (SLD) | From recipe (adjusted for servings) |
 | Pre-loaded | Yes/No | User confirms via touchscreen or app |
 
-### 9.3 Pre-Flight Check
+CID slots are assigned in order of use (Slot1 first) because of the dispense-order constraint in §5.3.
+
+### 10.3 Pre-Flight Check
 
 Before starting a recipe, the system verifies all required subsystems:
 
-1. **P-ASD:** Short air pulse into each cartridge, monitor pressure drop via ADS1015 — confirms orifice clear and air path unobstructed
-2. **CID:** User confirms tray loaded via touchscreen (no automatic check — visual confirmation)
+1. **DSB self-test (boot and pre-flight):** rail on, each servo moved to its home angle and back 5°, INA219 current profile within window, PCA9685 ACKs; `DISPENSER_STATUS` reports CID at position 0 and FID gate closed
+2. **FID / CID:** User confirms canisters and slots loaded via touchscreen (no automatic fill detection — visual confirmation)
 3. **SLD:** Read each reservoir's dedicated load cell — compare oil and water levels individually to minimum required for recipe; alert if either is below threshold
 4. Display subsystem status on UI: loaded / insufficient / empty
 5. Block recipe start if any required subsystem is insufficient
 
-## 10. Food Safety
+## 11. Food Safety
 
-### 10.1 Temperature and Hold Time
+### 11.1 Temperature and Hold Time
 
 | Consideration | Guideline | Implementation |
 |--------------|-----------|----------------|
 | Compartment Temperature | Ambient (no active heating or cooling) | Passive, ingredients at room temperature |
 | Maximum Hold Time | 2 hours recommended for perishables | Timer starts when user loads, alert at 90 min |
-| Allergen Cross-Contamination | Dedicated subsystems per ingredient type | ASD: dry spices only. CID: separate trays. SLD: separate tubes per liquid |
-| Raw Meat Handling | CID-1 designated for raw protein | Tray labeled, separate drop zone, cleaning reminder after use |
+| Allergen Cross-Contamination | Dedicated subsystems per ingredient type | FID: dry powders only, measure wheel is part of each canister. CID: separate bins on one ring. SLD: separate tubes per liquid |
+| Raw Meat Handling | A CID slot designated for raw protein in the loading screen | Slot flagged in UI, cleaning reminder after use |
 
-### 10.2 Contamination Prevention
+### 11.2 Contamination Prevention
 
-- P-ASD: each cartridge has a dedicated discharge path; shared funnel is air-purged between dispenses
-- CID: each tray drops into a distinct zone of the pot (no shared surfaces)
+- FID: powder touches only its own canister and measure wheel; the shared chute and steam gate see free-falling powder only and are removable for washing
+- CID: bins share the base plate and aperture; the ring and base plate are washed after every use
 - SLD: fluid only contacts silicone tubing (per-channel, no shared path)
 - All removable parts are smooth, non-porous food-grade PP
 - Silicone pump tubing is replaceable (recommended every 3 months or 200 cycles)
 
-## 11. Cleaning Design
+## 12. Cleaning Design
 
-### 11.1 Removable Components
+### 12.1 Removable Components
 
 | Component | Removal Method | Dishwasher Safe | Cleaning Frequency |
 |-----------|----------------|-----------------|-------------------|
-| P-ASD Cartridges (×6) | Quarter-turn bayonet, lift out | Yes | After every use |
-| P-ASD Cartridge Caps (×6) | Unscrew threaded cap | Yes | After every use |
-| P-ASD Orifice Screens (×6) | Press-fit removal from cartridge base | Yes | Weekly deep clean |
-| P-ASD Docking Funnels (×6) | Pull out from below | Yes | After every use |
-| CID Trays (×2) | Slide out from front | Yes | After every use |
+| FID Canisters (×6) | Lift out of carousel bay | Yes | After every use |
+| FID Canister Caps (×6) | Unscrew threaded cap | Yes | After every use |
+| FID Measure Wheels (×6) | Pull out of canister base (bayonet) | Yes | Weekly deep clean |
+| FID Carousel Ring | Lift off hub (keyed) | Yes | Weekly |
+| FID Chute + Steam Gate Flap | Pull out from below the station | Yes | After every use |
+| CID Carousel Ring (5 bins) | Lift off hub (keyed), carousel at home | Yes | After every use |
+| CID Base Plate + Chute | Lift out after ring removal | Yes | After every use |
 | SLD Reservoirs (×2) | Lift out | Yes | After every use |
 | SLD Silicone Tubing (×2) | Disconnect at quick-fit couplings | Hand wash (boil sterilize) | Weekly; replace every 3 months |
 | SLD Nozzles (×2) | Unscrew | Yes | After every use |
-| P-ASD Pneumatic Tubing | Not user-removable | No | Air purge self-cleans; inspect monthly |
-| Linear Actuator / Push-Plate (CID) | Not user-removable | No | Wipe-down weekly |
+| DSB Servos, Gear Pairs, Dose Coupling | Not user-removable | No | Wipe-down weekly |
 | Solenoid Valve Assembly (SLD) | Not user-removable | No | Wipe-down weekly |
 
-### 11.2 Auto-Rinse Cycle
+### 12.2 Auto-Rinse Cycle
 
 For quick cleaning of SLD channels between recipes:
 
@@ -628,39 +558,43 @@ For quick cleaning of SLD channels between recipes:
 4. Water flushes through tubing and nozzle into pot
 5. User discards pot contents; repeat if needed
 
-## 12. Testing and Validation
+## 13. Testing and Validation
 
-### 12.1 Test Procedures
+### 13.1 Test Procedures
 
 | Test | Subsystem | Method | Pass Criteria |
 |------|-----------|--------|---------------|
-| Seasoning Accuracy | P-ASD | 10 trials per cartridge, weigh dispensed amount vs. target | Within ±10% of target weight |
+| Dose Volume Accuracy | FID | 10 doses per canister into a tared cup, weigh, divide by density | Within ±10% of 1.23 mL per dose |
+| Dose Repeatability | FID | 20 × 4-dose commands per spice | Std. dev. ≤ 5% of mean mass |
+| Steam Gate Seal | FID | Boil water 30 min with gate closed, inspect canister outlet | No visible caking or condensation above the gate |
+| Index Accuracy | FID, CID | Command every position 50 times, measure aperture/station alignment | Within ±2° carousel, no overshoot past adjacent position |
+| Coarse Dispense | CID | 10 trials per slot with 200 mL chopped vegetables | ≥ 95% of contents reach pot, no spillage outside chute |
+| Order Enforcement | CID | Command Slot3 while at Slot3, then Slot2 | NACK returned, carousel does not move |
 | Liquid Accuracy | SLD | 10 trials per channel, compare load cell reading to scale | Within ±5% of target weight |
-| Coarse Dispense | CID | 10 trials, verify full tray contents dumped into pot | All contents reach pot, no spillage |
-| Clog Recovery (P-ASD) | P-ASD | Pack powder tightly, run dispense cycle | Cleared within 2 retries, or clean error reported |
 | Drip Prevention (SLD) | SLD | After pump stop, observe nozzle for 60s | No drip (solenoid sealed) |
-| Cross-Contamination | All | Dispense colored liquid (SLD), colored powder (ASD), inspect adjacent paths | No visible contamination |
+| Stall Detection | DSB | Block carousel by hand during index | DSB_STALL within 1 s, rail off, servo limp |
+| Cross-Contamination | All | Dispense colored liquid (SLD), colored powder (FID), inspect adjacent paths | No visible contamination |
 | Food Safety Hold Time | All | Load perishable ingredient, monitor temperature over 2 hours | Temperature remains within safe zone (ambient <25°C) |
 | Cleaning Verification | All | ATP swab test after cleaning on all removable parts | ATP reading <100 RLU |
-| P-ASD Solenoid Endurance | P-ASD | 10,000 open/close cycles per valve | Consistent response time, no leaking |
-| P-ASD Pump Endurance | P-ASD | 10,000 pump cycles | Consistent pressure, no membrane degradation |
+| Servo Endurance | DSB | 10,000 index cycles (C1, F1), 50,000 dose strokes (F2), 20,000 gate cycles (F3) | Position within ±2°, no gear wear audible, no rail overcurrent |
 | SLD Pump Endurance | SLD | 10,000 pump cycles (1-minute runs) | Consistent flow rate, no tube degradation |
-| CID Actuator Endurance | CID | 5,000 extend/retract cycles | Limit switches reliable, no mechanical play |
 | SLD Solenoid Endurance | SLD | 10,000 open/close cycles | No leaking when closed, consistent response |
 | Tubing Replacement | SLD | Replace tubing, verify flow rate matches spec | Flow rate within ±10% of calibrated value |
 
-### 12.2 Prototype Validation Checklist
+### 13.2 Prototype Validation Checklist
 
-- [ ] All 6 P-ASD cartridges dock securely via bayonet lock and release easily
-- [ ] P-ASD air seals are airtight (no pressure loss when cartridge docked)
-- [ ] P-ASD pressure-verified dispensing achieves ~±20% accuracy for all 6 spices
-- [ ] P-ASD clog detection fires within 3 pulse cycles of blocked flow
-- [ ] P-ASD post-dispense purge clears orifice (no residual powder visible)
-- [ ] P-ASD pump recharges accumulator to 1.0 bar within 5 seconds
-- [ ] P-ASD pressure sensor reads within ±0.05 bar of reference gauge
-- [ ] Both CID trays slide in/out smoothly
-- [ ] CID linear actuators push full tray contents into pot reliably
-- [ ] CID limit switches trigger at correct positions
+- [ ] All 6 FID canisters seat in their bays and slide into/out of the station with the F2 coupling parked
+- [ ] FID measure wheels seal in every position (no powder leak with gate open and F2 idle)
+- [ ] FID dosing achieves ±10% volume accuracy for all 6 spices
+- [ ] FID jiggle clears a hand-packed canister without a stall
+- [ ] FID steam gate closes fully by spring with the servo unpowered
+- [ ] CID ring lifts off and re-seats keyed to Slot1
+- [ ] CID COVER sector fully closes the aperture at position 0
+- [ ] CID each slot empties into the pot on index (200 mL chopped onion, 200 g dal)
+- [ ] CID firmware NACKs out-of-order slot commands
+- [ ] DSB: only one servo moves at a time, rail switches off after each dispense
+- [ ] DSB: OE high on E-stop leaves all four servos limp within 50 ms
+- [ ] DSB: stall detection fires when a carousel is blocked by hand
 - [ ] SLD peristaltic pumps deliver consistent flow at calibrated speed
 - [ ] SLD solenoid valves seal completely when de-energized (no drips)
 - [ ] SLD oil reservoir load cell reads within ±1g of calibration weight
@@ -671,21 +605,22 @@ For quick cleaning of SLD channels between recipes:
 - [ ] All chutes/nozzles direct ingredients into pot center (no spillage)
 - [ ] Auto-rinse cycle clears visible residue from SLD tubing
 
-## 13. Related Documentation
+## 14. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture]]
 - [[01-Induction-Heating|Induction Heating System]]
 - [[02-Robotic-Arm|Robotic Arm System]]
 - [[04-Vision-System|Vision System]]
+- [[02-Database-Schema|Database Schema]]
 - [[01-Safety-Compliance|Safety & Compliance]]
 
-#epicura #ingredient-dispensing #subsystem #p-asd #pneumatic #cid #sld
+#epicura #ingredient-dispensing #subsystem #fid #cid #sld #servo #carousel
 
 ---
 
-## 14. Revision History
+## 15. Revision History
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
@@ -695,3 +630,5 @@ For quick cleaning of SLD channels between recipes:
 | 4.0 | 2026-02-16 | Manas Pradhan | P-ASD solenoids now controlled via PCF8574 I2C GPIO expander (addr 0x20) on Driver PCB instead of 6× direct STM32 GPIO |
 | 5.0 | 2026-03-11 | Manas Pradhan | CID-1: replaced DC linear actuator + DRV8876 #1 with NEMA 23 stepper motor + external driver (PUL/DIR/ENA via PA10, PB4, PCF8574 P7); CID-2 unchanged; updated GPIO table, dispensing mechanism, actuator specs |
 | 6.0 | 2026-03-11 | Manas Pradhan | SLD solenoids moved from PA7/PA9 to PCF8574 #2 (0x21) P0/P1 for GPIO headroom; I2C1 bus now 5 devices |
+| 6.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); dispensing hardware, pin map and command protocol unchanged (LED ring 5 V switch stays on PCF8574 #2 P3) |
+| 7.0 | 2026-11-04 | Manas Pradhan | P-ASD (pneumatic) replaced by FID: 6-canister servo carousel with per-canister ¼ tsp measure wheels, 3 servos (index, dose, steam gate); CID replaced by a 5-slot + cover servo carousel, 1 servo; FID and CID merged into one Dispenser Servo Block (4× DS3218-class servos on PCA9685 @ 0x41, switched 6.5 V rail from MP1584EN #2, OE on PB4); removed pump, accumulator, 6 solenoids, ADS1015, PCF8574 #1, NEMA 23 + driver, linear actuator, DRV8876 #2, J_CID; new commands DISPENSE_FID/CID, DISPENSER_HOME, DISPENSER_STATUS; box/slot numbering aligned with recipe schema |

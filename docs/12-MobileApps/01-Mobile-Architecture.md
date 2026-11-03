@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -14,7 +14,7 @@ Epicura uses native mobile development (Swift/SwiftUI for iOS, Kotlin/Jetpack Co
 | Criteria | Native (Swift + Kotlin) | Flutter | Decision Factor |
 |----------|------------------------|---------|-----------------|
 | **BLE Performance** | Direct platform APIs (Core Bluetooth, CompanionDeviceManager) | Plugin-based (`flutter_blue_plus`), limited control | BLE pairing and WiFi provisioning are critical setup flow |
-| **Camera Streaming** | Native AVFoundation / CameraX for MJPEG | Plugin-based, frame decoding overhead | Live cooking camera feed requires low-latency rendering |
+| **Camera Streaming** | Native RTSP/H.264 playback (MobileVLCKit / Media3 ExoPlayer) | Plugin-based, frame decoding overhead | Live cooking camera feed requires low-latency rendering |
 | **Platform Feel** | 100% native UI, gestures, animations | Custom Skia rendering, approximates native | Indian users expect platform-consistent experience |
 | **Background Processing** | Full OS-level support (BGTasks, WorkManager) | Limited plugin support | Cooking notifications must arrive reliably in background |
 | **Push Notifications** | Native APNs/FCM integration | Plugin-based | Critical for cooking alerts |
@@ -81,7 +81,7 @@ Both iOS and Android apps use the MVVM (Model-View-ViewModel) pattern with a sha
 | **P0** | Recipe browsing + detail view | SwiftUI List/Grid | LazyColumn/LazyGrid |
 | **P0** | Live cooking progress (WebSocket) | URLSessionWebSocketTask | OkHttp WebSocket |
 | **P0** | Push notifications | APNs | FCM |
-| **P1** | MJPEG camera stream | AVFoundation | MediaCodec |
+| **P1** | Live pot view (RTSP H.264, on demand) | MobileVLCKit | Media3 ExoPlayer (RTSP) |
 | **P1** | Cooking history + ratings | SwiftData | Room |
 | **P1** | Food preferences (diet, cuisines, seasoning levels, servings) + allergen profile | SwiftData | DataStore + Room |
 | **P1** | Offline recipe cache | SwiftData | Room |
@@ -192,33 +192,24 @@ BLE state machine for device pairing (see [[04-BLE-Services|BLE Services]]):
 
 ---
 
-## 5. MJPEG Camera Streaming
+## 5. Live Pot View (RTSP)
 
-The CM5 serves a live MJPEG stream during cooking at `http://<device-ip>:8080/camera/stream`. The mobile app renders this as a live video feed.
+The device does not serve MJPEG or any HTTP/WebSocket video. Live view is **on demand only**: the app asks the cloud, the cloud publishes the MQTT `live_view_start` command, and the device spawns its `rtsp-stream` process (H.264 1280x720, 15 fps, 1.5 Mbps, single viewer). The stream is torn down after 60 s with no client or on `live_view_stop`.
+
+```
+App ──(cloud API)──► Cloud ──(MQTT live_view_start)──► Device
+App ◄──(RTSP rtsp://<lan_ip>:554/pot, same LAN)────────┘
+App ◄──(cloud relay URL, off-LAN)──── Cloud ◄──(RTSP)───┘
+```
 
 **Implementation Approach:**
 
 | Platform | Method | Notes |
 |----------|--------|-------|
-| iOS | `URLSession` data task → parse JPEG boundaries → display in `Image` | Use `AsyncStream` to yield frames |
-| Android | `OkHttp` streaming response → parse JPEG boundaries → display in `Composable Image` | Use `Flow<Bitmap>` to emit frames |
+| iOS | RTSP client (MobileVLCKit) → `UIViewRepresentable` in SwiftUI | AVPlayer has no RTSP support |
+| Android | Media3 ExoPlayer with `RtspMediaSource` → `PlayerView` in Compose | Hardware H.264 decode via MediaCodec |
 
-**MJPEG Frame Parsing:**
-
-```
-Content-Type: multipart/x-mixed-replace; boundary=frame
-
---frame
-Content-Type: image/jpeg
-Content-Length: 12345
-
-<JPEG bytes>
---frame
-Content-Type: image/jpeg
-...
-```
-
-Target: 10-15 fps at 640x480 resolution.
+**Connection choice:** the app tries `rtsp://<lan_ip>:554/pot` directly when it is on the same Wi-Fi as the device (`lan_ip` comes from the appliance status reported to the cloud); otherwise it plays the relay URL returned by the cloud. The app sends the stop request when the view is dismissed so the device can free its encoder.
 
 ---
 
@@ -236,7 +227,7 @@ Target: 10-15 fps at 640x480 resolution.
 
 - User can browse cached recipes without internet
 - Cannot start remote cooking (requires cloud relay)
-- Can start cooking via direct WiFi connection to Epicura device
+- Cooking can still be started on the device's own 4" touchscreen (no direct app-to-device API)
 - Cooking history queued for upload when connection restored
 - Preference changes queued and synced on reconnect
 
@@ -259,7 +250,7 @@ Target: 10-15 fps at 640x480 resolution.
 | Success | Green | `#43A047` | Cooking complete, success states |
 | Warning | Amber | `#FFB300` | Warnings, caution states |
 
-This palette matches the Kivy touchscreen UI colors defined in [[01-UI-UX-Design#Styling|UI/UX Design - Styling]].
+This palette matches the LVGL touchscreen UI colors defined in [[01-UI-UX-Design#Styling|UI/UX Design - Styling]].
 
 ### 7.2 Platform-Native Patterns
 
@@ -307,3 +298,4 @@ Recipe cards in the list use a horizontal layout:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: live view is on-demand RTSP (LAN) or cloud relay, MJPEG removed; no direct app-to-device API; touchscreen UI is LVGL |

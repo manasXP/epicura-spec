@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 2.0
+modified: 2026-11-04
+version: 2.1
 status: Draft
 ---
 
@@ -118,7 +118,7 @@ status: Draft
 │                                                              │
 │    ┌──────────────────────────────────────────────────┐      │
 │    │                                                  │      │
-│    │          10" Touchscreen Display                 │      │
+│    │          4" Touchscreen Display                  │      │
 │    │          (angled 15-30 degrees)                  │      │
 │    │                                                  │      │
 │    │   ┌──────────────────────────────────────────┐   │      │
@@ -189,7 +189,7 @@ status: Draft
     │  │   Induction Coil + Ferrite       │  (tilted   │   │  │
     │  │   (center-bottom)                │   15-30)   │   │  │
     │  ├────────┬─────────────────────────┤            │   │  │
-    │  │  PSU   │  STM32 PCB │ CM5 Module │            │   │  │
+    │  │  PSU   │  STM32 PCB │ Pico Zero  │            │   │  │
     │  │ (rear  │  (side)    │ (rear-top) │            │   │  │
     │  │ bottom)│            │            │            │   │  │
     │  └────────┴────────────┴────────────┴────────────┘   │  │
@@ -208,8 +208,8 @@ status: Draft
 │                        REAR                                  │
 │                                                              │
 │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │  PSU Module   │  │  CM5 Module   │  │  Ventilation    │  │
-│  │  (AC-DC)      │  │  (+ Carrier)  │  │  Fan (exhaust)  │  │
+│  │  PSU Module   │  │  Pico Zero    │  │  Ventilation    │  │
+│  │  (AC-DC)      │  │  (RV1106G3)   │  │  Fan (exhaust)  │  │
 │  │  Multi-rail   │  │  WiFi antenna │  │  40mm, 12V      │  │
 │  │               │  │  near rear    │  │                  │  │
 │  └──────┬────────┘  └──────┬────────┘  └──────────────────┘  │
@@ -404,7 +404,7 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 |--------|--------------------------|----------|
 | Microwave surface module | 30-100W (waste heat at 85% efficiency) | Center-bottom |
 | PSU (switch-mode) | 15-30W (at full load, ~85% efficient) | Rear-bottom |
-| CM5 compute module | 3-5W | Rear-top |
+| RV1106 (Luckfox Pico Zero) | ~1W | Rear-top |
 | STM32 + sensors | <1W | Side |
 | BLDC stirring motor | 12-48W (intermittent) | Top gantry |
 
@@ -419,8 +419,8 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 │    (rear)                  ▲                               │
 │                            │                               │
 │                   ┌────────┴──────────┐                    │
-│                   │  CM5 heatsink     │                    │
-│                   │  (passive, aluminum)                   │
+│                   │  Pico Zero, ~1 W  │                    │
+│                   │  (no heatsink)      │                  │
 │                   └───────────────────┘                    │
 │                            ▲                               │
 │                   ┌────────┴──────────┐                    │
@@ -442,7 +442,7 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 
 Dual-fan push-pull configuration:
   Fan 1 (bottom): intake fresh air, cools PSU and electronics
-  Fan 2 (top): exhaust hot air past CM5
+  Fan 2 (top): exhaust hot air past the Pico Zero
   Airflow path avoids pot/food zone (no contamination risk)
 ```
 
@@ -472,7 +472,7 @@ See [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] for full specificat
 
 - **Angle:** Tilted 15-30 degrees from vertical (optimal viewing while standing at kitchen counter)
 - **Height:** Screen center at ~200mm from countertop (within natural downward gaze)
-- **Size:** 10.1" diagonal, large enough for recipe steps and camera feed
+- **Size:** 4.0" diagonal, 480x320. Panel cut-out sized for a roughly 85 x 56 mm active area (typical 4" module; to be confirmed against the chosen panel). Recipe steps and controls fit; the pot camera view is an optional on-demand screen
 - **Touch:** Capacitive (works with dry fingers, not with wet/gloved hands -- design assumes user dries hands)
 
 ### 9.2 Cleaning Design
@@ -522,7 +522,7 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | Pot | Off-the-shelf induction pot (22cm) | Modified with embedded magnet |
 | Gantry | Aluminum extrusion + 3D printed brackets | Standard 2020 or 2040 V-slot |
 | ASD hoppers + CID trays | 3D printed (food-safe PETG) | Or silicone mold for flexibility |
-| PCBs | 4-layer custom PCB (JLCPCB or similar) | 2 boards: CM5 carrier, STM32 control |
+| PCBs | 4-layer custom PCB (JLCPCB or similar) | 1 board: Unified PCB (STM32 control + drivers); Luckfox Pico Zero is an off-the-shelf module |
 | Wiring | Hand-soldered, JST/Dupont connectors | Label all connectors |
 
 ### 10.2 Production Phase
@@ -543,12 +543,12 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 2. Route CAN bus cable from module to controller PCB
 3. Mount PSU module in rear-bottom compartment
 6. Install STM32 control PCB on side bracket
-7. Install CM5 + carrier board in rear-top area
+7. Install Luckfox Pico Zero in rear-top area (no carrier board; four 3.0 mm mounting holes)
 8. Wire PSU to all DC loads (color-coded connectors)
 9. Wire STM32 to sensors, servos, CAN bus (to microwave surface)
-10. Wire CM5 UART to STM32
-11. Connect camera FFC cable, mount camera on gantry
-12. Mount display, connect DSI/HDMI and I2C touch
+10. Wire Pico Zero UART2 to STM32 USART2
+11. Connect SC3336 camera FPC to the Pico Zero CSI connector, mount camera on gantry
+12. Mount 4" display, connect SPI (LCD) and I2C (touch)
 13. Install gantry assembly (bridge + arm motor + camera)
 14. Install dispensing subsystems: ASD hoppers + servos, CID trays + linear actuators, SLD pumps + solenoids + tubing
 15. Install fans, E-stop button, LED ring
@@ -559,10 +559,10 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 
 ## 11. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture & Wiring Diagrams]]
 - [[03-Sensors-Acquisition|Sensors & Data Acquisition]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
 - [[05-Exhaust-Fume-Management|Exhaust & Fume Management]]
 - [[01-Safety-Compliance|Safety & Compliance]]
 
@@ -576,3 +576,4 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo references with 24V BLDC motor |
+| 2.1 | 2026-11-04 | Manas Pradhan | Compute module changed to Luckfox Pico Zero (RV1106G3, no carrier, no heatsink); 10.1" display replaced by 4" 480x320 SPI LCD (cut-out to be confirmed); camera is SC3336 on the Pico Zero CSI FPC; assembly steps updated |

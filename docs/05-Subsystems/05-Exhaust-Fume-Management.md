@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -115,7 +115,7 @@ The STM32 modulates fan speed based on the current cooking stage commanded by th
 
 typedef struct {
     uint8_t  duty_percent;    // 0-100%
-    uint8_t  stage_override;  // manual override from CM5
+    uint8_t  stage_override;  // manual override from RV1106
     uint16_t rpm_feedback;    // tachometer reading (optional)
 } exhaust_fan_t;
 
@@ -125,7 +125,7 @@ void exhaust_set_speed(uint8_t duty_percent) {
 }
 ```
 
-### 3.4 CM5-STM32 Command Integration
+### 3.4 RV1106-STM32 Command Integration
 
 | Command | Code | Payload | Description |
 |---------|------|---------|-------------|
@@ -276,7 +276,7 @@ The exhaust fan is interlocked with the microwave induction surface for safety:
 │                                                   │
 │   Fan stall detected ──► Send CAN command to      │
 │                          reduce to simmer (400W)   │
-│                          Alert CM5 + user          │
+│                          Alert RV1106 + user       │
 │                                                   │
 │   Fan confirmed OFF ──► Block sear/boil profiles  │
 │                         (allow simmer/warm only)   │
@@ -365,7 +365,7 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 - [[01-Induction-Heating|Induction Heating]] - Heat source and PID control (fan speed tracks cooking stage)
 - [[04-Vision-System|Vision System]] - Camera anti-fog measures and steam protection
 - [[04-Mechanical-Design|Mechanical Design]] - Enclosure airflow, pot lid design, vent placement
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Power budget and communication interfaces
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Power budget and communication interfaces
 - [[01-Epicura-Architecture|Epicura Architecture]] - STM32 GPIO allocation for exhaust fan PWM
 - [[01-Safety-Compliance|Safety & Compliance]] - IEC 60335 ventilation requirements
 - [[02-Actuation-Components|Actuation Components]] - Exhaust fan BOM entry
@@ -381,3 +381,4 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); exhaust control and command codes unchanged |

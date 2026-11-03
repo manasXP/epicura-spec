@@ -7,17 +7,17 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 │                    Epicura System Overview                          │
 │                                                                     │
 │  ┌──────────────────────┐        ┌──────────────────────┐           │
-│  │  Raspberry Pi CM5    │        │  STM32 MCU           │           │
-│  │  (Yocto Linux)       │◄──────►│  (FreeRTOS)          │           │
+│  │  RV1106 (Luckfox)    │        │  STM32 MCU           │           │
+│  │  (Buildroot Linux)   │◄──────►│  (FreeRTOS)          │           │
 │  │  - Recipe Engine     │  UART  │  - PID Control       │           │
-│  │  - CV Pipeline       │  /SPI  │  - Servo Driver      │           │
-│  │  - Kivy UI           │        │  - Sensor Polling    │           │
+│  │  - CV Pipeline       │  /CAN  │  - Servo Driver      │           │
+│  │  - LVGL UI           │        │  - Sensor Polling    │           │
 │  │  - Cloud Sync        │        │  - Safety Watchdog   │           │
 │  └──────────┬───────────┘        └──────────┬───────────┘           │
 │             │                               │                       │
 │  ┌──────────▼───────────┐        ┌──────────▼───────────┐           │
-│  │  10" Touchscreen     │        │  Induction Heater    │           │
-│  │  HD Camera           │        │  Servo Arm           │           │
+│  │  4" Touchscreen      │        │  Induction Heater    │           │
+│  │  SC3336 Camera       │        │  Servo Arm           │           │
 │  │  WiFi/BT             │        │  Load Cells          │           │
 │  │                      │        │  NTC + IR Sensors    │           │
 │  └──────────────────────┘        └──────────────────────┘           │
@@ -27,11 +27,11 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 ## Key Features
 
 - **Autonomous Cooking** — Hands-off operation after ingredient loading with state machine recipe execution
-- **AI Vision** — Overhead camera with TFLite MobileNetV2 for food color/texture analysis and cooking stage detection
+- **AI Vision** — Overhead camera with hardware ISP and MobileNetV2 INT8 on the RV1106 NPU (RKNN) for food color/texture analysis and cooking stage detection
 - **Induction PID Control** — 1,800W microwave induction surface (CAN bus) with closed-loop PID, ±5°C accuracy
 - **Robotic Stirring Arm** — Single-axis servo arm with multiple stir patterns and auto-scraping
 - **Three-Subsystem Dispensing** — Seasonings (servo-gated hoppers), coarse ingredients (linear actuator trays), liquids (peristaltic pumps)
-- **Touchscreen + Mobile Apps** — 10" Kivy touchscreen UI, native iOS (Swift) and Android (Kotlin) companion apps
+- **Touchscreen + Mobile Apps** — 4" LVGL touchscreen UI, native iOS (Swift) and Android (Kotlin) companion apps
 - **100+ Indian Recipes** — Curries, dal, rice, biryani with regional variations and dietary customization
 - **Cloud + Offline** — Cloud-updatable recipe library with full local fallback
 
@@ -39,26 +39,25 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 
 | Component | Part | Purpose |
 |-----------|------|---------|
-| Compute (AI) | Raspberry Pi CM5 (4GB, 64GB eMMC) | Vision, recipe engine, UI, cloud sync |
+| Compute (AI) | Luckfox Pico Zero — RV1106G3 (Cortex-A7 @ 1.2 GHz, 1 TOPS NPU, ISP, 256MB, 8GB eMMC) | Vision, recipe engine, UI, cloud sync |
 | Compute (Control) | STM32G474 (Cortex-M4F, 170 MHz) | PID, servo driver, sensor polling, safety |
-| Carrier Board | CM5IO (official RPi IO board) | CM5 carrier with all breakouts |
-| Camera | IMX219 (8MP) | Food stage detection via CV |
+| Camera | SC3336 (3MP, MIPI CSI) | Food stage detection via ISP + NPU |
 | IR Thermometer | MLX90614 | Non-contact food surface temp |
 | Load Cells | 4× strain gauge + HX711 | Weight-based dispensing verification |
 | Induction Surface | 1,800W commercial module | CAN bus controlled cooking heat |
 | Servo Arm | 24V BLDC motor (integrated ESC) | Stirring and scraping |
-| Display | 10" 1280×800 capacitive | Kivy touchscreen UI |
+| Display | 4" 480×320 capacitive SPI (ST7796S + FT6336) | LVGL touchscreen UI |
 
 ## Software Stack
 
-### CM5 (Yocto Linux + Docker Compose)
+### RV1106 (Buildroot Linux, single C application `epicurad`)
 
-- **Database**: PostgreSQL 16 — same schema as cloud
-- **MQTT**: Mosquitto broker with cloud bridge
-- **Backend API**: Fastify (Node.js/TypeScript) — same codebase as cloud (minus admin module)
-- **Recipe Engine**: Python — YAML parsing, state machine
-- **CV Pipeline**: OpenCV + TFLite MobileNetV2 INT8
-- **UI**: Kivy — touchscreen interface
+- **Database**: SQLite 3 (WAL, JSON1, FTS5) — mirrors the cloud PostgreSQL schema table-for-table
+- **Cloud**: libmosquitto MQTT client (TLS) + libcurl REST client — no device-hosted API or broker
+- **Recipe Engine**: C — libyaml parsing, state machine
+- **CV Pipeline**: hardware ISP → NPU, MobileNetV2 INT8 (`.rknn`, RKNN-Toolkit2)
+- **UI**: LVGL 9 — 4" SPI touchscreen interface
+- **Live view**: on-demand H.264 RTSP stream to the phone
 - **OTA Updates**: swupdate with A/B partitions
 
 ### STM32 (FreeRTOS)
@@ -73,7 +72,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 
 Comprehensive documentation exists across 30+ documents covering hardware, software, subsystems, compliance, PCB design, backend, APIs, mobile apps, and project management.
 
-See [`docs/README.md`](__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README.md) for the full documentation index.
+See [`docs/README.md`](__Workspaces/Appliance/Epicura/epi-Spec/docs/README.md) for the full documentation index.
 
 ## Repositories
 
@@ -85,7 +84,7 @@ See [`docs/README.md`](__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README.m
 | **[epicura-tcc](https://github.com/manasXP/epicura-tcc)**           | Markdown                       | Testing strategies, compliance/safety, recipe schema & seed data      |
 | **[epicura-ux](https://github.com/manasXP/epicura-ux)**             | Markdown + Vite/React          | UI/UX design documentation and interactive mobile mockups             |
 | **[epicura-firmware](https://github.com/manasXP/epicura-firmware)** | C (FreeRTOS, STM32 HAL)        | STM32G474RE real-time control — PID, servo, sensors, CAN, safety      |
-| **[epicura-cm5](https://github.com/manasXP/epicura-cm5)**           | Python (Docker Compose)        | CM5 services — recipe engine, CV pipeline, Kivy UI, bridge, Yocto BSP |
+| **[epicura-rv1106](https://github.com/manasXP/epicura-rv1106)**     | C11 (CMake) + Buildroot        | RV1106 `epicurad` — recipe engine, ISP/NPU CV, LVGL UI, UART bridge, Buildroot image |
 | **[epicura-api](https://github.com/manasXP/epicura-api)**           | TypeScript (Fastify + Next.js) | Cloud API server and admin portal monorepo                            |
 | **[epicura-ios](https://github.com/manasXP/epicura-ios)**           | Swift (SwiftUI)                | iOS companion app — BLE pairing, recipes, live cooking                |
 | **[epicura-android](https://github.com/manasXP/epicura-android)**   | Kotlin (Jetpack Compose)       | Android companion app                                                 |
@@ -94,7 +93,7 @@ See [Repository Plan](02-Repository-Plan.md) for directory structures, CI/CD, an
 
 ## Estimated BOM
 
-~$614 for prototype. See [Total Component Cost](__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost.md) for breakdown.
+~$431 for prototype. See [Total Component Cost](__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost.md) for breakdown.
 
 ## Development Roadmap
 

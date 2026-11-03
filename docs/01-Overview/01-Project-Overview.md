@@ -1,7 +1,7 @@
 ---
 created: 2026-02-14
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 tags: [epicura, project-overview, kitchen-robot]
 ---
@@ -16,7 +16,7 @@ Development of an autonomous countertop kitchen robot that cooks complete one-po
 
 This project encompasses the following major subsystems:
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, robotic arm, sensors, and power budget
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, robotic arm, sensors, and power budget
 - [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
 - [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and pot detection
 - [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
@@ -51,16 +51,16 @@ This project encompasses the following major subsystems:
 - Dynamic power management to stay within 2kW household limit
 
 ### 3.4 Vision System
-- Overhead HD camera (1080p minimum) mounted inside enclosure lid
-- Food color and texture analysis using TFLite edge AI models on Raspberry Pi CM5
+- Overhead SC3336 camera (3 MP, 1280x720 @ 30 fps) mounted inside enclosure lid
+- Food color and texture analysis using INT8 edge AI models on the RV1106G3 NPU (RKNN), with hardware ISP dehaze and noise reduction
 - Real-time cooking stage detection: raw, browning, simmering, thickening, done
 - Anomaly detection for burning, boiling over, or ingredient issues
 
 ### 3.5 User Experience
-- 10" capacitive touchscreen with Kivy-based interface for recipe browsing and cooking status
+- 4" 480x320 capacitive touchscreen with LVGL-based interface for recipe browsing and cooking status
 - Native companion mobile apps (SwiftUI + Jetpack Compose) for remote recipe selection, live camera feed, and notifications
 - Multi-language support: English, Hindi, Tamil, Telugu (extensible to more regional languages)
-- Live camera feed on both touchscreen and mobile app during cooking
+- On-demand pot preview on the touchscreen and live view (RTSP) in the mobile app during cooking
 - Grocery list generation and meal planning features in companion app
 
 ## 4. Target Use Cases
@@ -77,7 +77,7 @@ This project encompasses the following major subsystems:
 |---------|--------------------|-----------------------|
 | **Autonomy** | Fully hands-off after prep | Identical, with CV fallback loops and anomaly alerts |
 | **Customization** | Spice/allergen swaps via app | App-driven recipe DB with ingredient substitutions and dietary profiles |
-| **Monitoring** | Live camera feed in app | App + local 10" touchscreen, anomaly alerts with push notifications |
+| **Monitoring** | Live camera feed in app | App + local 4" touchscreen, anomaly alerts with push notifications |
 | **Cleanup** | Dishwasher-safe pot | Removable non-stick pot, optional auto-rinse cycle |
 | **Size/Power** | Countertop, ~1.8kW | 50x40x30cm, <2kW for standard Indian 15A outlets |
 | **Recipes** | Curated library, cloud-updated | 100+ Indian recipes at launch, cloud-updatable, offline fallback |
@@ -91,27 +91,27 @@ This project encompasses the following major subsystems:
 │                       Epicura System Architecture                           │
 │                                                                             │
 │  ┌──────────────────────────────────────┐  ┌─────────────────────────────┐  │
-│  │     Raspberry Pi CM5 + Carrier       │  │     STM32 MCU               │  │
+│  │     Luckfox Pico Zero (RV1106G3)     │  │     STM32 MCU               │  │
 │  │     (Application Processor)          │  │     (Real-Time Controller)  │  │
 │  │                                      │  │                             │  │
 │  │  ┌──────────────────────────────┐    │  │  ┌─────────────────────┐    │  │
-│  │  │  Yocto Linux                 │    │  │  │  FreeRTOS           │    │  │
+│  │  │  Buildroot Linux             │    │  │  │  FreeRTOS           │    │  │
 │  │  └────────────┬─────────────────┘    │  │  └────────────┬────────┘    │  │
 │  │               │                      │  │               │             │  │
 │  │  ┌────────────▼─────────────────┐    │  │  ┌────────────▼────────┐    │  │
 │  │  │  Recipe State Machine        │    │  │  │  PID Temperature    │    │  │
-│  │  │  CV Pipeline (TFLite)        │◄───┼──┼─►│  Servo Motor Driver │    │  │
-│  │  │  Kivy Touchscreen UI         │UART│  │  │  Sensor Polling     │    │  │
-│  │  │  Cloud Sync / OTA            │/SPI│  │  │  Safety Watchdog    │    │  │
+│  │  │  CV Pipeline (ISP → NPU)     │◄───┼──┼─►│  Servo Motor Driver │    │  │
+│  │  │  LVGL Touchscreen UI         │UART│  │  │  Sensor Polling     │    │  │
+│  │  │  Cloud Sync / OTA            │/CAN│  │  │  Safety Watchdog    │    │  │
 │  │  │  SQLite Recipe DB            │    │  │  │  Dispensing Control │    │  │
 │  │  └──────────────────────────────┘    │  │  └─────────────────────┘    │  │
 │  │                                      │  │                             │  │
 │  └──────────┬─────────────┬─────────────┘  └──────┬──────────┬───────────┘  │
 │             │             │                       │          │              │
 │     ┌───────▼──────┐ ┌───▼──────────┐    ┌───────▼────┐ ┌───▼──────────┐.   │
-│     │ 10" Touch    │ │ HD Camera    │    │ Induction  │ │ Servo Arm    │    │
-│     │ Display      │ │ (1080p)      │    │ Heater     │ │ (Stirring)   │    │
-│     │ (Kivy UI)    │ │              │    │ (1,800W)   │ │              │    │
+│     │ 4" Touch     │ │ SC3336 Cam   │    │ Induction  │ │ Servo Arm    │    │
+│     │ Display      │ │ (720p)       │    │ Heater     │ │ (Stirring)   │    │
+│     │ (LVGL UI)    │ │              │    │ (1,800W)   │ │              │    │
 │     └──────────────┘ └──────────────┘    └────────────┘ └──────────────┘    │
 │                                                                             │
 │     ┌──────────────┐ ┌──────────────┐    ┌────────────┐ ┌──────────────┐    │
@@ -128,13 +128,13 @@ This project encompasses the following major subsystems:
 ```
 ┌──────────┐    ┌──────────────┐    ┌───────────────┐    ┌──────────────┐
 │  User    │    │  Recipe      │    │  CV Pipeline  │    │  Actuators   │
-│  Input   │───►│  State       │───►│  (TFLite)     │───►│  (Heat/Stir/ │
+│  Input   │───►│  State       │───►│  (ISP→NPU)    │───►│  (Heat/Stir/ │
 │  (App/   │    │  Machine     │    │               │    │   Dispense)  │
-│   Touch) │    │  (CM5)       │    │  Stage?       │    │  (STM32)     │
+│   Touch) │    │  (RV1106)    │    │  Stage?       │    │  (STM32)     │
 └──────────┘    └──────┬───────┘    └───────┬───────┘    └──────┬───────┘
                        │                    │                   │
                        │            ┌───────▼───────┐           │
-                       │            │  HD Camera    │           │
+                       │            │  SC3336 Cam   │           │
                        │            │  IR Thermo    │           │
                        │            └───────────────┘           │
                        │                                        │
@@ -156,9 +156,9 @@ This project encompasses the following major subsystems:
 | Power Input | 220-240V AC, 50 Hz (Indian standard) |
 | Max Power Draw | < 2,000W (compatible with 15A household outlets) |
 | Induction Heater | 1,800W peak, variable power |
-| Display | 10" 1280x800 capacitive touchscreen |
-| Camera | 1080p HD, overhead mounted |
-| Connectivity | WiFi 802.11ac, Bluetooth 5.0 |
+| Display | 4" 480x320 capacitive touchscreen (SPI, ST7796S + FT6336) |
+| Camera | SC3336 3 MP, 1280x720 @ 30 fps, overhead mounted |
+| Connectivity | Wi-Fi 6 (2.4 GHz), Bluetooth 5.2 LE |
 | Pot Capacity | 3-5 liters (removable, non-stick, dishwasher-safe) |
 | Ingredient Dispensing | ASD (3 seasoning hoppers) + CID (2 coarse trays) + SLD (2 liquid channels) |
 | Operating Temperature | 5°C - 45°C ambient |
@@ -172,7 +172,7 @@ Early concept and design phase. No source code or hardware prototypes exist yet.
 ```
 Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta               Phase 4: Production
 (3-6 months)                (3-6 months)                (3-6 months)                (3-6 months)
-┌───────────────────┐       ┌───────────────────┐       ┌───────────────────┐       ┌───────────────────┐
+┌───────────────────┐       ┌───────────────────┐       ┌───────────────────┐    ┌───────────────────┐
 │ - Off-shelf parts │       │ - Custom PCB      │       │ - 100+ recipes    │       │ - Manufacturing   │
 │ - Basic recipe    │──────►│ - 20+ recipes     │──────►│ - Field testing   │──────►│ - BIS/CE cert     │
 │   execution       │       │ - App integration │       │ - Pre-compliance  │       │ - Market launch   │
@@ -182,7 +182,7 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 
 ## 9. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Detailed hardware specs
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Detailed hardware specs
 - [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and wiring
 - [[03-Sensors-Acquisition|Sensors & Acquisition]] - Sensor system design
 - [[04-Mechanical-Design|Mechanical Design]] - Physical design and enclosure
@@ -196,7 +196,7 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 - [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Fume extraction subsystem
 - [[01-Safety-Compliance|Safety & Compliance]] - Regulatory compliance
 - [[01-Prototype-Development-Plan|Prototype Development Plan]] - Development roadmap
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
 
 ## 10. Revision History
 
@@ -204,3 +204,4 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 |---------|------|--------|---------|
 | 1.0 | 2026-02-14 | Manas Pradhan | Initial document creation |
 | 1.0 | 2026-02-15 | Manas Pradhan | Added revision history and metadata |
+| 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to Luckfox Pico Zero (RV1106G3): Buildroot, LVGL on 4" SPI LCD, SC3336 camera with ISP + NPU vision, UART/CAN bridge |

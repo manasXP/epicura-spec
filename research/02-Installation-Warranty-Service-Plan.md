@@ -189,8 +189,8 @@ Support agents can (with customer permission) remotely view device diagnostics d
 ## Related Documentation
 
 - [[01-Market-Research-Report|Market Research Report]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
 - [[01-UI-UX-Design|UI/UX Design]]
 - [[04-BLE-Services|BLE Services]]
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-27
-version: 1.2
+modified: 2026-11-04
+version: 1.3
 status: Draft
 ---
 
@@ -11,7 +11,7 @@ status: Draft
 
 Epicura's cloud database uses PostgreSQL 16 with Drizzle ORM. The schema supports user management, normalized recipe storage (with relational tables for cooking segments, dispensing actions, and ingredients), appliance registration, cooking session tracking, time-series telemetry (partitioned by month), push notification tokens, and firmware release management.
 
-Both the cloud and CM5 device run PostgreSQL 16 with the same schema. The sync strategy keeps recipes and user preferences consistent between cloud and device.
+This PostgreSQL schema is the cloud schema and is authoritative. The RV1106 device does not run PostgreSQL; it holds a SQLite 3 mirror of the tables it needs (see section 5). The sync strategy keeps recipes and user preferences consistent between cloud and device.
 
 ---
 
@@ -153,7 +153,7 @@ Both the cloud and CM5 device run PostgreSQL 16 with the same schema. The sync s
 | `device_id` | `varchar(50)` | UNIQUE, NOT NULL | Hardware device ID (e.g., `EPIC-001`) |
 | `serial_number` | `varchar(50)` | UNIQUE, NOT NULL | Manufacturing serial |
 | `name` | `varchar(100)` | default `'My Epicura'` | User-assigned name |
-| `firmware_version_cm5` | `varchar(20)` | | Current CM5 firmware |
+| `firmware_version_rv1106` | `varchar(20)` | | Current RV1106 (Linux) firmware |
 | `firmware_version_stm32` | `varchar(20)` | | Current STM32 firmware |
 | `wifi_mac` | `varchar(17)` | | WiFi MAC address |
 | `pairing_code` | `varchar(6)` | | BLE pairing code (rotated) |
@@ -305,7 +305,7 @@ CREATE TABLE telemetry_events_2026_02 PARTITION OF telemetry_events
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Release identifier |
-| `target` | `varchar(10)` | NOT NULL | `cm5` or `stm32` |
+| `target` | `varchar(10)` | NOT NULL | `rv1106` or `stm32` |
 | `version` | `varchar(20)` | NOT NULL | Semantic version (e.g., `1.2.0`) |
 | `channel` | `varchar(20)` | NOT NULL, default `'stable'` | `stable`, `beta`, `alpha` |
 | `binary_url` | `text` | NOT NULL | S3/R2 URL to firmware binary |
@@ -395,33 +395,45 @@ CREATE INDEX idx_recipes_fts ON recipes USING GIN (search_vector);
 
 ---
 
-## 5. CM5 PostgreSQL Sync Strategy
+## 5. Device SQLite Mirror and Sync Strategy
 
-Both the CM5 device and cloud run PostgreSQL 16 with the same schema. The CM5 runs its own Fastify API server (same codebase as cloud, minus admin module), which manages the local PostgreSQL instance. Sync happens between the two PostgreSQL databases via the Fastify API.
+The RV1106 device runs no database server and no API server. `epicurad` uses an in-process SQLite 3 database (`/data/epicura.db`, WAL mode, JSON1, FTS5) that mirrors the cloud schema table-for-table for `recipes`, `cooking_sessions` and `user_preferences`, with PostgreSQL-only types mapped as follows so that sync is a straight row copy:
+
+| PostgreSQL | SQLite |
+|------------|--------|
+| `uuid` | `TEXT` (36-char) |
+| `jsonb` | `TEXT` + JSON1 functions |
+| `text[]` | `TEXT` JSON array |
+| `timestamptz` | `TEXT` ISO-8601 UTC |
+| GIN index | FTS5 virtual table |
+
+The device `recipes` row stores the assembled `recipe_data` JSON exactly as returned by `GET /recipes/sync`; the normalized `cooking_segments`, `segment_dispensing` and `recipe_ingredients` tables exist only in the cloud. Two device-only tables have no cloud counterpart: `session_checkpoint` (resume-after-power-loss, rewritten every 10 s while cooking) and `sync_outbox` (queued `session`, `preferences` and `telemetry` rows, capped at 1,000, drained in order when online). The full SQLite DDL lives in [[02-Controller-Software-Architecture#5.5 Data Management (RV1106)|Controller & Software Architecture - Data Management]] and is not duplicated here.
+
+Sync happens between SQLite and cloud PostgreSQL through the cloud Fastify API only; the device is a REST client.
 
 ### 5.1 Recipe Sync (Cloud → Device)
 
 ```
 ┌──────────┐     GET /recipes/sync?since=<timestamp>     ┌──────────┐
-│  CM5     │ ──────────────────────────────────────────► │  Cloud   │
-│ Postgres │                                             │ Postgres │
+│  RV1106  │ ──────────────────────────────────────────► │  Cloud   │
+│  SQLite  │                                             │ Postgres │
 │          │ ◄────────────────────────────────────────── │          │
 │          │     {recipes: [...], deleted_ids: [...]}     │          │
 └──────────┘                                             └──────────┘
 ```
 
-1. CM5 stores `last_sync_at` timestamp in `user_preferences`
-2. On sync, CM5 cloud-sync service requests `GET /recipes/sync?since=<last_sync_at>` from cloud Fastify
+1. Device stores `last_sync_at` timestamp in `user_preferences`
+2. On sync (daily, or on the `recipe_sync_now` MQTT command), the `epicurad` sync thread requests `GET /recipes/sync?since=<last_sync_at>` from cloud Fastify
 3. Cloud returns recipes with `updated_at > since` and list of deleted recipe IDs
-4. CM5 upserts recipes into local PostgreSQL and removes deleted ones
-5. CM5 updates `last_sync_at` to server timestamp
+4. Device upserts recipes into SQLite in a single transaction and removes deleted ones
+5. Device updates `last_sync_at` to server timestamp
 
 ### 5.2 Cooking Log Sync (Device → Cloud)
 
-1. CM5 stores cooking logs locally in PostgreSQL
-2. Logs marked `synced = false` are uploaded via `POST /sessions` to cloud on next connection
+1. Device stores cooking logs locally in SQLite `cooking_sessions` and queues a `session` row in `sync_outbox`
+2. When online, the sync thread drains `sync_outbox` in order via `POST /sessions` / `PUT /sessions/:id`; rows that fail stay queued with an incremented `attempts` count
 3. Cloud stores in `cooking_sessions` table and marks as synced
-4. Device marks local logs as `synced = true`
+4. Device marks local logs as `synced = true` and deletes the outbox row
 
 ### 5.3 Conflict Resolution
 
@@ -454,7 +466,7 @@ Migration files are stored in `packages/db/migrations/` and version-controlled. 
 
 - [[01-Backend-Architecture|Backend Architecture]] - Service architecture and deployment
 - [[01-REST-API-Reference|REST API Reference]] - Endpoints that query this schema
-- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - CM5 PostgreSQL schema
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Device SQLite schema (full DDL)
 - [[03-Admin-Portal|Admin Portal]] - Admin interface for managing this data
 
 #epicura #database #postgresql #schema #drizzle #backend
@@ -468,3 +480,4 @@ Migration files are stored in `packages/db/migrations/` and version-controlled. 
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-02-17 | Manas Pradhan | Added nutrition columns (calories, protein_g, carbs_g, fats_g) to recipes; updated cuisine/tag values |
 | 1.2 | 2026-02-27 | Manas Pradhan | Normalized recipe schema: replaced recipe_data JSONB with cooking_segments, segment_dispensing, and recipe_ingredients tables; changed cuisine to cuisines text[] |
+| 1.3 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: PostgreSQL is cloud-only; device holds a SQLite mirror with type mapping plus `session_checkpoint` and `sync_outbox`; renamed `firmware_version_cm5` → `firmware_version_rv1106` and firmware target `cm5` → `rv1106` |

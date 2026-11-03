@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-Epicura uses WebSocket connections for real-time communication between the cloud backend and mobile apps. The CM5 device publishes telemetry via MQTT (see [[03-MQTT-Topics|MQTT Topics]]), which the backend bridges to WebSocket clients. For local WiFi connections, apps can also connect directly to the CM5's WebSocket server.
+Epicura uses WebSocket connections for real-time communication between the cloud backend and mobile apps. The RV1106 device publishes telemetry via MQTT (see [[03-MQTT-Topics|MQTT Topics]]), which the backend bridges to WebSocket clients. The device itself hosts no WebSocket server; all real-time events reach the app through the cloud.
 
 ---
 
@@ -26,14 +26,9 @@ Auth: Pass JWT access token as query parameter
 wss://api.epicura.io/ws?token=eyJhbGciOiJIUzI1NiIs...
 ```
 
-### 2.2 Local (Direct to CM5)
+### 2.2 Local Connections
 
-```
-URL:  ws://<device-ip>:8080/ws
-Auth: None (same WiFi network assumed trusted)
-```
-
-The CM5 device IP is discovered via mDNS (`_epicura._tcp.local`) or read from the BLE WiFi Provisioning service (see [[04-BLE-Services|BLE Services]]).
+There is no device-hosted WebSocket endpoint and no MJPEG stream. The only direct app-to-device channels are BLE during setup (see [[04-BLE-Services|BLE Services]]) and, on the same LAN, the on-demand RTSP live view at `rtsp://<device-ip>:554/pot` (H.264 720p, single viewer), which the cloud starts by publishing the MQTT `live_view_start` command; off-LAN the video goes through a cloud relay.
 
 ---
 
@@ -302,7 +297,7 @@ Device status change (online, offline, cooking, error).
   "timestamp": "2026-02-14T12:28:00Z",
   "data": {
     "status": "online",
-    "firmware_version_cm5": "1.2.0",
+    "firmware_version_rv1106": "1.2.0",
     "firmware_version_stm32": "1.1.0"
   }
 }
@@ -319,7 +314,7 @@ Device alert requiring user attention.
   "timestamp": "2026-02-14T12:29:00Z",
   "data": {
     "alert_type": "firmware_update_available",
-    "message": "New firmware v1.2.1 available for CM5",
+    "message": "New firmware v1.2.1 available for RV1106",
     "priority": "low"
   }
 }
@@ -334,7 +329,7 @@ The cloud backend bridges MQTT telemetry from Epicura devices to WebSocket clien
 ```
 ┌──────────┐     MQTT         ┌──────────────┐     Redis Pub/Sub    ┌───────────┐
 │ Epicura  │────────────────►│  MQTT Broker  │────────────────────►│ API Server│
-│ CM5      │                  │  (Mosquitto / │                     │ (Fastify) │
+│ RV1106   │                  │  (Mosquitto / │                     │ (Fastify) │
 │          │                  │   AWS IoT)    │                     │           │
 └──────────┘                  └──────────────┘                     └─────┬─────┘
                                                                          │
@@ -348,7 +343,7 @@ The cloud backend bridges MQTT telemetry from Epicura devices to WebSocket clien
 
 **Flow:**
 
-1. CM5 publishes telemetry to MQTT topic `epicura/EPIC-001/session/progress`
+1. The device publishes telemetry to MQTT topic `epicura/EPIC-001/session/progress`
 2. API server MQTT subscriber receives the message
 3. Server translates MQTT payload to WebSocket event format
 4. Server publishes to Redis pub/sub channel `ws:EPIC-001`
@@ -365,7 +360,7 @@ This ensures horizontal scalability — multiple API server instances can serve 
 | `SENSOR_FAILURE` | `warning` | Temperature or weight sensor malfunction |
 | `OVER_TEMPERATURE` | `critical` | Temperature exceeded safe maximum (260°C) |
 | `MOTOR_STALL` | `warning` | Stirring arm stalled (overcurrent detected) |
-| `COMMUNICATION_LOST` | `critical` | CM5-STM32 communication timeout |
+| `COMMUNICATION_LOST` | `critical` | RV1106-STM32 communication timeout |
 | `CV_FAILURE` | `warning` | Camera or ML model failure (timer fallback active) |
 | `POWER_ANOMALY` | `critical` | Voltage or current out of range |
 | `POT_REMOVED` | `warning` | Pot removed during cooking |
@@ -403,3 +398,4 @@ On reconnection, the client should re-send `subscribe` events for all previously
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: removed device-hosted WebSocket server; live video is RTSP on LAN or cloud relay; `firmware_version_cm5` → `firmware_version_rv1106` |

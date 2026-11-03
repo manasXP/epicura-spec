@@ -16,7 +16,7 @@ aliases: [STM32 Spec, MCU Spec]
 
 ## 1. Overview
 
-The STM32G474RE is the real-time motor/sensor controller and safety guardian for Epicura. It runs FreeRTOS with four primary tasks: PID temperature control (10 Hz), BLDC motor drive (50 Hz task rate), sensor polling (10 Hz), and CM5 communications (20 Hz). It owns all safety-critical paths including the heater relay, E-stop handling, and watchdog supervision.
+The STM32G474RE is the real-time motor/sensor controller and safety guardian for Epicura. It runs FreeRTOS with four primary tasks: PID temperature control (10 Hz), BLDC motor drive (50 Hz task rate), sensor polling (10 Hz), and RV1106 communications (20 Hz). It owns all safety-critical paths including the heater relay, E-stop handling, and watchdog supervision.
 
 ### 1.1 Hardware Summary
 
@@ -40,7 +40,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | ID | Requirement | Priority | Acceptance Criteria |
 |----|-------------|----------|---------------------|
 | FR-MCU-001 | Closed-loop PID at 10 Hz (100 ms period) | Must | Steady-state error ≤ ±5 °C |
-| FR-MCU-002 | Default PID gains: Kp=2.0, Ki=0.5, Kd=0.1 | Must | Tunable at runtime via SPI command |
+| FR-MCU-002 | Default PID gains: Kp=2.0, Ki=0.5, Kd=0.1 | Must | Tunable at runtime via UART command |
 | FR-MCU-003 | Overshoot protection: clamp at setpoint + 10 °C | Must | Integral windup reset when exceeded |
 | FR-MCU-004 | Temperature ramp control (°C/min configurable) | Should | Linear ramp from current to target |
 | FR-MCU-005 | Read IR thermometer (MLX90614) for food surface temp | Must | I2C @ 100 kHz, accuracy ±0.5 °C |
@@ -62,8 +62,8 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | ID | Requirement | Priority | Acceptance Criteria |
 |----|-------------|----------|---------------------|
 | FR-MCU-010 | Drive BLDC stirring motor at 10 kHz PWM via TIM1_CH1 (PA8) + PA4 (EN) + PA5 (DIR) | Must | 0–100% duty cycle speed, digital enable/direction |
-| FR-MCU-011 | Support stir patterns: circular, figure-8, scrape, fold (via duty cycle + DIR toggle) | Must | Pattern selected by CM5 command (0x02), direction param added |
-| FR-MCU-012 | Stall detection via INA219 24V current spike or FG dropout (future) | Should | Alert CM5 if motor draws >3 A for >500 ms |
+| FR-MCU-011 | Support stir patterns: circular, figure-8, scrape, fold (via duty cycle + DIR toggle) | Must | Pattern selected by RV1106 command (0x02), direction param added |
+| FR-MCU-012 | Stall detection via INA219 24V current spike or FG dropout (future) | Should | Alert RV1106 if motor draws >3 A for >500 ms |
 | FR-MCU-013 | Drive P-ASD: pump PWM via TIM2_CH1 (PA0), 6× solenoid via PCF8574 I2C GPIO expander (I2C1, addr 0x20, outputs P0-P5) | Must | Pump: 25 kHz PWM speed control; Solenoids: digital on/off via I2C write to PCF8574 → MOSFET gates |
 | FR-MCU-014 | Motor control task at 50 Hz (20 ms period) | Must | Highest priority FreeRTOS task |
 
@@ -100,7 +100,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 **Clog recovery (no pressure drop after main pulse):**
 1. **Retry 1:** Increase pressure to 1.2 bar, repeat pulse
 2. **Retry 2:** Rapid 50 ms on/off oscillating pulses (5 cycles)
-3. **Failure:** Send CLOG ERROR (0x12) to CM5
+3. **Failure:** Send CLOG ERROR (0x12) to RV1106
 
 #### 2.5.2 SLD Closed-Loop Dispensing
 
@@ -108,20 +108,21 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 2. Open solenoid + start pump
 3. Monitor weight loss on that channel's load cell @ 10 Hz
 4. Stop pump when `weight_dispensed ≥ target × 0.95`
-5. Close solenoid, report final weight to CM5
-6. If reservoir weight < low-level threshold, send SLD_LOW_LEVEL alert (0x14) to CM5
+5. Close solenoid, report final weight to RV1106
+6. If reservoir weight < low-level threshold, send SLD_LOW_LEVEL alert (0x14) to RV1106
 
-### 2.6 CM5 Communication
+### 2.6 RV1106 Communication
 
 | ID | Requirement | Priority | Acceptance Criteria |
 |----|-------------|----------|---------------------|
-| FR-MCU-040 | SPI slave on SPI2 (PB12–PB15) | Must | Up to 10 MHz clock |
-| FR-MCU-041 | Assert IRQ (PB3, active-low, 10 µs pulse) when data ready | Must | CM5 polls on IRQ |
+| FR-MCU-040 | UART bridge on USART2 (PA2 TX / PA3 RX), 1,000,000 baud, 8N1, 3.3 V, RX via DMA circular buffer | Must | SOF 0x7E framing with 0x7D byte-stuffing; receiver resynchronises on SOF after any corrupt byte |
+| FR-MCU-041 | No data-ready / IRQ line: outgoing messages are pushed unsolicited as soon as queued | Must | PB3 freed; RV1106 bridge thread reads continuously (`VMIN=1`) |
 | FR-MCU-042 | Validate CRC-16/CCITT on all received messages | Must | NAK on CRC mismatch |
-| FR-MCU-043 | Send telemetry at 10 Hz (0x10) | Must | temp, motor_rpm, weight, state |
+| FR-MCU-043 | Send telemetry at 20 Hz (0x10) | Must | temp, motor_rpm, weight, state |
 | FR-MCU-044 | Send status on safety state change (0x12) | Must | safety_state, error_code, flags |
 | FR-MCU-045 | Comms task at 20 Hz (50 ms period) | Must | Process incoming commands + queue outgoing |
-| FR-MCU-046 | Monitor CM5 heartbeat (expect every 2 s) | Must | If missed for 5 s → IWDG-triggered safe state |
+| FR-MCU-046 | Monitor RV1106 heartbeat (expect every 2 s) | Must | If missed for 5 s → IWDG-triggered safe state |
+| FR-MCU-047 | Same USART2 link carries STM32 firmware updates via the ST USART system bootloader | Should | RV1106 drives BOOT0 (header pin 32) and NRST (header pin 38); `.bin` streamed, CRC verified before reset |
 
 ### 2.7 Safety
 
@@ -134,6 +135,17 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | FR-MCU-054 | Pot detection via CAN (module-reported) | Must | No heat command if pot absent |
 | FR-MCU-055 | Boot-safe state: all actuator outputs OFF until initialized | Must | 100 kΩ pull-downs on MOSFET gates |
 
+### 2.8 LED Ring (WS2812B)
+
+The camera LED ring is driven by the STM32, not the application processor: WS2812B needs 5 V logic and a jitter-free 800 kHz bit stream, which the RV1106 cannot guarantee from a Linux user-space GPIO. The RV1106 only requests a lighting mode over the bridge.
+
+| ID | Requirement | Priority | Acceptance Criteria |
+|----|-------------|----------|---------------------|
+| FR-MCU-060 | Drive 12–16 WS2812B LEDs from PB14 (TIM15_CH1 PWM + DMA, 800 kHz bit timing, 1.25 µs/bit) through a 74AHCT1G125 3.3 → 5 V level shifter | Must | No CPU bit-banging; 16-LED frame update ≤ 1 ms; ≥ 50 µs reset latch after each frame |
+| FR-MCU-061 | Handle SET_LED (0x20): mode (uint8: OFF / CAPTURE / NIGHT), r, g, b (uint8), brightness_pct (uint8) | Must | Applied within one comms cycle (≤ 50 ms); ACK returned |
+| FR-MCU-062 | Mode semantics: OFF = all LEDs off and ring 5 V switch (PCF8574 #2 P3) off; CAPTURE = supplied RGB at brightness_pct (default daylight white 255,255,255 @ 100 %); NIGHT = supplied RGB at brightness_pct (default 128,110,90 @ 30 %) | Must | Colour and brightness held until next SET_LED |
+| FR-MCU-063 | Ring OFF in boot-safe state and on E_STOP | Must | PB14 idle low, PCF8574 #2 P3 low until first SET_LED after NORMAL |
+
 ---
 
 ## 3. Hardware Interfaces
@@ -144,8 +156,8 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 |-----|----------|------------|--------|
 | **PA0** | TIM2_CH1 | PWM 25 kHz | P-ASD diaphragm pump (via IRLML6344) |
 | **PA1** | — | Available | Freed (was P-ASD solenoid V1, now via PCF8574) |
-| **PA2** | — | Available | Freed (was P-ASD solenoid V2, now via PCF8574) |
-| **PA3** | — | Available | Freed (was P-ASD solenoid V5, now via PCF8574) |
+| **PA2** | USART2_TX | UART 1 Mbps | Bridge to RV1106 (→ Luckfox Pico Zero header pin 10, UART2 RX); also ST system-bootloader UART |
+| **PA3** | USART2_RX | UART 1 Mbps | Bridge from RV1106 (← Luckfox Pico Zero header pin 8, UART2 TX); also ST system-bootloader UART |
 | **PA4** | GPIO output | Digital | BLDC motor EN (enable, via J_STACK Pin 39) |
 | **PA5** | GPIO output | Digital | BLDC motor DIR (direction, via J_STACK Pin 40) |
 | **PA6** | TIM3_CH1 | PWM 25 kHz | Exhaust fan 1 |
@@ -159,7 +171,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | **PB0** | GPIO output | Digital | Safety relay (via N-MOSFET) |
 | **PB1** | GPIO input | Digital | Pot detection (from CAN module status, optional hardwire) |
 | **PB2** | EXTI | Interrupt | E-stop button (NC, active-low) |
-| **PB3** | GPIO output | Digital | IRQ to CM5 (active-low, 10 µs pulse) |
+| **PB3** | — | Available | Freed (was IRQ to application processor; UART bridge needs no data-ready line) |
 | **PB4** | GPIO output | Digital | CID-1 stepper DIR+ (via 100R to J_CID) |
 | **PB5** | GPIO output | Digital | CID linear actuator 2 EN (DRV8876) |
 | **PA15** | I2C1_SCL | I2C @ 100 kHz | MLX90614 + INA219 (shared bus) |
@@ -167,11 +179,11 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | **PB8** | FDCAN1_RX | CAN | Induction module RX (via SN65HVD230) |
 | **PB9** | FDCAN1_TX | CAN | Induction module TX (via SN65HVD230) |
 | **PB10** | GPIO output | Software PWM 25 kHz | Exhaust fan 2 |
-| **PB12** | SPI2_NSS | SPI slave | CM5 chip select |
-| **PB13** | SPI2_SCK | SPI slave | CM5 clock |
-| **PB14** | SPI2_MISO | SPI slave | STM32 → CM5 data |
-| **PB15** | SPI2_MOSI | SPI slave | CM5 → STM32 data |
-| **PC0** | — | Available | Freed (pot load cells removed) |
+| **PB12** | — | Available | Freed (was SPI2_NSS; bridge moved to USART2) |
+| **PB13** | — | Available | Freed (was SPI2_SCK; bridge moved to USART2) |
+| **PB14** | TIM15_CH1 | PWM + DMA, 800 kHz | WS2812B LED ring data (via 74AHCT1G125 3.3 → 5 V level shifter to J_LED pin 2) |
+| **PB15** | — | Available | Freed (was SPI2_MOSI; bridge moved to USART2) |
+| **PC0** | ADC | Analog | USB VBUS detect (100k/100k divider; moved from PA3, which is now USART2_RX) |
 | **PC1** | — | Available | Freed (pot load cells removed) |
 | **PC2** | GPIO output | Digital | CID linear actuator 2 PH (DRV8876) |
 | **PC3** | GPIO output | PWM (software) | SLD pump 1 PWM (TB6612) |
@@ -230,7 +242,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | Safety Monitor | 10 Hz | 100 ms | Highest (4) | 256 B | Thermal limits, E-stop, watchdog kick |
 | PID Control | 10 Hz | 100 ms | High (3) | 512 B | Read IR + CAN coil temp, compute PID, send CAN |
 | Sensor Poll | 10 Hz | 100 ms | Medium (2) | 512 B | Load cells, INA219, aggregate telemetry |
-| CM5 Comms | 20 Hz | 50 ms | Medium (2) | 1024 B | SPI slave handler, command parser, telemetry TX |
+| RV1106 Comms | 20 Hz | 50 ms | Medium (2) | 1024 B | USART2 DMA RX + frame codec, command parser, telemetry TX, SET_LED forwarding |
 
 ### 4.3 Safety State Machine
 
@@ -249,32 +261,37 @@ CRITICAL ──[condition cleared within timeout]──→ WARNING
 |------|----|---------|
 | NORMAL | WARNING | CAN coil temp > 250 °C |
 | WARNING | CRITICAL | IR > 260 °C, or CAN fault from induction module |
-| CRITICAL | E_STOP | IR > 270 °C, CAN coil over-temp, E-stop button, CM5 heartbeat timeout (5 s) |
+| CRITICAL | E_STOP | IR > 270 °C, CAN coil over-temp, E-stop button, RV1106 heartbeat timeout (5 s) |
 | E_STOP | NORMAL | Manual hardware reset (E-stop button released + PB2 debounce) |
 
 ### 4.4 Boot Sequence
 
 1. **Reset** → SystemInit (clock to 170 MHz HSE + PLL)
 2. **HAL_Init** → SysTick, NVIC priorities
-3. **Peripheral init** → GPIO (all outputs LOW/safe), ADC, TIM, SPI, I2C, FDCAN
+3. **Peripheral init** → GPIO (all outputs LOW/safe), ADC, TIM (incl. TIM15 + DMA for WS2812B), USART2, I2C, FDCAN
 4. **Safety check** → Verify E-stop not pressed, relay OFF, self-test sensors
 5. **FreeRTOS start** → Create tasks, start scheduler
-6. **Wait for CM5 heartbeat** → First heartbeat received → safety state NORMAL
+6. **Wait for RV1106 heartbeat** → First heartbeat received → safety state NORMAL
 7. **IDLE mode** → Sensors polling at 1 Hz, heartbeat monitoring, awaiting commands
 
 ---
 
 ## 5. Communication Protocols
 
-### 5.1 SPI Slave Protocol (STM32 ↔ CM5)
+### 5.1 UART Bridge Protocol (STM32 ↔ RV1106)
 
-See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definition.
+See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame definition.
 
-- STM32 operates as SPI2 slave (PB12–PB15)
-- NSS (PB12) driven by CM5 GPIO8
+- Link: USART2 (PA2 TX / PA3 RX) ↔ Luckfox Pico Zero UART2 (header pins 10 / 8), 1,000,000 baud, 8N1, 3.3 V. CAN 500 kbps remains the production alternative.
+- Framing: SOF 0x7E, byte-stuffing with 0x7D escape, then msg_id, msg_type, payload_len, payload (≤ 64 bytes), CRC-16/CCITT. Message body and type codes are unchanged from the earlier SPI design.
+- RX: DMA circular buffer + idle-line interrupt; parser discards bytes until SOF and validates CRC before dispatch
 - On valid command: parse, execute, queue ACK/response
 - On CRC mismatch: NAK (0xFF) response
-- IRQ (PB3) asserted 10 µs when outgoing data queued
+- No data-ready / IRQ line: TELEMETRY (0x10) is pushed unsolicited at 20 Hz; other responses as soon as queued
+- Heartbeat RV1106 → STM32 every 2 s; IWDG 5 s. ACK timeout 500 ms, 3 retries. E_STOP (0x04) needs no ACK
+- SET_LED (0x20) is handled by the comms task and forwarded to the LED ring driver (§2.8)
+- Firmware update: USART2 is also the ST system-bootloader UART; the RV1106 drives BOOT0 / NRST and streams the `.bin` over the same wires
+- Nucleo-G474RE prototype caveat: PA2/PA3 are routed to the ST-Link VCP by default; open the solder bridges and route to the CN10 header pins, or use the custom Controller PCB
 
 ### 5.2 CAN Bus Protocol (STM32 ↔ Induction Module)
 
@@ -301,7 +318,7 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 
 ### 6.1 Power Supply
 
-- Input: 5 V from CM5IO 40-pin (or direct from Driver PCB 5 V rail)
+- Input: 5 V from Driver PCB 5 V rail (buck from 24 V)
 - LDO: AMS1117-3.3 (SOT-223), 5 V → 3.3 V @ 800 mA max
 - Decoupling: 10 µF input, 10 µF output, 100 nF per VDD pin
 - Typical consumption: ~0.5 W (170 MHz, all peripherals active)
@@ -310,7 +327,7 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 
 | State | Description | Current (3.3 V) |
 |-------|-------------|-----------------|
-| Active | All tasks running, PID + CAN + SPI active | ~150 mA |
+| Active | All tasks running, PID + CAN + UART active | ~150 mA |
 | Idle | Sensors at 1 Hz, awaiting commands | ~80 mA |
 | E_STOP | Relay open, buzzer on, minimal processing | ~100 mA |
 | Reset | After IWDG timeout, re-initializing | ~50 mA |
@@ -329,7 +346,7 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 | Thermal cutoff (IR) | MLX90614 > 270 °C → E_STOP | ≤100 ms (poll interval) |
 | Thermal cutoff (CAN coil) | CAN coil over-temp → E_STOP | ≤500 ms (CAN status interval) |
 | CAN fault | No module response in 500 ms → reduce power | 500 ms |
-| CM5 heartbeat loss | No heartbeat for 5 s → safe state | 5 s |
+| RV1106 heartbeat loss | No heartbeat for 5 s → safe state | 5 s |
 | Overcurrent | INA219 > threshold → warning/shutdown | ≤100 ms |
 
 ### 7.2 Fault Table
@@ -339,25 +356,25 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 | 0x01 | OVER_TEMP_IR | Critical | E_STOP, cut relay, log |
 | 0x02 | OVER_TEMP_COIL | Critical | E_STOP, cut relay, log |
 | 0x03 | E_STOP_PRESSED | Critical | E_STOP, cut relay, buzzer |
-| 0x04 | CAN_FAULT | Critical | Reduce power to 0, alert CM5 |
-| 0x05 | CM5_HEARTBEAT_LOSS | Critical | Safe state (hold temp at 0, stop servo) |
-| 0x10 | SERVO_STALL | Warning | Stop servo, alert CM5 |
-| 0x11 | SLD_LOAD_CELL_DRIFT | Warning | Alert CM5, flag SLD dispense unreliable |
-| 0x12 | PASD_CLOG | Warning | Pneumatic retry sequence (pressure increase + oscillating pulses), then alert CM5 |
-| 0x13 | SLD_DISPENSE_ERROR | Warning | Stop pump, alert CM5 with actual vs target |
+| 0x04 | CAN_FAULT | Critical | Reduce power to 0, alert RV1106 |
+| 0x05 | RV1106_HEARTBEAT_LOSS | Critical | Safe state (hold temp at 0, stop servo) |
+| 0x10 | SERVO_STALL | Warning | Stop servo, alert RV1106 |
+| 0x11 | SLD_LOAD_CELL_DRIFT | Warning | Alert RV1106, flag SLD dispense unreliable |
+| 0x12 | PASD_CLOG | Warning | Pneumatic retry sequence (pressure increase + oscillating pulses), then alert RV1106 |
+| 0x13 | SLD_DISPENSE_ERROR | Warning | Stop pump, alert RV1106 with actual vs target |
 | 0x20 | CAN_TX_TIMEOUT | Info | Retry 3×, then CAN_FAULT |
 | 0x21 | I2C_NACK | Info | Retry 3×, use last-known value |
 
 ### 7.3 E-Stop Sequence
 
-1. **PB2 EXTI fires** (or software E_STOP from CM5 command 0x04)
+1. **PB2 EXTI fires** (or software E_STOP from RV1106 command 0x04)
 2. Safety relay opened (PB0 LOW → relay de-energizes → AC cut)
 3. All PWM outputs set to 0% (TIM1, TIM2, TIM3)
 4. CAN: send power=0 to module (belt-and-suspenders with relay)
 5. Buzzer activated (PC7 PWM)
-6. Status packet (0x12) sent to CM5: `safety_state = E_STOP`
+6. Status packet (0x12) sent to RV1106: `safety_state = E_STOP`
 7. **Hold state** — only IWDG kick continues; no commands accepted
-8. **Reset** — PB2 debounce clears → re-init → wait for CM5 heartbeat → NORMAL
+8. **Reset** — PB2 debounce clears → re-init → wait for RV1106 heartbeat → NORMAL
 
 ---
 
@@ -368,7 +385,8 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 | PID loop period | 100 ms ± 1 ms | TIM interrupt jitter |
 | Motor control period | 20 ms ± 0.5 ms | TIM interrupt jitter |
 | E-stop latency | <1 ms | PB2 edge → relay GPIO toggle |
-| SPI command parse | <1 ms | NSS assert → response queued |
+| UART command parse | <1 ms | Frame CRC valid → response queued |
+| WS2812B frame update (16 LEDs) | <1 ms | DMA start → transfer complete |
 | CAN round-trip | <10 ms | TX → RX status |
 | Sensor poll cycle | <50 ms (all sensors) | Cycle start → data ready |
 | Temperature accuracy | ±5 °C (IR to food surface) | Calibrated against thermocouple |
@@ -387,15 +405,17 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 - Controller PCB (160×90 mm) provides STM32 + LDO + connectors
 - Driver PCB (160×90 mm) provides buck converters, H-bridges, MOSFETs
 - Stacking connector (J_STACK, 2×20) bridges Controller ↔ Driver
-- CM5IO provides SPI connection to CM5
+- Luckfox Pico Zero header pins 8/10 (UART2) connect to USART2 PA2/PA3 at 3.3 V (no level shifting)
+- 74AHCT1G125 level shifter on the Controller PCB between PB14 and J_LED (WS2812B 5 V data)
 
 ### 9.2 Firmware Dependencies
 
-- STM32 HAL drivers (STM32CubeMX generated): GPIO, ADC, TIM, SPI, I2C, FDCAN
+- STM32 HAL drivers (STM32CubeMX generated): GPIO, ADC, TIM, USART, I2C, FDCAN
 - FreeRTOS 10.x kernel + CMSIS-RTOS2 wrapper
 - CMSIS-DSP library (PID functions)
 - Custom HX711 bit-bang driver
 - CRC-16/CCITT lookup table
+- UART frame codec (SOF / byte-stuffing) and TIM15 + DMA WS2812B driver
 
 ### 9.3 Constraints
 
@@ -409,10 +429,10 @@ See [[04-MPU-Functional-Specification#5.1 SPI Protocol]] for full frame definiti
 
 | Topic | Document |
 |-------|----------|
-| CM5 MPU spec | [[04-MPU-Functional-Specification]] |
+| RV1106 MPU spec | [[04-MPU-Functional-Specification]] |
 | State machine details | [[03-Main-Loop-State-Machine]] |
 | Software architecture | [[02-Controller-Software-Architecture]] |
 | Unified PCB design | [[01-Unified-PCB-Design]] |
 | Dispensing subsystems | [[03-Ingredient-Dispensing]] |
 | Hardware architecture | [[01-Epicura-Architecture]] |
-| Technical specifications | [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications]] |
+| Technical specifications | [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications]] |

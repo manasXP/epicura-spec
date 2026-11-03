@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 2.0
+modified: 2026-11-04
+version: 2.1
 status: Draft
 ---
 
@@ -17,14 +17,14 @@ This document details the sensing subsystem components for the Epicura kitchen r
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Sensor Subsystem                             │
 │                                                                 │
-│  ┌──────────────┐  CSI-2   ┌──────────────┐                   │
-│  │  IMX219      │─────────►│  Raspberry   │                   │
-│  │  Camera      │          │  Pi CM5      │                   │
-│  └──────────────┘          │  (Vision AI) │                   │
+│  ┌──────────────┐ MIPI CSI ┌──────────────┐                   │
+│  │  SC3336      │─────────►│  RV1106      │                   │
+│  │  Camera      │          │  (Luckfox    │                   │
+│  └──────────────┘          │  Pico Zero)  │                   │
 │                            └──────────────┘                   │
 │  ┌──────────────┐                                              │
-│  │  WS2812B     │◄── GPIO (NeoPixel data line)                │
-│  │  LED Ring    │                                              │
+│  │  WS2812B     │◄── STM32 PB14 (TIM15 PWM+DMA)                │
+│  │  LED Ring    │    via 74AHCT1G125 3.3→5 V                   │
 │  └──────────────┘                                              │
 │                                                                 │
 │  ┌──────────────┐  I2C     ┌──────────────┐                   │
@@ -43,32 +43,27 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 ## 3. Component List
 
-### 3.1 Option A: Standard Camera (Recommended for Prototype)
+### 3.1 Camera
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
-| Camera Module IMX219 | RPi Camera Module V2 | 1 | $25.00 | $25.00 | RPi Foundation | 8MP, CSI-2, fixed focus, sufficient for CV |
+| Camera Module SC3336 | Luckfox SC3336 3MP (MIPI CSI, FPC included) | 1 | $12.00 | $12.00 | Luckfox / Waveshare | 3MP, run at 1280x720 @ 30fps into the RV1106 ISP; fixed focus; ISP tuning file shipped in the Luckfox SDK |
 
-### 3.2 Option B: Premium Camera (Production Consideration)
-
-| Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
-|-----------|-------------|-----|------------|----------|----------|-------|
-| Camera Module IMX477 | RPi HQ Camera | 1 | $50.00 | $50.00 | RPi Foundation | 12.3MP, C-mount lens, adjustable focus |
-
-### 3.3 Thermal & Weight Sensors
+### 3.2 Thermal & Weight Sensors
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | IR Thermometer | MLX90614ESF-BAA | 1 | $12.00 | $12.00 | Mouser / DigiKey | Non-contact, I2C, 90° FOV, -70 to +380°C |
 
-### 3.4 Detection & Illumination
+### 3.3 Detection & Illumination
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Reed Switch | MKA-14103 | 1 | $1.00 | $1.00 | Amazon | Pot detection (magnet in pot base) |
-| LED Ring (WS2812B) | 12-LED NeoPixel Ring | 1 | $5.00 | $5.00 | Adafruit / Amazon | Camera illumination, consistent lighting |
+| LED Ring (WS2812B) | 12-LED NeoPixel Ring | 1 | $5.00 | $5.00 | Adafruit / Amazon | Camera illumination, consistent lighting; data driven by STM32 PB14 (TIM15_CH1 PWM + DMA, 800 kHz) via 74AHCT1G125; 5 V power switched by PCF8574 #2 P3; RV1106 requests modes via SET_LED |
+| Level Shifter 3.3→5 V | 74AHCT1G125 (SOT-23-5) | 1 | $0.30 | $0.30 | Mouser / LCSC | Buffers the STM32 PB14 WS2812B data line to 5 V logic |
 
-### 3.5 Passive Components
+### 3.4 Passive Components
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
@@ -79,24 +74,15 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 ## 4. Cost Summary
 
-### 4.1 With IMX219 (Recommended for Prototype)
-
 | Item | Cost |
 |------|------|
-| IMX219 Camera | $25.00 |
+| SC3336 Camera | $12.00 |
 | MLX90614 IR Thermometer | $12.00 |
 | Reed Switch | $1.00 |
 | LED Ring (WS2812B) | $5.00 |
+| 74AHCT1G125 Level Shifter | $0.30 |
 | Passive Components | $0.70 |
-| **Category Subtotal** | **$43.70** |
-
-### 4.2 With IMX477 (Premium Option)
-
-| Item | Cost |
-|------|------|
-| IMX477 Camera | $50.00 |
-| All other sensors (same) | $18.70 |
-| **Category Subtotal** | **$68.70** |
+| **Category Subtotal** | **$31.00** |
 
 ---
 
@@ -104,17 +90,11 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 ### 5.1 Camera Selection
 
-| Feature | IMX219 (V2) | IMX477 (HQ) |
-|---------|-------------|-------------|
-| Resolution | 8 MP (3280x2464) | 12.3 MP (4056x3040) |
-| Sensor Size | 1/4" | 1/2.3" |
-| Lens | Fixed (integrated) | C-mount (interchangeable) |
-| Focus | Fixed (~30 cm to infinity) | Manual focus ring |
-| Price | $25 | $50 |
-| Prototype Use | Recommended | Overkill |
-| Production Use | May suffice | Better for challenging conditions |
-
-**Recommendation:** IMX219 for prototype. Fixed focus simplifies mounting. 8 MP is more than sufficient for food stage classification (model input is typically 224x224 pixels). Consider IMX477 for production if variable focus or better low-light performance is needed.
+- **SC3336 (3 MP)** is the Luckfox-supported sensor for the RV1106; the SDK ships its ISP tuning file. IMX219 and IMX477 are dropped because no RV1106 ISP tuning file exists for them.
+- Runs at 1280x720 @ 30 fps (not 1080p). ISP main path 1280x720 NV12 for the on-demand phone stream and LCD preview; ISP self-path 224x224 RGB888 sampled at 2 fps straight into the NPU.
+- Dehaze, 2D/3D noise reduction, LSC, sharpening, AWB and AE run in the ISP, so steam over the pot is handled in hardware.
+- Fixed focus simplifies mounting. 3 MP is more than sufficient for food stage classification (model input is 224x224 pixels).
+- Same module for prototype and production; the FPC plugs directly into the Pico Zero MIPI CSI connector.
 
 ### 5.2 MLX90614ESF-BAA IR Thermometer
 - **90° FOV (BAA variant):** Covers entire pot surface from overhead mounting
@@ -129,8 +109,8 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 - [[01-Compute-Module-Components|Compute Module Components]]
 - [[02-Actuation-Components|Actuation Components]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 
 ---
 
@@ -144,3 +124,4 @@ This document details the sensing subsystem components for the Epicura kitchen r
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Removed NTC thermistors (coil temp via CAN, ambient not needed); subtotal $64.90 → $62.70 |
+| 2.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 for the RV1106 ISP (IMX219/IMX477 dropped); LED ring now driven by STM32 PB14 via 74AHCT1G125 (+$0.30); subtotal $43.70 → $31.00 |

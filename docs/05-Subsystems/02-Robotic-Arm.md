@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 2.0
+modified: 2026-11-04
+version: 2.1
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V BLDC motor with integrated ESC, controlled by the STM32 via PWM speed control, EN (enable), and DIR (direction) signals, and communicates with the CM5 application processor for pattern selection and speed commands.
+The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V BLDC motor with integrated ESC, controlled by the STM32 via PWM speed control, EN (enable), and DIR (direction) signals, and communicates with the RV1106 application processor for pattern selection and speed commands.
 
 ## 2. Arm Assembly Design
 
@@ -199,7 +199,7 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 // PA5 = BLDC_DIR (output, default LOW = CW)
 ```
 
-### 8.2 Command Protocol (CM5 to STM32)
+### 8.2 Command Protocol (RV1106 to STM32)
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
@@ -306,8 +306,8 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 
 ## 12. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture]]
 - [[01-Induction-Heating|Induction Heating System]]
 - [[03-Ingredient-Dispensing|Ingredient Dispensing System]]
@@ -324,3 +324,4 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo with 24V BLDC motor (integrated ESC); updated motor selection, PWM config (10 kHz), control interface (PWM+EN+DIR), command protocol (added direction param), stall detection (INA219-based), and testing procedures |
+| 2.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); motor control and command protocol unchanged |
