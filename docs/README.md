@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.2
+version: 1.4
 status: Draft
 ---
 
@@ -19,7 +19,7 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 #### 1.1.2 Hardware
 2. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]** - Induction, robotic arm, sensors, and performance requirements
 3. **[[01-Epicura-Architecture|Epicura Architecture]]** - System block diagrams and hardware wiring
-4. **[[03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera, IR thermometer, and load cells
+4. **[[03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera, module-reported cooking temperature, load cells and pot detection
 5. **[[04-Mechanical-Design|Mechanical Design]]** - Enclosure, arm mechanism, and industrial design
 
 #### 1.1.3 Software
@@ -33,8 +33,8 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 > [!note] Moved to [[__Workspaces/Appliance/Epicura/epi-UX/__init|epi-UX]] workspace
 
 #### 1.1.5 Subsystems
-9. **[[01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface (CAN bus), PID temperature control, and power management
-10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis servo arm, stirring patterns, and STM32 motor control
+9. **[[01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface on the isolated CAN port, module-internal temperature control, and power management
+10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis arm on a 24V CAN servo motor (regular CAN port), stirring patterns, and STM32 motor control
 11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing: FID (fine, servo carousel), CID (coarse, servo carousel), SLD (liquids)
 12. **[[04-Vision-System|Vision System]]** - HD camera, edge AI inference, and cooking stage detection
 13. **[[05-Exhaust-Fume-Management|Exhaust & Fume Management]]** - Exhaust fan, grease/carbon filtration, and fume extraction
@@ -56,11 +56,11 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 #### 1.1.9 Components (BOM)
 18. **[[01-Compute-Module-Components|Compute Module Components]]** - Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD
 19. **[[02-Actuation-Components|Actuation Components]]** - Servo motors, induction driver, solenoids
-20. **[[03-Sensor-Components|Sensor Components]]** - IMX415-98 camera, IR thermometer, LED ring
+20. **[[03-Sensor-Components|Sensor Components]]** - IMX415-98 camera, reed switch, LED ring
 21. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis (~$433 prototype)
 
 #### 1.1.10 PCB Design
-22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - STM32 controller + power/driver electronics on single 4-layer board (160x90mm)
+22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - Single 4-layer board (160x90mm): STM32, Luckfox Pico Zero slot, CID/FID/SLD drivers, isolated + regular CAN ports, 2S Li-ion backup (document lives in the epicura-pcb repo)
 23. **[epicura-pcb](https://github.com/manasXP/epicura-pcb)** - Dedicated repo for KiCad project files, schematics, layouts, Gerbers, and DRC/fabrication outputs
 
 #### 1.1.11 Backend
@@ -151,7 +151,7 @@ Start with:
 Start with:
 1. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - System requirements and power budget
 2. [[01-Epicura-Architecture|Epicura Architecture]] - Block diagrams and wiring
-3. [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and load cell design
+3. [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, module-reported temperature, and load cell design
 4. [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and thermal management
 
 ### 3.3 For Software Engineers
@@ -184,8 +184,8 @@ Start with:
 
 - **Autonomous Cooking** - Hands-off operation after ingredient loading; state machine recipe execution
 - **AI Vision Monitoring** - Overhead camera with hardware ISP + NPU edge AI (RKNN) for food color/texture analysis and cooking stage detection
-- **Induction PID Control** - 1,800W induction cooktop with CAN coil temp + IR temperature feedback
-- **Robotic Stirring Arm** - Single-axis servo arm (STM32-driven) with multiple stir patterns and auto-scraping
+- **Induction Temperature Control** - 1,800W induction surface regulating on its own sensor; setpoints and status over an isolated CAN port
+- **Robotic Stirring Arm** - Single-axis arm on a 24V CAN servo motor (STM32 FDCAN2) with multiple stir patterns and auto-scraping
 - **Three-Subsystem Dispensing** - FID (6-canister servo carousel, ¼ tsp dosing, 3 servos), CID (5-slot servo carousel, 1 servo), SLD (2 peristaltic pump liquid channels with dedicated per-reservoir load cells + low-level alerts); FID + CID share one Dispenser Servo Block
 - **Touchscreen + Companion Apps** - 4" LVGL touchscreen on device, native mobile apps (iOS + Android) for remote control and live camera feed
 - **100+ Indian Recipes** - Curated recipe database covering curries, dal, rice, biryani, and more with regional variations
@@ -206,15 +206,15 @@ Start with:
 
 ### 6.1 Hardware Subsystems
 - **Compute Platform** - Luckfox Pico Zero (RV1106G3; AI/vision/UI) + STM32 (motor/arm control)
-- **Induction Heater** - 1,800W induction cooktop with CAN coil temp + IR temperature feedback
+- **Induction Heater** - 1,800W induction surface with internal temperature control, isolated CAN port
 - **Display** - 4" 480x320 capacitive touchscreen (LVGL interface, SPI)
-- **Robotic Arm** - Single-axis servo arm for stirring and ingredient dispensing
-- **CAN + IR Sensors** - Overhead IMX415-98 camera + IR thermometer + load cells
+- **Robotic Arm** - Single-axis arm on a 24V CAN servo motor (regular CAN port) for stirring
+- **Sensors** - Overhead IMX415-98 camera + SLD load cells + module-reported cooking temperature over CAN; 2S Li-ion backup on the Unified PCB
 - **Ingredient Dispensing** - FID + CID servo carousels (PCA9685 Dispenser Servo Block) + SLD (peristaltic pumps + solenoids)
 
 ### 6.2 Software Subsystems
-- **RV1106 (Buildroot Linux)** - Single C application `epicurad`: recipe engine, ISP + NPU vision pipeline, LVGL UI, cloud sync (REST/MQTT client), SQLite
-- **STM32 (FreeRTOS)** - PID temperature control, servo motor driver, sensor polling, safety watchdog
+- **RV1106 (Buildroot Linux)** - Single C application `epicurad`: recipe engine, ISP + NPU vision pipeline, LVGL UI, heater setpoints over the shared CAN bus (the module runs its own PID), cloud sync (REST/MQTT client), SQLite
+- **STM32 (FreeRTOS)** - CAN node: stir motor over a second CAN bus, dispensers, sensor polling, battery monitoring, heater off-switch, safety watchdog
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -223,8 +223,8 @@ Start with:
 │  ┌──────────────────────┐        ┌──────────────────────┐           │
 │  │  RV1106 (Luckfox)    │        │  STM32 MCU           │           │
 │  │  (Buildroot Linux)   │◄──────►│  (FreeRTOS)          │           │
-│  │  - Recipe Engine     │  UART  │  - PID Control       │           │
-│  │  - CV Pipeline       │  /CAN  │  - Servo Driver      │           │
+│  │  - Recipe Engine     │  CAN   │  - Heater Interlock  │           │
+│  │  - CV Pipeline       │ (iso)  │  - Stir Motor (CAN)  │           │
 │  │  - LVGL UI           │        │  - Sensor Polling    │           │
 │  │  - Cloud Sync        │        │  - Safety Watchdog   │           │
 │  └──────────┬───────────┘        └──────────┬───────────┘           │
@@ -233,7 +233,7 @@ Start with:
 │  │  4" Touchscreen      │        │  Induction Heater    │           │
 │  │  IMX415-98 Camera    │        │  Servo Arm           │           │
 │  │  WiFi/BT             │        │  Load Cells          │           │
-│  │                      │        │  CAN + IR Sensors    │           │
+│  │                      │        │  CAN x2, 2S battery  │           │
 │  └──────────────────────┘        └──────────────────────┘           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -251,3 +251,5 @@ Start with:
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Index descriptions and overview updated for the Luckfox Pico Zero (RV1106G3) application processor, LVGL 4" LCD, SC3336 camera and SQLite; BOM figure ~$433 |
 | 1.2 | 2026-11-04 | Manas Pradhan | Dispensing descriptions updated for servo carousels (FID/CID) |
+| 1.3 | 2026-11-04 | Manas Pradhan | Software subsystem summary and system diagram updated for the shared isolated CAN bus (heater PID on the RV1106, STM32 as CAN node with heater off-switch) |
+| 1.4 | 2026-11-04 | Manas Pradhan | Single Unified PCB with Pico Zero slot, two CAN ports and 2S battery; IR thermometer removed (module-internal temperature control); CAN servo stirring motor; BOM ~$710 |

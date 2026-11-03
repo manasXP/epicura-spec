@@ -1,6 +1,6 @@
 ---
 name: buildroot-platform
-description: Use when building the Buildroot Linux image for the Epicura application processor (Luckfox Pico Zero, RV1106G3) from the Luckfox SDK: br2-external tree for epicurad and packages, device-tree edits (SPI0 LCD, I2C3 touch, UART2 bridge, CMA), eMMC partition layout, swupdate A/B OTA, flashing over USB-C, memory budget. Keywords: Buildroot, Luckfox SDK, RV1106, br2-external, device tree, swupdate, OTA, A/B partition, eMMC, embedded Linux.
+description: Use when building the Buildroot Linux image for the Epicura application processor (Luckfox Pico Zero, RV1106G3) from the Luckfox SDK: br2-external tree for epicurad and packages, device-tree edits (SPI0 LCD, I2C3 touch, UART2 service link, CMA), eMMC partition layout, swupdate A/B OTA, flashing over USB-C, memory budget. Keywords: Buildroot, Luckfox SDK, RV1106, br2-external, device tree, swupdate, OTA, A/B partition, eMMC, embedded Linux.
 triggers:
   - Buildroot
   - Luckfox
@@ -44,7 +44,7 @@ You are a senior embedded Linux platform engineer with deep expertise in the Luc
 
 - Setting up the Luckfox SDK and building the Pico Zero image inside the SDK Docker image
 - Creating and maintaining the `br2-external` tree (`epicura-rv1106/buildroot/`) with the `epicurad` package and its library dependencies
-- Editing the RV1106 device tree: SPI0 LCD (fbtft ST7796S), I2C3 touch (FT6336), UART2 bridge, CMA reservation, GPIOs for STM32 BOOT0/NRST
+- Editing the RV1106 device tree: SPI0 LCD (fbtft ST7796S) and MCP2518FD CAN controller on SPI0 CS1 (`mcp251xfd`), I2C3 touch (FT6336), UART2 service link, CMA reservation, GPIOs for STM32 BOOT0/NRST and CAN INT
 - Disabling Luckfox default services (`rkipc`, sample apps) and adding `epicurad` to `/etc/init.d`
 - Defining the eMMC partition layout and the U-Boot parameter/env files
 - Implementing swupdate A/B OTA with signed `.swu`, slot switching and rollback after 3 failed boots
@@ -84,8 +84,9 @@ epicura-rv1106/
 3. **Package epicurad** - `package/epicurad/epicurad.mk` (CMake package, `EPICURAD_SITE_METHOD = local`) installs `/usr/bin/epicurad`, `/usr/bin/rtsp-stream` and `/etc/init.d/S90epicurad` (respawn loop, watchdog ping)
 4. **Device tree** - patch `rv1106g-luckfox-pico-zero.dts`:
    - `&spi0`: enable, pins MOSI 19 / MISO 21 / CLK 23 / CS0 24; child `st7796s@0` (fbtft, `compatible = "sitronix,st7796s"`, add `fb_st7796s` to the fbtft tree if the SDK kernel lacks it), `spi-max-frequency = <50000000>`, `dc-gpios` (header 22), `reset-gpios` (header 26), `width = <480>`, `height = <320>`, backlight on `pwm10` (header 12)
+   - `&spi0` second child `can0: mcp2518fd@1` (`compatible = "microchip,mcp2518fd"`, `reg = <1>` on CS1 / GPIO 58, `spi-max-frequency = <20000000>`, 40 MHz `clocks`, `interrupts` on the spare INT GPIO) → SocketCAN `can0`; `ip link set can0 up type can bitrate 500000` from `/etc/init.d` before `epicurad`
    - `&i2c3`: enable, pins SDA 16 / SCL 18; child `ft6336@38` (`compatible = "focaltech,ft6236"`, `edt-ft5x06` driver, `interrupt-gpios` header 36) → evdev
-   - `&uart2`: enable on the M1 mux (TX 8 / RX 10) → `/dev/ttyS2`, used by `epicurad` at 1 Mbps; leave `uart0` as the console
+   - `&uart2`: enable on the M1 mux (TX 8 / RX 10) → `/dev/ttyS2`, used only to flash the STM32 (ST bootloader) and for debug; runtime traffic is on `can0`; leave `uart0` as the console
    - GPIO 32 (STM32 BOOT0, default low) and GPIO 38 (STM32 NRST, default high) as outputs via `gpio-hog` or sysfs export
    - `reserved-memory` / `cma`: 32 MB (VI/ISP 720p 16 MB + self-path/RGA 2 MB + VENC 8 MB + headroom)
    - Camera: IMX415-98 on the MIPI CSI node; copy its IQ file from the SDK into `/oem/etc/iqfiles/`
@@ -140,7 +141,7 @@ Fallback: when free RAM < 32 MB, `epicurad` kills `rtsp-stream` and drops the LC
 - Use the microSD slot for the rootfs or `/data` (storage expansion only)
 - Run SQLite on squashfs or overlayfs; it lives on the ext4 `/data` partition
 - Ship unsigned `.swu` files or accept them without signature verification
-- Reuse SPI0 for anything but the LCD (the Pico Zero exposes one usable SPI; the STM32 link is UART2)
+- Put anything but the LCD (CS0) and the MCP2518FD CAN controller (CS1) on SPI0
 - Lower CMA below what VI + ISP + VENC need; `rockit` fails at runtime, not at build time
 - Include toolchains, headers or debug symbols in the production rootfs
 
@@ -149,7 +150,7 @@ Fallback: when free RAM < 32 MB, `epicurad` kills `rtsp-stream` and drops the LC
 When building Buildroot/platform components, provide:
 1. `br2-external` tree layout and `epicura_rv1106_defconfig`
 2. `package/epicurad/epicurad.mk` + `Config.in` + `S90epicurad`
-3. Device-tree patch (`.dts` diff) for SPI0 / I2C3 / UART2 / GPIO / CMA
+3. Device-tree patch (`.dts` diff) for SPI0 (LCD + CAN) / I2C3 / UART2 / GPIO / CMA
 4. Board config overlay and `parameter.txt` partition table
 5. swupdate `sw-description` and signing/verification steps
 6. Flashing / recovery procedure (`upgrade_tool` commands)
@@ -161,7 +162,7 @@ Buildroot, `br2-external`, Luckfox Pico SDK, Rockchip RV1106, U-Boot, kernel 5.1
 
 ## Related Skills
 
-- **embedded-systems** - UART bridge protocol to STM32, GPIO for BOOT0/NRST firmware loading
+- **embedded-systems** - CAN ID map to the STM32 and heater, GPIO for BOOT0/NRST firmware loading over UART2
 - **lvgl-ui** - Display and touch driver consumers
 - **computer-vision-edge** - rockit/rknn runtime, ISP tuning files in `/oem`
 - **devops-engineer** - CI building the image inside the SDK Docker image

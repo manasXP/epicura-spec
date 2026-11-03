@@ -48,7 +48,7 @@ The touchscreen and companion app follow a rule: recipe selection to cooking sta
 Every recipe, UI asset, and control algorithm runs locally on the device. Cloud connectivity enables recipe updates, remote monitoring, and OTA firmware upgrades — but the machine cooks a full meal with WiFi unplugged.
 
 ### 5. Affordable for India
-Target retail price of $400-600 USD, roughly half the price of comparable international products. Achieved through commodity ARM processors (Rockchip RV1106G3 on a Luckfox Pico Zero), off-the-shelf induction surfaces, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
+Target retail price of $300-400 USD, roughly quarter of the price of comparable international products. Achieved through commodity ARM processors (Rockchip RV1106G3 on a Luckfox Pico Zero), off-the-shelf induction surfaces, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
 
 ## How It Works
 
@@ -72,12 +72,12 @@ A dual-processor architecture splits responsibilities:
 
 | Processor | Role |
 |-----------|------|
-| **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP) | AI vision, recipe engine, touchscreen UI, cloud sync |
-| **STM32G474** (Cortex-M4F) | Real-time PID temperature control, motor/servo drive, sensor polling, CAN bus, safety watchdog |
+| **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP) | AI vision, recipe engine, touchscreen UI, cloud sync, heater PID over the isolated CAN bus |
+| **STM32G474** (Cortex-M4F) | Real-time motor/servo drive, dispensers, sensor polling, CAN node, heater off-switch, safety watchdog |
 
 The RV1106 runs Buildroot Linux with a single native C application, `epicurad`: SQLite (recipe database), MQTT and REST clients to the cloud, a recipe engine with hierarchical state machine, a hardware ISP + NPU (RKNN) vision pipeline, and an LVGL touchscreen application.
 
-The STM32 runs FreeRTOS with five priority-scheduled tasks executing PID loops at 100 Hz, motor control at 50 Hz, and a safety monitor that operates independently of all application logic.
+The STM32 runs FreeRTOS with priority-scheduled tasks for motor control at 50 Hz, CAN communication, sensors and dispensing, and a safety monitor that operates independently of all application logic. The temperature loop runs on the RV1106, which shares one isolated CAN bus with the STM32 and the induction surface's own controller.
 
 ### Software Ecosystem
 

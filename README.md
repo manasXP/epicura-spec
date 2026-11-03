@@ -9,8 +9,8 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 │  ┌──────────────────────┐        ┌──────────────────────┐           │
 │  │  RV1106 (Luckfox)    │        │  STM32 MCU           │           │
 │  │  (Buildroot Linux)   │◄──────►│  (FreeRTOS)          │           │
-│  │  - Recipe Engine     │  UART  │  - PID Control       │           │
-│  │  - CV Pipeline       │  /CAN  │  - Servo Driver      │           │
+│  │  - Recipe Engine     │  CAN   │  - Heater Interlock  │           │
+│  │  - CV Pipeline       │ (iso)  │  - Servo Driver      │           │
 │  │  - LVGL UI           │        │  - Sensor Polling    │           │
 │  │  - Cloud Sync        │        │  - Safety Watchdog   │           │
 │  └──────────┬───────────┘        └──────────┬───────────┘           │
@@ -19,7 +19,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 │  │  4" Touchscreen      │        │  Induction Heater    │           │
 │  │  IMX415-98 Camera    │        │  Servo Arm           │           │
 │  │  WiFi/BT             │        │  Load Cells          │           │
-│  │                      │        │  NTC + IR Sensors    │           │
+│  │                      │        │  CAN x2, 2S battery  │           │
 │  └──────────────────────┘        └──────────────────────┘           │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -28,8 +28,8 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 
 - **Autonomous Cooking** — Hands-off operation after ingredient loading with state machine recipe execution
 - **AI Vision** — Overhead camera with hardware ISP and MobileNetV2 INT8 on the RV1106 NPU (RKNN) for food color/texture analysis and cooking stage detection
-- **Induction PID Control** — 1,800W microwave induction surface (CAN bus) with closed-loop PID, ±5°C accuracy
-- **Robotic Stirring Arm** — Single-axis servo arm with multiple stir patterns and auto-scraping
+- **Induction Temperature Control** — 1,800W microwave induction surface regulating on its own sensor; setpoints and status on an isolated CAN bus shared by the RV1106, the STM32 and the heater MCU
+- **Robotic Stirring Arm** — Single-axis arm on a 24V CAN servo motor with multiple stir patterns and auto-scraping
 - **Three-Subsystem Dispensing** — Fine ingredients (6-canister servo carousel, ¼ tsp dosing), coarse ingredients (5-slot servo carousel), liquids (peristaltic pumps)
 - **Touchscreen + Mobile Apps** — 4" LVGL touchscreen UI, native iOS (Swift) and Android (Kotlin) companion apps
 - **100+ Indian Recipes** — Curries, dal, rice, biryani with regional variations and dietary customization
@@ -40,12 +40,13 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 | Component | Part | Purpose |
 |-----------|------|---------|
 | Compute (AI) | Luckfox Pico Zero — RV1106G3 (Cortex-A7 @ 1.2 GHz, 1 TOPS NPU, ISP, 256MB, 8GB eMMC) | Vision, recipe engine, UI, cloud sync |
-| Compute (Control) | STM32G474 (Cortex-M4F, 170 MHz) | PID, servo driver, sensor polling, safety |
+| Compute (Control) | STM32G474 (Cortex-M4F, 170 MHz) on the Unified PCB (Pico Zero slot, CID/FID/SLD drivers, 2 CAN ports, 2S battery backup) | Stir motor (CAN), dispensers, sensor polling, heater off-switch, safety |
 | Camera | IMX415-98 (8 MP, MIPI CSI) | Food stage detection via ISP + NPU |
-| IR Thermometer | MLX90614 | Non-contact food surface temp |
-| Load Cells | 4× strain gauge + HX711 | Weight-based dispensing verification |
-| Induction Surface | 1,800W commercial module | CAN bus controlled cooking heat |
-| Servo Arm | 24V BLDC motor (integrated ESC) | Stirring and scraping |
+| Cooking Temperature | Induction module's own sensor, reported over CAN | No thermometer in Epicura |
+| Load Cells | 2× strain gauge + HX711 (SLD reservoirs) | Weight-based liquid dispensing |
+| Induction Surface | 1,800W commercial module with internal temperature control | Isolated CAN port; setpoints from the RV1106 |
+| Servo Arm | 24V integrated CAN servo motor | Stirring and scraping (regular CAN port, STM32 FDCAN2) |
+| Backup Power | 2S Li-ion pack + on-board TP5100 charger | Keeps RV1106/LCD/STM32 alive through outages |
 | Display | 4" 480×320 capacitive SPI (ST7796S + FT6336) | LVGL touchscreen UI |
 
 ## Software Stack
@@ -62,7 +63,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 
 ### STM32 (FreeRTOS)
 
-- 4 tasks: PID (100 Hz), servo (50 Hz), sensor (10 Hz), comms (20 Hz)
+- 4 tasks: servo (50 Hz), sensor (10 Hz), CAN comms (20 Hz), safety (10 Hz); the heater PID runs on the RV1106
 - C (MISRA subset for safety-critical paths)
 - Hardware watchdog, thermal cutoffs, e-stop relay
 
@@ -83,8 +84,8 @@ See [`docs/README.md`](__Workspaces/Appliance/Epicura/epi-Spec/docs/README.md) f
 | **[epicura-pm](https://github.com/manasXP/epicura-pm)**             | Markdown                       | Project management — epics, sprints, resource allocation              |
 | **[epicura-tcc](https://github.com/manasXP/epicura-tcc)**           | Markdown                       | Testing strategies, compliance/safety, recipe schema & seed data      |
 | **[epicura-ux](https://github.com/manasXP/epicura-ux)**             | Markdown + Vite/React          | UI/UX design documentation and interactive mobile mockups             |
-| **[epicura-firmware](https://github.com/manasXP/epicura-firmware)** | C (FreeRTOS, STM32 HAL)        | STM32G474RE real-time control — PID, servo, sensors, CAN, safety      |
-| **[epicura-rv1106](https://github.com/manasXP/epicura-rv1106)**     | C11 (CMake) + Buildroot        | RV1106 `epicurad` — recipe engine, ISP/NPU CV, LVGL UI, UART bridge, Buildroot image |
+| **[epicura-firmware](https://github.com/manasXP/epicura-firmware)** | C (FreeRTOS, STM32 HAL)        | STM32G474RE real-time control — servo, sensors, CAN node, dispensers, safety |
+| **[epicura-rv1106](https://github.com/manasXP/epicura-rv1106)**     | C11 (CMake) + Buildroot        | RV1106 `epicurad` — recipe engine, ISP/NPU CV, LVGL UI, CAN node + heater PID, Buildroot image |
 | **[epicura-api](https://github.com/manasXP/epicura-api)**           | TypeScript (Fastify + Next.js) | Cloud API server and admin portal monorepo                            |
 | **[epicura-ios](https://github.com/manasXP/epicura-ios)**           | Swift (SwiftUI)                | iOS companion app — BLE pairing, recipes, live cooking                |
 | **[epicura-android](https://github.com/manasXP/epicura-android)**   | Kotlin (Jetpack Compose)       | Android companion app                                                 |

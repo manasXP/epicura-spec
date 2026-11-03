@@ -83,7 +83,7 @@ You are a senior C developer with deep expertise in LVGL 9.x for building touchs
 - Use `LV_DISPLAY_RENDER_MODE_FULL` or `DIRECT` on the fbtft target
 - Allocate LVGL objects per tick; create screens once and update widgets in place
 - Ship full Unicode fonts (a full 4-bpp Noto Sans Devanagari alone exceeds the budget); subset with `lv_font_conv --range`
-- Block the ui thread with I/O (SQLite, network, UART) — those belong to the engine, sync and bridge threads
+- Block the ui thread with I/O (SQLite, network, CAN) — those belong to the engine, sync and can threads
 - Hard-code pixel positions for text that changes with language; use flex/grid layouts and `LV_SIZE_CONTENT`
 - Port the 1280x800 UX mockups one-to-one; they are design-intent only and the layouts are pending redesign for 480x320
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.2
+version: 1.3
 status: Draft
 ---
 
@@ -109,7 +109,7 @@ The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero: the
 | LED Count | 12-16 on ring PCB |
 | Color Temperature | 5000K daylight white (for accurate food color) |
 | Brightness | 60 mA per LED at max, ~960 mA total ring |
-| Control Interface | Single-wire 800 kHz protocol driven by the STM32 (PB14, TIM15_CH1 + DMA) through a 74AHCT1G125 3.3 V to 5 V level shifter; the RV1106 only requests modes via SET_LED (0x20) over the bridge |
+| Control Interface | Single-wire 800 kHz protocol driven by the STM32 (PB14, TIM15_CH1 + DMA) through a 74AHCT1G125 3.3 V to 5 V level shifter; the RV1106 only requests modes via SET_LED (CAN 0x220) |
 | Diffuser | Frosted polycarbonate ring (reduces specular glare on liquids) |
 | Power | 5V, max 1A (from 5V rail, switched by PCF8574 #2 P3) |
 | Mounting | Co-axial with camera, 5mm offset below lens plane |
@@ -502,3 +502,4 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed to RV1106 (Luckfox Pico Zero): camera is SC3336 at 1280x720 @ 30 fps (IMX219/IMX477 dropped, no ISP tuning); pipeline is hardware ISP (dehaze/3DNR/AWB) → ISP self-path 224x224 → NPU via RKNN (5-10 ms, INT8 from RKNN-Toolkit2); OpenCV/CLAHE/libcamera removed; MJPEG server replaced by on-demand H.264 RTSP; LED ring driven by STM32 via SET_LED; calibration uses ISP AWB/AE; validation checklist updated. Stage classes, transitions and training pipeline unchanged |
 | 1.2 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); sensor table and rationale updated |
+| 1.3 | 2026-11-04 | Manas Pradhan | LED ring mode requests now travel as CAN frame 0x220 |

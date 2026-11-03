@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 7.0
+version: 7.1
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-The ingredient dispensing system is divided into three purpose-built subsystems, each optimized for a different ingredient class. Together they surround the cooking pot and are orchestrated by the STM32 controller under commands from the RV1106 recipe engine.
+The ingredient dispensing system is divided into three purpose-built subsystems, each optimized for a different ingredient class. Together they surround the cooking pot and are orchestrated by the STM32 controller under commands from the RV1106 recipe engine, received over the isolated CAN bus the two processors share with the induction surface.
 
 The FID and CID share one mechanical concept (a servo-indexed carousel) and one electrical control block (the **Dispenser Servo Block, DSB**): four identical hobby-class servos driven from a single PCA9685 PWM driver on I2C1, powered from one switched 6.5 V rail. The SLD keeps its own pump/valve/load-cell hardware.
 
@@ -412,9 +412,11 @@ The FID and CID are one electrical block on the Unified PCB:
 | **SLD** | HX711 #2 SCK (water) | PC9 (GPIO) | Clock out | SLD water reservoir load cell (2 kg) |
 | **SLD** | HX711 #2 DOUT (water) | PC10 (GPIO) | Data in | SLD water reservoir load cell (2 kg) |
 
-> **Note:** Pin assignments match [[01-Unified-PCB-Design|Unified PCB Design]] document. Replacing the P-ASD pneumatics and the stepper/linear-actuator CID with the DSB removes PCF8574 #1 (0x20), the ADS1015 (0x48), DRV8876 #2, the six IRLML6344 solenoid MOSFETs, the pump MOSFET and connector J_CID, and frees PA0, PA10, PB5, PB6, PB11, PC2 and PD2. I2C1 bus devices are now four: PCF8574 #2 (0x21), INA219 (0x40), PCA9685 (0x41), MLX90614 (0x5A). PCF8574 #2 P4 (previously reserved) is the DSB rail enable.
+> **Note:** Pin assignments match [[01-Unified-PCB-Design|Unified PCB Design]] document. Replacing the P-ASD pneumatics and the stepper/linear-actuator CID with the DSB removes PCF8574 #1 (0x20), the ADS1015 (0x48), DRV8876 #2, the six IRLML6344 solenoid MOSFETs, the pump MOSFET and connector J_CID, and frees PA0, PA10, PB5, PB6, PB11, PC2 and PD2. I2C1 bus devices are now three: PCF8574 #2 (0x21), INA219 (0x40), PCA9685 (0x41) — the MLX90614 IR thermometer is gone (the induction module reports its own temperature). PCF8574 #2 P4 is the DSB rail enable; P5 switches the stir motor's 24 V; P6/P7 read the battery charger status.
 
-### 7.3 Dispensing Command Protocol (RV1106 → STM32)
+### 7.3 Dispensing Command Protocol (RV1106 → STM32, CAN IDs 0x230–0x239)
+
+Commands travel on the CAN bus as frames with ID 0x200 + code, a sequence byte first and the parameters after it; responses come back in ACK/NAK 0x3FF with up to 5 data bytes (see [[02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]]). The codes below are the low byte of the CAN ID.
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
@@ -474,7 +476,7 @@ Because the servos are open loop, a jammed carousel is detected by current and t
 
 ```
 Step 1:  DISPENSE_SLD(OIL, 30g)                ──► Oil into hot pot
-Step 2:  Wait for sear temp (200°C)             ──► IR sensor confirms
+Step 2:  Wait for sear temp (200°C)             ──► Module surface_temp (HEAT_STATUS) confirms
 Step 3:  DISPENSE_FID(Box1, 4)                 ──► Turmeric, 1 tsp (~2.7 g)
 Step 4:  DISPENSE_FID(Box2, 8)                 ──► Chili powder, 2 tsp (~4.4 g)
 Step 5:  Stir briefly                           ──► Arm mixes spices into oil
@@ -632,3 +634,5 @@ For quick cleaning of SLD channels between recipes:
 | 6.0 | 2026-03-11 | Manas Pradhan | SLD solenoids moved from PA7/PA9 to PCF8574 #2 (0x21) P0/P1 for GPIO headroom; I2C1 bus now 5 devices |
 | 6.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); dispensing hardware, pin map and command protocol unchanged (LED ring 5 V switch stays on PCF8574 #2 P3) |
 | 7.0 | 2026-11-04 | Manas Pradhan | P-ASD (pneumatic) replaced by FID: 6-canister servo carousel with per-canister ¼ tsp measure wheels, 3 servos (index, dose, steam gate); CID replaced by a 5-slot + cover servo carousel, 1 servo; FID and CID merged into one Dispenser Servo Block (4× DS3218-class servos on PCA9685 @ 0x41, switched 6.5 V rail from MP1584EN #2, OE on PB4); removed pump, accumulator, 6 solenoids, ADS1015, PCF8574 #1, NEMA 23 + driver, linear actuator, DRV8876 #2, J_CID; new commands DISPENSE_FID/CID, DISPENSER_HOME, DISPENSER_STATUS; box/slot numbering aligned with recipe schema |
+| 7.1 | 2026-11-04 | Manas Pradhan | Command protocol mapped onto the shared CAN bus (IDs 0x230–0x239, seq byte, ACK 0x3FF) |
+| 7.2 | 2026-11-04 | Manas Pradhan | I2C1 device list and PCF8574 #2 allocation updated (IR thermometer removed; stir-motor 24 V enable and charger status pins); recipe example uses module surface temperature |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.2
+version: 1.3
 status: Draft
 ---
 
@@ -219,9 +219,9 @@ Device alerts that require backend processing or user notification.
   "timestamp": "2026-02-14T12:29:00Z",
   "alert_type": "sensor_degraded",
   "severity": "warning",
-  "message": "IR thermometer readings unstable — using CAN coil temp fallback",
+  "message": "Induction module surface temperature unstable — holding power mode with timers",
   "details": {
-    "sensor": "MLX90614",
+    "sensor": "induction_surface_temp",
     "error_count": 5,
     "last_valid_reading": 145.2
   }
@@ -241,7 +241,7 @@ Device alerts that require backend processing or user notification.
 | `recipe_sync_now` | Trigger recipe sync | `GET /recipes/sync?since=` → SQLite upsert |
 | `ota_check` | Check for firmware update | `GET /firmware/latest`, download and verify signed `.swu` (swupdate A/B) or STM32 `.bin` |
 | `cook` | Start cooking remotely | Start session; publishes `session/started` or `session/error` |
-| `stop` | Emergency stop | E_STOP to STM32 over the UART bridge |
+| `stop` | Emergency stop | E_STOP (0x001) broadcast on the CAN bus |
 | `config` | Push configuration | Apply runtime settings |
 
 ### 5.1 `live_view_start`
@@ -300,7 +300,7 @@ Trigger a firmware update check. The device fetches `GET /firmware/latest` itsel
 }
 ```
 
-`target` is `rv1106`, `stm32` or `all`. For `rv1106` the device downloads the signed `.swu` to `/data/ota`, verifies it, and swupdate writes the inactive A/B slot; for `stm32` the device streams the `.bin` to the STM32 system bootloader over the bridge UART.
+`target` is `rv1106`, `stm32` or `all`. For `rv1106` the device downloads the signed `.swu` to `/data/ota`, verifies it, and swupdate writes the inactive A/B slot; for `stm32` the device streams the `.bin` to the STM32 system bootloader over the CAN bus UART.
 
 ### 5.5 `cook`
 
@@ -464,3 +464,4 @@ The wildcard `+` in subscriptions matches any device ID, so the server handles a
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: single `cmd` topic with `command` field (`live_view_start`, `live_view_stop`, `recipe_sync_now`, `ota_check`, plus `cook`/`stop`/`config`); telemetry QoS 1 with `sync_outbox` offline spool; no on-device broker; status payload `firmware_rv1106`, `lan_ip` |
 | 1.2 | 2026-11-04 | Manas Pradhan | live_view_start now references POST /appliances/:id/live-view |
+| 1.3 | 2026-11-04 | Manas Pradhan | Remote stop now broadcasts E_STOP on the CAN bus |

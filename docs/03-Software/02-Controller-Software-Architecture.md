@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.3
+version: 3.0
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Architecture Overview
 
-Epicura uses a dual-processor architecture: a Rockchip RV1106G3 (Luckfox Pico Zero) running Buildroot Linux for AI vision, UI, and cloud connectivity, paired with an STM32G4 microcontroller running FreeRTOS for real-time motor control, PID loops, and safety monitoring.
+Epicura uses a dual-processor architecture: a Rockchip RV1106G3 (Luckfox Pico Zero) running Buildroot Linux for AI vision, UI, and cloud connectivity, paired with an STM32G4 microcontroller running FreeRTOS for real-time motor control, dispensing, sensor acquisition and safety monitoring. The two processors and the induction surface's own MCU share one isolated CAN bus; the RV1106 closes the temperature loop and commands the heater directly, the STM32 keeps an independent off-switch.
 
 The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side is therefore a single native C application on a minimal Buildroot image, not a container stack. Heavy image work is pushed into the chip's hardware blocks (ISP, NPU, RGA, H.264 encoder) and the CPU is left with UI, recipe logic, storage and comms. See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]] for the rationale and the CM5 comparison.
 
@@ -20,10 +20,10 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 | **Memory** | 256 MB DDR3L (in-package), 8 GB eMMC | 128 KB SRAM, 512 KB Flash |
 | **Accelerators** | 1 TOPS NPU, 5 MP ISP, RGA 2D, H.264/H.265 encoder | FPU, CMSIS-DSP |
 | **OS** | Buildroot Linux (Luckfox SDK, kernel 5.10) | FreeRTOS 10.x |
-| **Role** | AI/Vision, UI, Recipe Engine, Storage, Cloud | PID, Motor, Sensors, Safety |
+| **Role** | AI/Vision, UI, Recipe Engine, Heater setpoints, Storage, Cloud | Stir motor (CAN), Dispensers, Sensors, Safety |
 | **Languages** | C11 (single application), LVGL | C (MISRA C subset) |
 | **Graphics** | LVGL 9 on 4" 480x320 SPI LCD, software rendering | None |
-| **IPC** | UART 1 Mbps, framed + CRC-16 (no CAN alternative) | UART 1 Mbps to RV1106; FDCAN to induction module only |
+| **IPC** | Isolated CAN 2.0B 500 kbps via MCP2518FD on SPI0 CS1 (SocketCAN `can0`); UART2 only for STM32 flashing/debug | FDCAN1 on the same bus (host commands, telemetry, heater off-switch); FDCAN2 = regular 1 Mbps bus to the stirring motor; USART2 = service link only |
 
 ---
 
@@ -42,8 +42,8 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 │  ├─────────────────────────────────────────────────────────────────────┤    │
 │  │                      Library Layer                                  │    │
 │  │  ┌──────────┐ ┌────────────┐ ┌──────────┐ ┌─────────┐ ┌─────────┐ │    │
-│  │  │  SQLite  │ │ libmosquitto│ │ rockit   │ │ rknn_api│ │  UART   │ │    │
-│  │  │  (WAL)   │ │ libcurl/TLS │ │ (VI/ISP/ │ │ (NPU)   │ │ Bridge  │ │    │
+│  │  │  SQLite  │ │ libmosquitto│ │ rockit   │ │ rknn_api│ │SocketCAN│ │    │
+│  │  │  (WAL)   │ │ libcurl/TLS │ │ (VI/ISP/ │ │ (NPU)   │ │  can0   │ │    │
 │  │  │          │ │            │ │  VENC)   │ │         │ │         │ │    │
 │  │  └──────────┘ └────────────┘ └──────────┘ └─────────┘ └────┬────┘ │    │
 │  ├─────────────────────────────────────────────────────────────────────┤    │
@@ -55,7 +55,7 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 │  On-demand only:  rtsp-stream (child process, H.264 720p → phone)           │
 └───────────────────────────────────┬─────────────────────────────────────────┘
                                     │
-                            UART 1 Mbps (USART2) 
+                      CAN 2.0B 500 kbps (isolated bus, shared with the induction surface)
                                     │
 ┌───────────────────────────────────▼─────────────────────────────────────────┐
 │                       STM32G474RE (FreeRTOS)                                │
@@ -63,13 +63,13 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                      FreeRTOS Tasks                                  │    │
 │  │  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────┐ │    │
-│  │  │ PID Control │ │ Motor Control│ │Sensor Polling│ │   Safety   │ │    │
-│  │  │  (10 Hz)    │ │  (50 Hz)     │ │  (10 Hz)     │ │  Monitor   │ │    │
+│  │  │ CAN Comms   │ │ Motor Control│ │Sensor Polling│ │   Safety   │ │    │
+│  │  │  (20 Hz)    │ │  (50 Hz)     │ │  (10 Hz)     │ │  Monitor   │ │    │
 │  │  └─────────────┘ └──────────────┘ └──────────────┘ └────────────┘ │    │
 │  ├─────────────────────────────────────────────────────────────────────┤    │
 │  │                      HAL / Driver Layer                              │    │
 │  │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────────┐  │    │
-│  │  │ PWM  │  │ ADC  │  │ SPI  │  │ I2C  │  │ GPIO │  │ UART/CAN │  │    │
+│  │  │ PWM  │  │ ADC  │  │ SPI  │  │ I2C  │  │ GPIO │  │ CAN/UART │  │    │
 │  │  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘  └──────────┘  │    │
 │  ├─────────────────────────────────────────────────────────────────────┤    │
 │  │           Hardware: STM32G474RE, Cortex-M4F @ 170 MHz               │    │
@@ -90,12 +90,12 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 | SQLite Database | RV1106 | Embedded, in-process, WAL mode on eMMC |
 | On-demand phone video stream | RV1106 | Hardware H.264 encoder, RTSP over Wi-Fi |
 | OTA Firmware Updates | RV1106 | Network + A/B eMMC partitions |
-| PID Temperature Control | STM32 | Hard real-time, deterministic timing |
-| Servo Motor Control | STM32 | PWM generation, position feedback |
+| Heater setpoints | RV1106 | `heat` thread (SCHED_FIFO) re-sends HEAT_SET_TEMP / HEAT_SET_POWER at 2 Hz and reads HEAT_STATUS; the induction module runs its own PID on its own sensor — no temperature loop in Epicura |
+| Stir Motor Control | STM32 | CAN servo on FDCAN2: velocity/position commands at 50 Hz, encoder feedback |
 | Sensor Polling (Temp/Weight) | STM32 | ADC sampling, I2C/SPI peripherals |
 | Safety Monitor / Watchdog | STM32 | Independent safety, E-stop authority |
 | Ingredient Dispensing | STM32 | Servo actuation, load cell feedback |
-| Induction Heater PWM | STM32 | High-frequency PWM, fault detection |
+| Heater interlock | STM32 | Listens to HEAT_STATUS on the bus; forces HEAT_ON_OFF = 0, broadcasts E_STOP and opens the relay on faults; never sends power levels |
 | LED Ring (WS2812B) | STM32 | 5 V logic, 800 kHz bit timing from timer + DMA; RV1106 only requests modes |
 
 ---
@@ -141,9 +141,15 @@ There is no container runtime, no database server, no message broker and no inte
 │  └────────────────────────────────────────────────────────┘ │
 │                                                             │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  bridge thread                                         │ │
-│  │  • UART2 @ 1 Mbps to STM32, framed + CRC-16            │ │
+│  │  can thread                                            │ │
+│  │  • SocketCAN can0 (MCP2518FD on SPI0 CS1), 500 kbps    │ │
 │  │  • Heartbeat 2 s, ACK/retry, telemetry ring buffer     │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  heat thread                                           │ │
+│  │  • 2 Hz HEAT_SET_TEMP / HEAT_SET_POWER keep-alive      │ │
+│  │  • HEAT_STATUS surface_temp → engine (module runs PID) │ │
 │  └────────────────────────────────────────────────────────┘ │
 │                                                             │
 │  ┌────────────────────────────────────────────────────────┐ │
@@ -168,7 +174,7 @@ There is no container runtime, no database server, no message broker and no inte
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**Buildroot package set (beyond the Luckfox base):** `sqlite`, `libyaml`, `cjson`, `libmosquitto`, `libcurl`, `mbedtls`, `lvgl`, `swupdate`, `wpa_supplicant`, `bluez5` (BLE provisioning), `rockit` + `rknn` runtime from the Luckfox SDK. Not included: Python, OpenCV, Docker, PostgreSQL, Node.js, Redis, Mosquitto broker, Kivy, GStreamer.
+**Buildroot package set (beyond the Luckfox base):** `sqlite`, `libyaml`, `cjson`, `libmosquitto`, `libcurl`, `mbedtls`, `lvgl`, `swupdate`, `wpa_supplicant`, `bluez5` (BLE provisioning), `rockit` + `rknn` runtime from the Luckfox SDK, `iproute2` (brings up `can0`); kernel `mcp251xfd` SocketCAN driver. Not included: Python, OpenCV, Docker, PostgreSQL, Node.js, Redis, Mosquitto broker, Kivy, GStreamer.
 
 ### 4.2 Memory Budget
 
@@ -195,15 +201,16 @@ Design rules that keep this true:
 
 ### 4.3 Peripheral Bus Allocation (Luckfox Pico Zero header)
 
-The Pico Zero exposes one full SPI controller. It goes to the display; the STM32 link moves to UART, which the original design already listed as the fallback.
+The Pico Zero exposes one full SPI controller with two chip selects: CS0 drives the display, CS1 drives the MCP2518FD CAN controller that puts the RV1106 on the isolated CAN bus shared with the STM32 and the induction surface. UART2 stays wired to the STM32 only as a service link (firmware flashing, debug).
 
 | Function | Bus | Header pins | Notes |
 |----------|-----|-------------|-------|
 | 4" LCD (ST7796S, 480x320) | SPI0 M0: MOSI 19, MISO 21, CLK 23, CS0 24 | + DC GPIO 22, RST GPIO 26, backlight PWM10 pin 12 | fbtft, 50 MHz, DMA. ~50 ms full frame; LVGL partial redraws |
 | Touch (FT6336) | I2C3 M0: SDA 16, SCL 18 | INT GPIO 36 | evdev |
-| STM32 bridge | UART2 M1: TX 8, RX 10 | | 1 Mbps, 8N1. No DRDY line needed |
+| CAN bus (STM32 + induction surface) | SPI0 M0 CS1 (GPIO 58) + INT GPIO | MCP2518FD + ISO1050DUB #2 on the Unified PCB (isolated port J_CAN_HEAT) | SocketCAN `can0`, 500 kbps; shares MOSI/MISO/CLK with the LCD, ≤ 20 MHz. The stirring motor is on the STM32's separate FDCAN2 bus, not reachable from the RV1106 |
+| STM32 service UART | UART2 M1: TX 8, RX 10 | | ST system-bootloader flashing + debug only; no runtime traffic |
 | STM32 BOOT0 / NRST (OTA) | GPIO 32, GPIO 38 | | Enter system bootloader for firmware load |
-| LED ring (WS2812B) | **On STM32**, not on this header | | STM32 timer + DMA, 5 V logic; RV1106 sends SET_LED over the bridge |
+| LED ring (WS2812B) | **On STM32**, not on this header | | STM32 timer + DMA, 5 V logic; RV1106 sends SET_LED over CAN |
 | Debug console | UART0 M0: TX 35, RX 37 | | Luckfox default |
 | Camera | MIPI CSI FPC (4-lane) | | **IMX415-98 IR-CUT 8 MP** (the colour camera Luckfox supports on the Pico Zero; ISP tuning file shipped in SDK; 22-pin FPC). SC3336 is marked incompatible with the Pico Zero; IMX219/IMX477 dropped: no RV1106 tuning file |
 | Wi-Fi / BLE | On-board module | | 2.4 GHz Wi-Fi 6, BT 5.2 |
@@ -214,9 +221,9 @@ The Pico Zero exposes one full SPI controller. It goes to the display; the STM32
 ```
 ┌─────────────────────────────────────────────────────────┐
 │              FreeRTOS Application Tasks                   │
-│  • PID Control         • Motor Control                   │
+│  • CAN Comms           • Motor Control                   │
 │  • Sensor Polling      • Safety Monitor                  │
-│  • Communication       • Dispensing                      │
+│  • Heater Interlock    • Dispensing                      │
 ├─────────────────────────────────────────────────────────┤
 │                      FreeRTOS 10.x                       │
 │  • Priority-based preemptive scheduling                  │
@@ -224,8 +231,8 @@ The Pico Zero exposes one full SPI controller. It goes to the display; the STM32
 │  • Memory management (heap_4)                            │
 ├─────────────────────────────────────────────────────────┤
 │                   HAL / CMSIS Layer                       │
-│  • STM32 HAL drivers (PWM, ADC, UART, I2C, CAN)         │
-│  • CMSIS-DSP (PID math, filtering)                       │
+│  • STM32 HAL drivers (PWM, ADC, FDCAN, I2C, UART)       │
+│  • CMSIS-DSP (signal filtering)                          │
 │  • CMSIS-RTOS2 abstraction                               │
 ├─────────────────────────────────────────────────────────┤
 │     Hardware: STM32G474RE (Cortex-M4F @ 170 MHz)         │
@@ -450,51 +457,32 @@ int stream_start(cv_ctx_t *cv)
 
 ### 5.3 Motor Control (STM32)
 
-#### 5.3.1 PID Controller
+#### 5.3.1 Heater Setpoints (no PID in Epicura)
+
+The temperature loop runs **inside the induction module** on its own under-glass sensor. The `heat` thread of `epicurad` only owns the setpoint: it sends HEAT_SET_TEMP (0x100: target, ramp, max power) or HEAT_SET_POWER (0x103) when the engine changes a stage, re-sends it at 2 Hz as the module's keep-alive, and publishes `surface_temp` from HEAT_STATUS (0x180) to the engine and UI. If no HEAT_STATUS arrives for 500 ms, or the module reports a fault, the thread sends HEAT_ON_OFF 0 and the engine pauses. The STM32 and the module keep their own independent over-temperature cut-offs.
 
 ```c
 typedef struct {
-    float setpoint;
-    float kp, ki, kd;
-    float integral;
-    float prev_error;
-    float output;
-    float output_min, output_max;
-} pid_controller_t;
+    heat_mode_t mode;        /* HEAT_MODE_TEMP or HEAT_MODE_POWER */
+    int16_t     target_dC;   /* temperature mode: 0.1 °C */
+    uint8_t     ramp_C_s;    /* ≤ 5 °C/s */
+    uint8_t     max_power;   /* 0–100 %, clamp for simmer stages */
+    uint8_t     power_pct;   /* power mode */
+} heat_setpoint_t;
 
-void pid_init(pid_controller_t *pid, float kp, float ki, float kd,
-              float out_min, float out_max)
+/* heat thread, 2 Hz */
+void heat_tick(heat_ctx_t *h)
 {
-    pid->kp = kp;
-    pid->ki = ki;
-    pid->kd = kd;
-    pid->integral = 0.0f;
-    pid->prev_error = 0.0f;
-    pid->output_min = out_min;
-    pid->output_max = out_max;
-}
-
-float pid_compute(pid_controller_t *pid, float measurement, float dt)
-{
-    float error = pid->setpoint - measurement;
-    pid->integral += error * dt;
-    float derivative = (error - pid->prev_error) / dt;
-
-    pid->output = (pid->kp * error)
-                + (pid->ki * pid->integral)
-                + (pid->kd * derivative);
-
-    /* Clamp output */
-    if (pid->output > pid->output_max) pid->output = pid->output_max;
-    if (pid->output < pid->output_min) pid->output = pid->output_min;
-
-    /* Anti-windup: clamp integral if output is saturated */
-    if (pid->output == pid->output_max || pid->output == pid->output_min) {
-        pid->integral -= error * dt;
+    if (h->status_age_ms > 500 || h->status.fault_flags) {
+        can_send_heat_on_off(0);
+        engine_pause(PAUSE_INDUCTION_ERROR);
+        return;
     }
-
-    pid->prev_error = error;
-    return pid->output;
+    if (h->sp.mode == HEAT_MODE_TEMP)
+        can_send_heat_set_temp(h->sp.target_dC, h->sp.ramp_C_s, h->sp.max_power);
+    else
+        can_send_heat_set_power(h->sp.power_pct, h->sp.ramp_C_s);
+    telemetry_publish_surface_temp(h->status.surface_temp_dC);   /* engine, ui, sync */
 }
 ```
 
@@ -546,13 +534,13 @@ float pid_compute(pid_controller_t *pid, float measurement, float dt)
 | E_STOP | NORMAL | Manual user reset only |
 
 **Watchdog Timer:**
-- RV1106 sends heartbeat every 2 seconds via UART
+- RV1106 sends heartbeat every 2 seconds on the CAN bus (HB_AP, 0x010)
 - STM32 independent watchdog (IWDG) timeout: 5 seconds
 - If heartbeat missed: enter WARNING state
 - If heartbeat missed > 5s: enter CRITICAL state, cut induction
 
 **Emergency Actions (E_STOP):**
-1. Immediately send CAN off command to microwave surface module + open safety relay
+1. Immediately send HEAT_ON_OFF = 0 (0x101) to the induction surface, broadcast E_STOP (0x001), open the safety relay
 2. Stop servo motor and engage brake
 3. Send alert message to RV1106 UI (if comms available)
 4. Activate buzzer alarm
@@ -770,13 +758,13 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
  3. UI prompts user to load dispensing subsystems (FID/CID/SLD) with confirmation (CID slots assigned in order of use)
                 │
                 ▼
- 4. RV1106 sends PREHEAT command to STM32 (target temperature)
+ 4. RV1106 heat thread sends HEAT_SET_TEMP over CAN; the module ramps itself to the target and reports surface_temp
                 │
                 ▼
  5. For each stage:
     ┌───────────────────────────────────────────────────┐
     │  a. Dispense ingredients (DISPENSE_FID/CID/SLD)   │
-    │  b. Set temperature (RV1106 → STM32 SET_TEMP)     │
+    │  b. Set temperature (heat thread setpoint → module)│
     │  c. Set stir pattern (RV1106 → STM32 SET_STIR)    │
     │  d. Monitor via CV pipeline (ISP → NPU, 2 Hz)     │
     │  e. Check transition conditions                   │
@@ -788,7 +776,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
  6. CV pipeline confirms final stage complete
                 │
                 ▼
- 7. RV1106 sends STOP commands (temp → 0, stir → off)
+ 7. RV1106 stops heating (HEAT_ON_OFF 0) and stirring (ARM_STOP)
                 │
                 ▼
  8. UI displays "Cooking Complete" with summary
@@ -802,63 +790,63 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 
 ---
 
-## 7. RV1106-STM32 Communication Protocol
+## 7. CAN Bus Communication Protocol
 
-### 7.1 Message Structure
+The RV1106, the STM32 and the induction surface's own MCU share one isolated CAN 2.0B bus at 500 kbps — the Unified PCB's isolated CAN port (J_CAN_HEAT). The RV1106 has no CAN peripheral, so it joins the bus through an MCP2518FD SPI CAN controller on SPI0 CS1 (kernel `mcp251xfd` driver, SocketCAN `can0`) and its own ISO1050DUB on the Unified PCB; the STM32 uses FDCAN1 in classic-CAN mode with ISO1050DUB #1. UART2/USART2 stays wired only as a service link for STM32 firmware flashing (ST system bootloader via BOOT0/NRST) and debug. The stirring motor is on a second, regular (non-isolated) CAN bus owned by the STM32 alone (FDCAN2, 1 Mbps, J_CAN_STIR); its frames never appear on the host bus and its protocol is private to the STM32 firmware (`stir_motor.c`).
 
-The message body is unchanged from the SPI design. Because UART is asynchronous, each message is wrapped in a start-of-frame byte and byte-stuffed so the receiver can resynchronise after any corruption.
+### 7.1 Nodes and Roles
 
-```c
-#define SOF 0x7E                    /* start of frame; 0x7D escapes 0x7E/0x7D in body */
+| Node | Controller | Sends | Receives |
+|------|-----------|-------|----------|
+| AP (RV1106) | MCP2518FD on SPI0 CS1 + ISO1050DUB #2 | Commands 0x2xx, HEAT_SET_TEMP / HEAT_ON_OFF / HEAT_QUERY / HEAT_SET_POWER (0x100–0x103), HB_AP 0x010, E_STOP 0x001 | TELEMETRY / LOADCELLS / STATUS / ACK (0x3xx), HEAT_STATUS / HEAT_FAULT / HEAT_ACK (0x18x) |
+| STIR (STM32G474, Unified PCB) | FDCAN1 + ISO1050DUB #1 | TELEMETRY 0x310 (20 Hz), LOADCELLS 0x311, STATUS 0x312, ACK 0x3FF; on faults HEAT_ON_OFF = 0 and E_STOP 0x001 | Commands 0x2xx, HB_AP 0x010, HEAT_STATUS 0x180 (safety monitor), E_STOP 0x001 |
+| HEAT (induction surface MCU) | Module-internal, vendor firmware; runs its own temperature PID | HEAT_STATUS 0x180 (10 Hz), HEAT_FAULT 0x181, HEAT_ACK 0x182 | HEAT_SET_TEMP 0x100, HEAT_ON_OFF 0x101, HEAT_QUERY 0x102, HEAT_SET_POWER 0x103, E_STOP 0x001 |
 
-typedef struct {
-    uint8_t  msg_id;        /* Sequence number (0-255, wraps) */
-    uint8_t  msg_type;      /* Command or response type */
-    uint16_t payload_len;   /* Length of payload in bytes */
-    uint8_t  payload[64];   /* Variable-length payload data */
-    uint16_t crc;           /* CRC-16/CCITT over msg_id..payload */
-} cmd_msg_t;
-
-/* Wire format:  SOF | stuffed(msg_id, msg_type, len, payload, crc) */
-```
+Rules: only the AP sends setpoints (temperature or power); the STM32 may only send HEAT_ON_OFF = 0. The module regulates temperature itself and must drop to zero power if no HEAT_SET_TEMP / HEAT_SET_POWER refresh arrives for 1 s (a selection requirement for the commercial module); the AP refreshes at 2 Hz. E_STOP (0x001) is accepted from any node and acted on by all three.
 
 ### 7.2 Message Types
 
-This table is the single source of truth for bridge type codes. Code blocks: `0x0x` core commands, `0x1x` STM32 → RV1106 reports, `0x2x` LED ring and stirring arm, `0x3x` dispensing (payload detail owned by [[../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] §8), `0xFF` acknowledge. Faults are reported in STATUS `error_code` (codes in [[05-MCU-Functional-Specification|MCU Functional Specification]] §8); there is no separate FAULT message.
+This table is the single source of truth for bus identifiers. Standard 11-bit IDs; the lowest ID wins arbitration, so emergency and heartbeat frames always get through. Blocks: `0x00x` emergency, `0x01x` heartbeats, `0x1xx` induction surface (reference IDs, adapted to the chosen module), `0x2xx` AP → STM32 commands, `0x3xx` STM32 → AP reports. Command frames carry a 1-byte sequence number in byte 0 followed by the payload (≤ 7 bytes); the STM32 answers with ACK/NAK 0x3FF echoing the sequence number and carrying up to 5 bytes of result data. The low byte of each `0x2xx` ID is the former bridge type code, so the arm and dispensing documents keep their code tables (payload detail for 0x230–0x239 is owned by [[../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] §7.3, for 0x221–0x225 by [[../05-Subsystems/02-Robotic-Arm|Robotic Arm]] §8.2). Faults are reported in STATUS `error_code` (codes in [[05-MCU-Functional-Specification|MCU Functional Specification]] §7.2); there is no separate FAULT message. There is no temperature loop in Epicura: the AP sends HEAT_SET_TEMP and the module regulates.
 
-| Message | Type Code | Direction | Payload |
-|---------|-----------|-----------|---------|
-| SET_TEMP | 0x01 | RV1106 → STM32 | target_temp (float), ramp_rate (float) |
-| SET_STIR | 0x02 | RV1106 → STM32 | pattern (uint8), speed_rpm (uint16), direction (uint8: 0=CW, 1=CCW) |
-| E_STOP | 0x04 | RV1106 → STM32 | reason_code (uint8) |
-| HEARTBEAT | 0x05 | RV1106 → STM32 | uptime_ms (uint32) |
-| TELEMETRY | 0x10 | STM32 → RV1106 | temp, motor_rpm, weight, state (20 Hz, unsolicited) |
-| SENSOR_DATA | 0x11 | STM32 → RV1106 | adc_values[], ir_temp, load_cells[] |
-| STATUS | 0x12 | STM32 → RV1106 | safety_state, error_code, flags (on change; carries fault codes) |
-| SET_LED | 0x20 | RV1106 → STM32 | mode (uint8: OFF/CAPTURE/NIGHT), r, g, b (uint8), brightness_pct (uint8) |
-| SET_SPEED | 0x21 | RV1106 → STM32 | speed_rpm (uint16), direction (uint8) — direct arm override |
-| ARM_STOP | 0x22 | RV1106 → STM32 | — (stop with decel ramp) |
-| ARM_HOME | 0x23 | RV1106 → STM32 | — |
-| ARM_STATUS | 0x24 | RV1106 → STM32 | — → status_byte, current_rpm, position |
-| SET_RAMP | 0x25 | RV1106 → STM32 | accel_limit (uint16, RPM/s) |
-| DISPENSE_FID | 0x30 | RV1106 → STM32 | box_id (uint8: 1–6), qty_quarter_tsp (uint8: 1–40) |
-| DISPENSE_CID | 0x31 | RV1106 → STM32 | slot_id (uint8: 1–5) |
-| DISPENSE_SLD | 0x32 | RV1106 → STM32 | channel (uint8: OIL=1, WATER=2), target_g (uint16) |
-| QUERY_WEIGHT | 0x35 | RV1106 → STM32 | source (uint8: SLD_OIL=1, SLD_WATER=2) → weight_g (int32) |
-| PREFLIGHT | 0x36 | RV1106 → STM32 | subsystem_mask (uint8) → status per subsystem |
-| TARE | 0x37 | RV1106 → STM32 | source (uint8: SLD_OIL=1, SLD_WATER=2) |
-| DISPENSER_HOME | 0x38 | RV1106 → STM32 | target (uint8: CID=1, FID=2, 0xFF=both) |
-| DISPENSER_STATUS | 0x39 | RV1106 → STM32 | — → cid_pos, fid_box, gate_open, rail_on, busy |
-| ACK / NAK | 0xFF | STM32 → RV1106 | ack_msg_id, result_code |
+| CAN ID | Message | Direction | DLC | Payload |
+|--------|---------|-----------|-----|---------|
+| 0x001 | E_STOP | any → all | 2 | src_node (uint8: 1=HEAT, 2=STIR, 3=AP), reason_code (uint8); no ACK, acted on by every node |
+| 0x010 | HB_AP | AP → all | 5 | seq (uint8), uptime_ms (uint32 LE); every 2 s |
+| 0x100 | HEAT_SET_TEMP | AP → HEAT | 4 | target_dC (int16, 0.1 °C), ramp (uint8, °C/s), max_power_pct (uint8); temperature mode, re-sent at 2 Hz as keep-alive |
+| 0x101 | HEAT_ON_OFF | AP or STIR → HEAT | 1 | 0 = off, 1 = on (the STM32 only ever sends 0) |
+| 0x102 | HEAT_QUERY | AP → HEAT | 0 | — |
+| 0x103 | HEAT_SET_POWER | AP → HEAT | 2 | power_pct (uint8, 0–100), ramp (uint8, %/s); power mode for sear/boil stages, re-sent at 2 Hz as keep-alive |
+| 0x180 | HEAT_STATUS | HEAT → all | 8 | power_pct, surface_temp_dC (int16, 0.1 °C, module's under-glass sensor), coil_temp (int8 °C), pot_detected, fault_flags (uint16), reserved; 10 Hz |
+| 0x181 | HEAT_FAULT | HEAT → all | 4 | fault_code (uint16), detail (uint16) |
+| 0x182 | HEAT_ACK | HEAT → AP | 3 | cmd_id (uint16), result |
+| 0x202 | SET_STIR | AP → STIR | 5 | seq, pattern (uint8), speed_rpm (uint16), direction (uint8: 0=CW, 1=CCW) |
+| 0x220 | SET_LED | AP → STIR | 6 | seq, mode (OFF/CAPTURE/NIGHT), r, g, b, brightness_pct |
+| 0x221 | SET_SPEED | AP → STIR | 4 | seq, speed_rpm (uint16), direction — direct arm override |
+| 0x222 | ARM_STOP | AP → STIR | 1 | seq (stop with decel ramp) |
+| 0x223 | ARM_HOME | AP → STIR | 1 | seq |
+| 0x224 | ARM_STATUS | AP → STIR | 1 | seq → ACK data: status_byte, current_rpm (uint16), position (uint16) |
+| 0x225 | SET_RAMP | AP → STIR | 3 | seq, accel_limit (uint16, RPM/s) |
+| 0x230 | DISPENSE_FID | AP → STIR | 3 | seq, box_id (1–6), qty_quarter_tsp (1–40) → ACK data: doses_done, est_mass_dg (uint16) |
+| 0x231 | DISPENSE_CID | AP → STIR | 2 | seq, slot_id (1–5) → ACK data: cid_pos; NAK if slot_id ≤ current position |
+| 0x232 | DISPENSE_SLD | AP → STIR | 4 | seq, channel (OIL=1, WATER=2), target_g (uint16) → ACK data: actual_g (uint16) |
+| 0x235 | QUERY_WEIGHT | AP → STIR | 2 | seq, source (SLD_OIL=1, SLD_WATER=2) → ACK data: weight_g (int32) |
+| 0x236 | PREFLIGHT | AP → STIR | 2 | seq, subsystem_mask → ACK data: status per subsystem |
+| 0x237 | TARE | AP → STIR | 2 | seq, source |
+| 0x238 | DISPENSER_HOME | AP → STIR | 2 | seq, target (CID=1, FID=2, 0xFF=both) |
+| 0x239 | DISPENSER_STATUS | AP → STIR | 1 | seq → ACK data: cid_pos, fid_box, gate_open, rail_on, busy |
+| 0x310 | TELEMETRY | STIR → AP | 8 | motor_rpm (uint16), motor_current_dA (int16, 0.1 A, from the CAN servo), safety_state, flags (pot_detected, on_battery, stir_enabled, charging), error_code, seq; 20 Hz unsolicited |
+| 0x311 | LOADCELLS | STIR → AP | 5 | oil_g (int16), water_g (int16), flags; 10 Hz while dispensing |
+| 0x312 | STATUS | STIR → AP | 8 | safety_state, error_code, flags (uint16), fault_detail (uint32: batt_mV for POWER_FAIL / BATTERY_FAULT); on change |
+| 0x3FF | ACK / NAK | STIR → AP | 3–8 | seq, cmd_type (low byte of the command ID), result_code, data[0..4] |
 
 ### 7.3 Protocol Details
 
-- **Link:** UART2 on RV1106 (header pins 8/10) ↔ USART2 on STM32 (PA2/PA3), 1,000,000 baud, 8N1, 3.3 V. This is also the production link: there is no CAN alternative, because the RV1106 has no CAN controller and its only full SPI drives the LCD. CAN on the STM32 serves the induction module only.
-- **Framing:** SOF 0x7E, byte-stuffing (0x7D escape), then MSG_ID, type, length, payload, CRC-16. Receiver discards until SOF and validates CRC before dispatch.
-- **Data-ready:** Not needed. STM32 pushes TELEMETRY at 20 Hz unsolicited; RV1106 reads in the bridge thread with a 100-byte kernel FIFO and `VMIN=1`.
-- **Timeout:** 500 ms for ACK; retry up to 3 times
-- **Critical commands (E_STOP):** No ACK required, acted on immediately
-- **Bandwidth:** worst case ~70 bytes x (20 Hz telemetry + 20 Hz commands) ≈ 28 kbit/s, under 3% of link capacity
+- **Physical:** CAN 2.0B, 500 kbps, isolated bus domain (5 V_ISO and GND_ISO from the B0505S-1WR3 on the Unified PCB), two ISO1050DUB transceivers on the Unified PCB (STM32 node and RV1106 node) sharing one 120 Ω termination at J_CAN_HEAT; the second termination is inside the induction surface. Shielded twisted pair ≤ 1 m to the module. The stir-motor bus (FDCAN2, SN65HVD230, 1 Mbps, J_CAN_STIR) is electrically separate and STM32-private.
+- **AP side:** `mcp251xfd` kernel driver; `ip link set can0 up type can bitrate 500000` at boot; the `can` thread (SCHED_FIFO) owns a raw socket with ID filters for `0x00x`, `0x01x`, `0x18x` and `0x3xx`. The MCP2518FD shares SPI0 with the LCD (CS0) at ≤ 20 MHz; its 32-object RX FIFO absorbs frames while an LCD DMA chunk (≤ 10 ms) holds the bus.
+- **STM32 side:** FDCAN1 classic frames, RX FIFO interrupt → command parser in the CAN comms task (20 Hz), telemetry TX from the sensor task.
+- **Timeouts:** ACK 500 ms, 3 retries; E_STOP needs no ACK. HB_AP every 2 s; the STM32 enters its safe state after 5 s without it. The AP treats TELEMETRY older than 300 ms as STM32 loss and HEAT_STATUS older than 500 ms as module loss: HEAT_ON_OFF 0 and pause. The module drops to zero power 1 s after the last HEAT_SET_TEMP / HEAT_SET_POWER refresh (AP sends at 2 Hz).
+- **Bus load:** 20 Hz TELEMETRY + 2 Hz HEAT_SET_TEMP + 10 Hz HEAT_STATUS + sporadic commands ≈ 5 kbit/s, about 1 % of 500 kbps.
+- **Service UART:** USART2 ↔ UART2 (1 Mbps) carries only the ST system-bootloader protocol for STM32 firmware updates (BOOT0 on header GPIO 32, NRST on GPIO 38) and an optional debug console; no runtime traffic.
 
 ---
 
@@ -866,12 +854,12 @@ This table is the single source of truth for bridge type codes. Code blocks: `0x
 
 | Task | Frequency | Deadline | Processor | Priority |
 |------|-----------|----------|-----------|----------|
-| PID temperature loop | 10 Hz | 100 ms | STM32 | High |
-| Motor control (PWM) | 50 Hz | 20 ms | STM32 | Highest |
+| Heater setpoint keep-alive (`heat` thread) | 2 Hz | 500 ms | RV1106 | High (SCHED_FIFO) |
+| Motor control (CAN servo on FDCAN2) | 50 Hz | 20 ms | STM32 | Highest |
 | Sensor polling (ADC/I2C) | 10 Hz | 100 ms | STM32 | High |
 | Safety monitor check | 10 Hz | 100 ms | STM32 | Highest |
-| Communication handler | 20 Hz | 50 ms | STM32 | Medium |
-| UART bridge read / heartbeat | 20 Hz / 0.5 Hz | 50 ms | RV1106 | High (SCHED_FIFO) |
+| CAN comms handler (FDCAN1) | 20 Hz | 50 ms | STM32 | Medium |
+| CAN thread (`can0` RX, heartbeat) | 20 Hz / 0.5 Hz | 50 ms | RV1106 | High (SCHED_FIFO) |
 | CV inference | 2 Hz | 500 ms | RV1106 | Medium |
 | UI update (LVGL tick) | 20 Hz | 50 ms | RV1106 | Medium |
 | Recipe engine tick | 1 Hz | 1 s | RV1106 | Low |
@@ -879,7 +867,7 @@ This table is the single source of truth for bridge type codes. Code blocks: `0x
 | Cloud sync (MQTT) | 0.1 Hz | 10 s | RV1106 | Low |
 | Phone stream (VENC) | 15 fps | on demand | RV1106 hardware | Low |
 
-The RV1106 has one core. The bridge thread runs at real-time priority so STM32 heartbeats are never starved by UI rendering or a sync burst; everything else is `SCHED_OTHER`. Safety does not depend on this: the STM32 is autonomous and will cut heat if heartbeats stop.
+The RV1106 has one core. The `can` and `heat` threads run at real-time priority so heartbeats and the 2 Hz setpoint keep-alive are never starved by UI rendering or a sync burst; everything else is `SCHED_OTHER`. Safety does not depend on this: the STM32 cuts heat if heartbeats stop, and the induction surface drops to zero power when the keep-alive stops arriving.
 
 ---
 
@@ -901,9 +889,10 @@ The RV1106 has one core. The bridge thread runs at real-time priority so STM32 h
 ### 9.2 Fallback Strategies
 
 1. **CV fallback:** If camera or model fails, every recipe stage includes `duration_seconds` and `temp_target` as backup transition criteria
-2. **Communication fallback:** STM32 operates autonomously with last-known setpoints for up to 30 seconds, then enters safe shutdown
+2. **Communication fallback:** the induction surface drops to zero power 1 s after the last HEAT_SET_TEMP / HEAT_SET_POWER refresh; the STM32 holds the last stir/dispense state for up to 30 seconds, then enters safe shutdown, forces HEAT_ON_OFF = 0 and disables the stir motor
 3. **Power loss recovery:** `session_checkpoint` row in SQLite (WAL, `synchronous=NORMAL`) is rewritten every 10 seconds; on restart, offer to resume or discard
-4. **Process failure:** `epicurad` is supervised by busybox init with a 10 s kernel watchdog; a crash restarts the process and the STM32 holds last setpoints meanwhile
+4. **Process failure:** `epicurad` is supervised by busybox init with a 10 s kernel watchdog; a crash restarts the process, the heater drops to zero power within 1 s (no setpoint refresh) and the STM32 holds the stir state meanwhile
+6. **Power loss:** the 2S battery on the Unified PCB keeps the RV1106, LCD and STM32 running; on POWER_FAIL the engine checkpoints to SQLite and pauses (state machine §5); at 6.2 V pack voltage the STM32 requests shutdown and `epicurad` syncs and halts
 5. **Streaming failure:** Live view is best-effort. Any encoder or RTSP error tears the stream down and never affects cooking
 
 ---
@@ -916,7 +905,7 @@ The RV1106 has one core. The bridge thread runs at real-time priority so STM32 h
 - [[01-UI-UX-Design|UI/UX Design]]
 - [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]]
 
-#epicura #software-architecture #controller #firmware #recipe-engine #computer-vision #pid-control #safety #stm32 #rv1106 #luckfox
+#epicura #software-architecture #controller #firmware #recipe-engine #computer-vision #canbus #safety #stm32 #rv1106 #luckfox
 
 ---
 
@@ -929,3 +918,5 @@ The RV1106 has one core. The bridge thread runs at real-time priority so STM32 h
 | 2.1 | 2026-11-04 | Manas Pradhan | Confirmed: camera sensor is SC3336 (IMX219/IMX477 dropped, no RV1106 ISP tuning); WS2812B LED ring driven by STM32, SET_LED (0x20) added to bridge protocol. |
 | 2.2 | 2026-11-04 | Manas Pradhan | Recipe YAML example and cooking flow updated for servo carousels: ASD → FID (box, qty in ¼ tsp), CID slot whole-slot (mode removed); message table carries the 0x30–0x39 dispensing block |
 | 2.3 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 not compatible with the Pico Zero); §7.2 is now the single source of truth for bridge type codes (arm 0x21–0x25 and dispensing 0x30–0x39 blocks added, SET_STIR gains direction); CAN alternative for the bridge dropped |
+| 3.1 | 2026-11-04 | Manas Pradhan | Temperature loop removed from Epicura: the induction module regulates on its own sensor; `heat` thread now sends HEAT_SET_TEMP (0x100) / HEAT_SET_POWER (0x103) at 2 Hz and relays surface_temp from HEAT_STATUS; TELEMETRY drops ir_temp (motor current, battery flags added); stirring motor is a CAN servo on the STM32's private FDCAN2 bus; battery-backed power-loss fallback added; §5.3.1, §7 and §8 updated |
+| 3.0 | 2026-11-04 | Manas Pradhan | Isolated CAN bus now connects the RV1106 (MCP2518FD on SPI0 CS1, SocketCAN), the STM32 (FDCAN1) and the induction surface MCU; UART2 kept as service link only (flashing/debug); temperature PID moved from the STM32 to the RV1106 `heat` thread, AP commands HEAT_SET_POWER directly, STM32 keeps HEAT_ON_OFF=0 / E_STOP / relay authority; §7 rewritten as the CAN ID map (0x001 E_STOP, 0x010 HB_AP, 0x1xx heater, 0x2xx commands, 0x3xx reports); SET_TEMP retired |

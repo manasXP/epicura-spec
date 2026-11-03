@@ -1,7 +1,7 @@
 ---
 created: 2026-02-14
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 tags: [epicura, project-overview, kitchen-robot]
 ---
@@ -18,7 +18,7 @@ This project encompasses the following major subsystems:
 
 - [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, robotic arm, sensors, and power budget
 - [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
-- [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, and pot detection
+- [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, module-reported cooking temperature, and pot detection
 - [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
 - [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
 - [[01-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and tools
@@ -45,7 +45,7 @@ This project encompasses the following major subsystems:
 - Full offline fallback with local SQLite recipe database for uninterrupted cooking
 
 ### 3.3 Precision Control
-- PID-controlled induction heating with dynamic temperature range (60-250°C)
+- PID-controlled induction heating (loop on the RV1106 over the shared isolated CAN bus) with dynamic temperature range (60-250°C)
 - IR non-contact thermometer + CAN coil temperature from induction module
 - Sear at 200-250°C, simmer at 60-100°C with ±5°C accuracy
 - Dynamic power management to stay within 2kW household limit
@@ -99,10 +99,10 @@ This project encompasses the following major subsystems:
 │  │  └────────────┬─────────────────┘    │  │  └────────────┬────────┘    │  │
 │  │               │                      │  │               │             │  │
 │  │  ┌────────────▼─────────────────┐    │  │  ┌────────────▼────────┐    │  │
-│  │  │  Recipe State Machine        │    │  │  │  PID Temperature    │    │  │
+│  │  │  Recipe State Machine        │    │  │  │  Heater Interlock   │    │  │
 │  │  │  CV Pipeline (ISP → NPU)     │◄───┼──┼─►│  Servo Motor Driver │    │  │
-│  │  │  LVGL Touchscreen UI         │UART│  │  │  Sensor Polling     │    │  │
-│  │  │  Cloud Sync / OTA            │/CAN│  │  │  Safety Watchdog    │    │  │
+│  │  │  LVGL Touchscreen UI         │CAN │  │  │  Sensor Polling     │    │  │
+│  │  │  Cloud Sync / OTA            │iso │  │  │  Safety Watchdog    │    │  │
 │  │  │  SQLite Recipe DB            │    │  │  │  Dispensing Control │    │  │
 │  │  └──────────────────────────────┘    │  │  └─────────────────────┘    │  │
 │  │                                      │  │                             │  │
@@ -115,8 +115,8 @@ This project encompasses the following major subsystems:
 │     └──────────────┘ └──────────────┘    └────────────┘ └──────────────┘    │
 │                                                                             │
 │     ┌──────────────┐ ┌──────────────┐    ┌────────────┐ ┌──────────────┐    │
-│     │ WiFi / BT    │ │ IR Thermo-   │    │ Reed       │ │ Ingredient   │    │
-│     │ Module       │ │ meter        │    │ Switch     │ │ Hoppers      │    │
+│     │ WiFi / BT    │ │ 2S Li-ion    │    │ Reed       │ │ Ingredient   │    │
+│     │ Module       │ │ Backup       │    │ Switch     │ │ Hoppers      │    │
 │     │              │ │              │    │(Pot Detect)│ │ (4-6 compt.) │    │
 │     └──────────────┘ └──────────────┘    └────────────┘ └──────────────┘    │
 │                                                                             │
@@ -135,7 +135,7 @@ This project encompasses the following major subsystems:
                        │                    │                   │
                        │            ┌───────▼───────┐           │
                        │            │  IMX415-98 Cam│           │
-                       │            │  IR Thermo    │           │
+                       │            │  Module temp  │           │
                        │            └───────────────┘           │
                        │                                        │
                        ▼                                        ▼
@@ -207,3 +207,5 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to Luckfox Pico Zero (RV1106G3): Buildroot, LVGL on 4" SPI LCD, SC3336 camera with ISP + NPU vision, UART/CAN bridge |
 | 1.2 | 2026-11-04 | Manas Pradhan | Dispensing summary updated for servo carousels (FID/CID on one Dispenser Servo Block) |
 | 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT (8 MP, 98 deg lens) |
+| 1.4 | 2026-11-04 | Manas Pradhan | Shared isolated CAN bus (RV1106 + STM32 + induction surface); heater PID on the RV1106 |
+| 1.5 | 2026-11-04 | Manas Pradhan | IR thermometer removed (module-internal temperature control); 2S Li-ion backup on the Unified PCB; CAN servo stirring motor |

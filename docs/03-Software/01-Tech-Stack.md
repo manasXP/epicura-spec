@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 ---
 
@@ -17,8 +17,8 @@ Epicura uses a dual-processor architecture with clearly separated responsibiliti
 | **OS** | Buildroot Linux (Luckfox SDK, kernel 5.10), busybox init | FreeRTOS 10.x |
 | **UI Framework** | LVGL 9 (C, software rendered) on 4" 480x320 SPI LCD | None |
 | **AI/ML** | Hardware ISP + NPU via `rockit` / `rknn_api` (RKNN INT8) | None |
-| **Application** | C11, single process `epicurad` (Recipe Engine, CV, UI, bridge, sync) | C (MISRA C subset) |
-| **Communication** | UART bridge (1 Mbps), MQTT client, HTTPS client | UART/CAN driver |
+| **Application** | C11, single process `epicurad` (Recipe Engine, CV, UI, can, heat, sync) | C (MISRA C subset) |
+| **Communication** | SocketCAN `can0` (MCP2518FD, isolated 500 kbps bus), MQTT client, HTTPS client | FDCAN1 driver on the same bus; FDCAN2 to the CAN servo stirring motor; USART2 service link |
 | **Storage** | SQLite 3 (WAL, JSON1, FTS5), read-only squashfs rootfs + `/data` partition | Non-volatile flash (settings, logs) |
 | **Development** | Buildroot `br2-external` + CMake, VS Code + Remote SSH, LVGL PC simulator | STM32CubeIDE, STM32CubeMX |
 
@@ -48,7 +48,7 @@ Epicura uses a dual-processor architecture with clearly separated responsibiliti
 **Buildroot Linux (Luckfox SDK, kernel 5.10):**
 - Custom `br2-external` tree on the Luckfox SDK; no Yocto, no systemd, no container runtime
 - Minimal image: kernel + busybox init + `epicurad`; read-only squashfs rootfs
-- Device tree for MIPI CSI camera (IMX415-98), fbtft SPI LCD, I2C touch, UART2 bridge
+- Device tree for MIPI CSI camera (IMX415-98), fbtft SPI LCD, I2C touch, MCP2518FD CAN controller on SPI0 CS1, UART2 service link
 - `/data` partition (~6 GB) for SQLite, images, logs and OTA staging
 - A/B boot + rootfs slots for OTA updates (swupdate)
 
@@ -69,8 +69,8 @@ All application functions run as threads of one native C process, `epicurad`, on
 │  │  └──────────────┘ └──────────────┘ └──────────────┘  │  │
 │  │                                                        │  │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │  │
-│  │  │ bridge thread│ │ sync thread  │ │ SQLite 3     │  │  │
-│  │  │ (UART2 1Mbps)│ │ (MQTT/HTTPS) │ │ (in-process) │  │  │
+│  │  │ can + heat   │ │ sync thread  │ │ SQLite 3     │  │  │
+│  │  │ (SocketCAN)  │ │ (MQTT/HTTPS) │ │ (in-process) │  │  │
 │  │  └──────────────┘ └──────────────┘ └──────────────┘  │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -129,7 +129,7 @@ All application functions run as threads of one native C process, `epicurad`, on
 ├─────────────────────────────────────────────────────────┤
 │                   In-Process Integration                 │
 │  • Direct calls into engine / cv / sync threads         │
-│  • Telemetry ring buffer (from bridge thread)           │
+│  • Telemetry ring buffer (from can thread)              │
 │  • SQLite queries for recipe browser (FTS5)             │
 ├─────────────────────────────────────────────────────────┤
 │   /dev/fb0 via fbtft (ST7796S, SPI0 50 MHz, DMA)         │
@@ -155,8 +155,8 @@ All application functions run as threads of one native C process, `epicurad`, on
 - **Interface:** In-process function calls from the LVGL UI thread; no HTTP/RPC boundary
 - **Communication:**
   - SQLite for recipe data and the 10 s session checkpoint
-  - Telemetry ring buffer from the bridge thread for real-time state
-  - Command queue to the bridge thread for STM32 commands
+  - Telemetry ring buffer from the can thread for real-time state
+  - Command queue to the can thread for STM32 commands; heat setpoint to the heat thread
 
 ### 2.6 Cloud & Networking
 
@@ -167,7 +167,7 @@ All application functions run as threads of one native C process, `epicurad`, on
 | OTA Updates | swupdate | A/B boot + rootfs slot updates, signed `.swu` |
 | Backend API | Fastify (Node.js/TypeScript) — cloud only | REST API for mobile app and device sync; the device is a REST + MQTT client, not a server |
 | Live Camera | On-demand H.264 RTSP (`rtsp-stream`, :554 `/pot`) | Stream cooking video to mobile app on request (same LAN direct, else cloud relay) |
-| RV1106-STM32 Bridge | bridge thread of `epicurad` (C, `SCHED_FIFO`) | UART framing, CRC, heartbeat, telemetry buffering |
+| CAN bus node | can + heat threads of `epicurad` (C, `SCHED_FIFO`) | SocketCAN frames, seq/ACK, HB_AP heartbeat, telemetry buffering, 2 Hz heater setpoint keep-alive (the induction module runs its own PID) |
 
 ### 2.7 Storage
 
@@ -207,11 +207,11 @@ All application functions run as threads of one native C process, `epicurad`, on
 
 ---
 
-## 3. RV1106-STM32 Bridge
+## 3. CAN Bus Node (RV1106 ↔ STM32 ↔ Induction Surface)
 
-The bridge is a real-time thread inside `epicurad` and handles all communication between the RV1106 application threads and the STM32 real-time controller.
+The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction surface MCU. Two real-time threads inside `epicurad` own it: `can` handles every frame, `heat` keeps the heater setpoint alive and relays the module's measured temperature (the module runs its own PID; Epicura has no temperature sensor).
 
-### 3.1 Bridge Architecture
+### 3.1 CAN Node Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -222,50 +222,53 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 │         │                │                │                 │
 │         └────────────────┼────────────────┘                 │
 │                          │                                  │
-│         command queue / telemetry ring buffer               │
+│      command queue / setpoint / telemetry ring buffer       │
 │                          │                                  │
-│         ┌────────────────▼────────────────┐                 │
-│         │   bridge thread (SCHED_FIFO)    │                 │
-│         │                                 │                 │
-│         │  • UART frame codec (SOF/stuff) │                 │
-│         │  • CRC-16/CCITT                 │                 │
-│         │  • ACK / retry (500 ms x 3)     │                 │
-│         │  • Telemetry buffering (20 Hz)  │                 │
-│         │  • Watchdog heartbeat (2 s)     │                 │
-│         └────────────┬────────────────────┘                 │
-│                      │                                      │
-│            UART2 1 Mbps (pins 8/10)                         │
-│                      │                                      │
-└──────────────────────┼──────────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────────┐
-│                   STM32G474RE                               │
-│          (FreeRTOS Controller, USART2 PA2/PA3)              │
-└─────────────────────────────────────────────────────────────┘
+│   ┌──────────────────────▼──────────┐  ┌─────────────────┐  │
+│   │   can thread (SCHED_FIFO)       │  │ heat thread     │  │
+│   │  • raw SocketCAN socket, filters│◄─┤ (SCHED_FIFO)    │  │
+│   │  • seq / ACK / retry (500ms x3) │  │ • 2 Hz setpoint │  │
+│   │  • TELEMETRY ring buffer (20 Hz)│  │   keep-alive    │  │
+│   │  • HB_AP heartbeat (2 s)        │  │ • HEAT_SET_TEMP │  │
+│   └────────────┬────────────────────┘  └─────────────────┘  │
+│                │  can0 (mcp251xfd, 500 kbps)                 │
+└────────────────┼────────────────────────────────────────────┘
+                 │ SPI0 CS1 → MCP2518FD → ISO1050DUB #2 (Unified PCB)
+      ═══════════╪════════ isolated CAN bus ════════════════════
+                 │                              │
+       ┌─────────▼─────────┐          ┌─────────▼─────────┐
+       │ STM32G474RE       │          │ Induction surface │
+       │ FDCAN1 + ISO1050  │          │ MCU (onboard CAN, │
+       │ stir (FDCAN2),    │          │ own PID)          │
+       │ dispense, off-sw  │          │ HEAT_STATUS,      │
+       └───────────────────┘          │ HEAT_SET_TEMP     │
+                                      └───────────────────┘
 ```
 
-### 3.2 Bridge Features
+### 3.2 CAN Node Features
 
 | Feature | Implementation |
 |---------|----------------|
-| **Protocol** | SOF 0x7E, byte-stuffing (0x7D escape), then MSG_ID, TYPE, LENGTH, PAYLOAD (≤64), CRC-16/CCITT |
-| **Transport** | UART2 ↔ USART2, 1,000,000 baud, 8N1, 3.3 V (production link as well; no CAN alternative) |
-| **Message Queue** | In-process command queue (pthread mutex + condvar) |
-| **Telemetry Buffer** | Lock-free ring buffer; 20 Hz unsolicited TELEMETRY; SQLite checkpoint every 10 s |
-| **Health Monitoring** | Heartbeat every 2 s, STM32 IWDG 5 s; alerts if STM32 unresponsive |
-| **API** | C API: `bridge_send()`, `bridge_poll_telemetry()`, `bridge_status()` |
-| **Logging** | syslog (busybox) / stderr |
+| **Protocol** | CAN 2.0B, 11-bit IDs: 0x001 E_STOP, 0x010 HB_AP, 0x1xx heater, 0x2xx commands (seq byte first), 0x3xx reports, 0x3FF ACK/NAK — map in [[02-Controller-Software-Architecture#7.2 Message Types\|Controller Software Architecture §7.2]] |
+| **Transport** | MCP2518FD on SPI0 CS1 (≤ 20 MHz, shares the bus with the LCD on CS0) + ISO1050DUB #2; kernel `mcp251xfd`, SocketCAN `can0` at 500 kbps |
+| **Message Queue** | In-process command queue (pthread mutex + condvar); seq-matched ACK/NAK |
+| **Telemetry Buffer** | Lock-free ring buffer; 20 Hz TELEMETRY + 10 Hz HEAT_STATUS; SQLite checkpoint every 10 s |
+| **Heater setpoint** | `heat` thread: HEAT_SET_TEMP (target, ramp ≤ 5 °C/s, max power) or HEAT_SET_POWER re-sent at 2 Hz; `surface_temp` from HEAT_STATUS to engine/ui; HEAT_ON_OFF 0 if HEAT_STATUS > 500 ms old |
+| **Health Monitoring** | HB_AP every 2 s (STM32 safe state after 5 s); TELEMETRY watchdog 300 ms, HEAT_STATUS watchdog 500 ms; `can0` bus-off detection |
+| **Service UART** | UART2 ↔ USART2 only for the ST bootloader (STM32 firmware update via BOOT0/NRST) and debug |
+| **API** | C API: `can_send()`, `can_poll_telemetry()`, `can_status()`, `heat_set_setpoint()` |
+| **Logging** | syslog (busybox) / stderr; `candump` on `can0` for bus capture |
 
-### 3.3 Bridge Stack
+### 3.3 CAN Node Stack
 
 ```c
-/* epicurad bridge thread — no external dependencies */
-├── termios (raw mode, 1 Mbps, VMIN=1)      /* UART2 /dev/ttyS2 */
-├── frame_codec.c (SOF / byte-stuffing)
-├── crc16_ccitt.c (lookup table)
-├── pthread (SCHED_FIFO bridge thread)
-├── ring buffer (telemetry → engine / ui / sync)
-└── stm32_bootloader.c (BOOT0/NRST GPIO + ST USART bootloader protocol for firmware updates)
+/* epicurad can + heat threads — no external dependencies beyond the kernel */
+├── linux/can.h raw socket (CAN_RAW_FILTER for 0x00x, 0x01x, 0x18x, 0x3xx)   /* can0 */
+├── can_codec.c (ID map, little-endian payload packing, seq/ACK matching)
+├── heat_setpoint.c (2 Hz HEAT_SET_TEMP / HEAT_SET_POWER keep-alive, HEAT_STATUS parsing)
+├── pthread (SCHED_FIFO can + heat threads)
+├── ring buffer (telemetry + heater status → engine / ui / sync / heat)
+└── stm32_bootloader.c (BOOT0/NRST GPIO + ST USART bootloader protocol over UART2 for firmware updates)
 ```
 
 ---
@@ -300,12 +303,12 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Comm | 4x UART, 4x SPI, 3x I2C, 2x CAN |
 | Package | LQFP-64 |
 
-**Recommendation:** STM32G474RE preferred for its FDCAN peripheral (required for CAN bus communication with the microwave induction surface module) and HRTIM for precise servo PWM control.
+**Recommendation:** STM32G474RE preferred for its three FDCAN peripherals (FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus) and HRTIM.
 
 ### 4.2 RTOS
 
 **FreeRTOS 10.x:**
-- 4-5 concurrent tasks (PID, Motor, Sensor, Safety, Communication)
+- 5 concurrent tasks (Motor over CAN, Dispense, Sensor, Safety, CAN comms)
 - Priority-based preemptive scheduling
 - Memory: heap_4 allocator (128 KB SRAM budget)
 - Tick rate: 1 kHz (1 ms resolution)
@@ -314,20 +317,21 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 ### 4.3 Language & Standards
 
 - **Language:** C11 (MISRA C:2012 subset for safety-critical paths)
-- **Math:** CMSIS-DSP library for PID computation and signal filtering
+- **Math:** CMSIS-DSP library for signal filtering (no temperature PID anywhere in Epicura; the induction module regulates itself)
 - **Coding standard:** MISRA C mandatory for safety monitor and motor control tasks
 
 ### 4.4 HAL & Drivers
 
 | Peripheral | Driver | Usage |
 |------------|--------|-------|
-| PWM (TIM/HRTIM) | STM32 HAL TIM | Motor control (BLDC, SG90 servos) |
-| ADC | STM32 HAL ADC + DMA | Temperature sensors, current sensing |
-| SPI | STM32 HAL SPI | Thermocouple interface (MAX31855) |
-| I2C | STM32 HAL I2C | Load cells (HX711), IR thermometer |
-| USART | STM32 HAL UART + DMA | Bridge to RV1106 (USART2 PA2/PA3, 1 Mbps, SOF-framed) |
+| PWM (TIM) | STM32 HAL TIM | Exhaust fans (25 kHz), buzzer |
+| ADC | STM32 HAL ADC + DMA | USB VBUS detect, 2S battery pack voltage |
+| GPIO bit-bang | STM32 HAL GPIO | Load cells (HX711 x2) |
+| I2C | STM32 HAL I2C | PCA9685 (dispenser servos), PCF8574 #2, INA219 |
+| USART | STM32 HAL UART | Service link to the RV1106 (USART2 PA2/PA3): ST bootloader + debug only |
 | TIM15 + DMA | STM32 HAL TIM PWM DMA | WS2812B LED ring (PB14, 800 kHz, via 74AHCT1G125) |
-| FDCAN | STM32 HAL FDCAN | CAN bus to microwave induction surface (primary heater control) |
+| FDCAN1 | STM32 HAL FDCAN | Isolated 3-node bus: host commands/telemetry with the RV1106, HEAT_STATUS monitoring, HEAT_ON_OFF=0 off-switch |
+| FDCAN2 | STM32 HAL FDCAN | Regular 1 Mbps bus to the CAN servo stirring motor (velocity/position commands, feedback) |
 | GPIO | STM32 HAL GPIO | E-stop, safety relay, PCA9685 OE (dispenser servos), SLD solenoids, buzzer |
 | IWDG | STM32 HAL IWDG | Independent watchdog (safety) |
 
@@ -393,13 +397,13 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Unity + CMock (or cmocka) via CMake/ctest | C | Recipe engine, frame codec, sync logic, SQLite layer (host-side, mocked rockit/rknn) |
 | gcov / lcov | C | Code coverage reporting |
 | LVGL PC simulator | C | UI screens and navigation on the desktop |
-| HIL on Luckfox Pico Zero | C | ISP/NPU pipeline, UART bridge, LCD, Wi-Fi |
+| HIL on Luckfox Pico Zero | C | ISP/NPU pipeline, CAN node (`can0`), heat loop, LCD, Wi-Fi |
 
 ### 6.2 STM32 Testing
 
 | Framework | Language | Scope |
 |-----------|---------|-------|
-| Unity test framework | C | PID controller, protocol parser, safety logic |
+| Unity test framework | C | CAN command parser, safety logic, motor control |
 | CMock | C | Mock HAL functions for unit testing |
 | Ceedling | C | Build system for Unity + CMock |
 
@@ -408,7 +412,7 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Method | Purpose |
 |--------|---------|
 | Hardware-in-Loop (HIL) | STM32 + real sensors, RV1106 + camera, end-to-end |
-| UART loopback | Protocol testing without full hardware |
+| vcan / CAN loopback | Protocol testing without full hardware (SocketCAN `vcan0` on the host, FDCAN internal loopback on the STM32) |
 | Static analysis (cppcheck) | C code quality on both platforms |
 | PC-lint (MISRA) | MISRA C compliance on STM32 safety code |
 | Valgrind / AddressSanitizer | Memory error detection on host-side `epicurad` unit tests |
@@ -440,7 +444,7 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 
 - **Mechanism:** System bootloader (STM32 built-in USART bootloader on USART2)
 - **Trigger:** RV1106 drives STM32 BOOT0 (header pin 32) high and pulses NRST (header pin 38)
-- **Delivery:** RV1106 downloads .bin, streams to STM32 over the bridge UART (ST USART bootloader protocol)
+- **Delivery:** RV1106 downloads .bin, streams to STM32 over the UART2 service link (ST USART bootloader protocol)
 - **Verification:** CRC check after flashing
 - **Rollback:** Dual-bank flash (if available) or re-flash previous version
 
@@ -451,8 +455,8 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Phase | Duration | Key Activities |
 |-------|----------|----------------|
 | **Environment Setup** | 2 weeks | Luckfox SDK Buildroot `br2-external` for RV1106, STM32CubeIDE project, toolchain validation |
-| **Hardware Bring-up** | 4 weeks | RV1106 boot + SPI LCD + touch, STM32 peripherals (PWM, ADC, UART), IMX415-98 camera test |
-| **Core Firmware** | 6 weeks | FreeRTOS tasks, PID controller, motor control, safety monitor, protocol |
+| **Hardware Bring-up** | 4 weeks | RV1106 boot + SPI LCD + touch, STM32 peripherals (PWM, ADC, FDCAN), CAN bus bring-up, IMX415-98 camera test |
+| **Core Firmware** | 6 weeks | FreeRTOS tasks, CAN servo motor control (FDCAN2), safety monitor, CAN protocol; RV1106 heat thread setpoint keep-alive |
 | **CV Integration** | 4 weeks | ISP/NPU pipeline, model training (collect cooking images), RKNN conversion on RV1106 |
 | **UI Development** | 4 weeks | LVGL screens (home, cooking, settings) at 480x320, pot preview, recipe browser |
 | **App Development** | 3 weeks | Native iOS + Android apps (recipe browse, live view, settings), WiFi communication |
@@ -472,9 +476,12 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Recipe Engine Language | C11 | Python 3.11+ | No interpreter on the device; libyaml + SQLite in one process; deterministic memory use on 256 MB |
 | Mobile App Framework | Native (Swift + Kotlin) | Flutter | Native platform APIs for BLE (Core Bluetooth, CompanionDeviceManager) and camera streaming; better UX, smaller app size |
 | Backend Framework | Fastify (TypeScript) | Express, NestJS | Fastest Node.js framework, built-in schema validation, TypeScript-first, plugin system (cloud only; device is a client) |
-| STM32 RTOS | FreeRTOS | Bare metal | FreeRTOS provides task isolation, priority scheduling, and watchdog integration needed for concurrent PID + safety + comms |
-| Inter-Processor Comm | UART 1 Mbps (primary) | SPI, CAN bus | Pico Zero's single SPI controller goes to the LCD; UART needs no data-ready line, doubles as the STM32 bootloader link; CAN kept as production alternative, also used for microwave surface control |
-| STM32 Variant | STM32G474RE | STM32F446RE | G474 has FDCAN for microwave surface CAN bus and HRTIM; F446 viable but lacks FDCAN |
+| STM32 RTOS | FreeRTOS | Bare metal | FreeRTOS provides task isolation, priority scheduling, and watchdog integration needed for concurrent motor + safety + CAN comms |
+| Inter-Processor Comm | Isolated CAN 2.0B 500 kbps (MCP2518FD on SPI0 CS1) | UART, SPI | One bus for all three controllers (RV1106, STM32, induction surface MCU): hardware CRC/ACK, priority arbitration for E_STOP, 5 kV isolation; UART2 kept only as the STM32 bootloader/debug link |
+| Stirring Motor Interface | CAN servo on STM32 FDCAN2 (regular, non-isolated port) | PWM + EN/DIR BLDC | Encoder feedback (rpm, angle, current, temperature) over two wires; stall detection from the motor itself; separate bus keeps the 1 Mbps motor protocol off the isolated heater bus |
+| Temperature Control | Module-internal PID (induction surface's own sensor), RV1106 sends setpoints | IR thermometer + PID on the RV1106 / STM32 | No sensor, emissivity calibration or tuning in Epicura; the pre-certified module already regulates; camera covers food-state decisions |
+| Backup Power | 2S Li-ion pack + TP5100 charger on the Unified PCB, VSYS diode-OR | External 12 V UPS, single-cell micro-UPS | One board, no external UPS; whole 5 V logic domain survives outages for > 4 h |
+| STM32 Variant | STM32G474RE | STM32F446RE | G474 has three FDCAN controllers (heater bus + motor bus) and HRTIM; F446's bxCAN is viable but lacks FDCAN |
 | CV Model | MobileNetV2 INT8 (RKNN) | Custom CNN | MobileNetV2 converts cleanly with RKNN-Toolkit2, runs in 5-10 ms on the RV1106 NPU, proven on ARM |
 | Database | SQLite 3 (in-process) | PostgreSQL (Docker), MongoDB | Zero-server embedded DB fits 256 MB; JSON1 + FTS5 mirror the cloud PostgreSQL schema table-for-table so sync is a row copy |
 | Firmware Update | swupdate (A/B) | Manual SD card | A/B partitions enable safe OTA with automatic rollback; SD card update requires physical access |
@@ -503,3 +510,5 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to RV1106G3 (Luckfox Pico Zero): device stack is Buildroot + single C11 process (`epicurad`) with LVGL, SQLite, libmosquitto/libcurl clients, rockit/rknn vision and swupdate; Docker/PostgreSQL/Kivy/Python removed from the device; bridge moved from SPI to UART 1 Mbps; on-demand RTSP live view replaces MJPEG. Cloud stack unchanged |
 | 1.2 | 2026-11-04 | Manas Pradhan | GPIO row updated for the Dispenser Servo Block (PCA9685 OE; stepper/linear-actuator and limit-switch lines removed) |
 | 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98; CAN alternative for the STM32 link removed |
+| 1.4 | 2026-11-04 | Manas Pradhan | RV1106 joins the isolated CAN bus (MCP2518FD on SPI0 CS1, SocketCAN); bridge thread replaced by can + heat threads (heater PID on the RV1106); UART2 demoted to STM32 flashing/debug; §3 rewritten, STM32 stack and decision table updated |
+| 1.5 | 2026-11-04 | Manas Pradhan | Heater PID removed from Epicura (module-internal control, heat thread = 2 Hz setpoint keep-alive); FDCAN2 added for the CAN servo stirring motor; HAL table corrected (no IR thermometer / thermocouple); decisions for motor interface, temperature control and 2S battery backup added |

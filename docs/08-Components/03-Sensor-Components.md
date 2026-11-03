@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.2
+version: 2.3
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-This document details the sensing subsystem components for the Epicura kitchen robot prototype, including the vision camera, infrared thermometer, load cells, temperature sensors, and supporting components.
+This document details the sensing subsystem components for the Epicura kitchen robot prototype: the vision camera, pot detection, LED ring and supporting components. There is no thermometer in Epicura: cooking temperature comes from the induction module's own under-glass sensor over CAN (see [[01-Induction-Heating|Induction Heating]]); SLD load cells are costed under [[02-Actuation-Components|Actuation]].
 
 ## 2. Sensor Architecture
 
@@ -27,11 +27,11 @@ This document details the sensing subsystem components for the Epicura kitchen r
 │  │  LED Ring    │    via 74AHCT1G125 3.3→5 V                   │
 │  └──────────────┘                                              │
 │                                                                 │
-│  ┌──────────────┐  I2C     ┌──────────────┐                   │
-│  │  MLX90614    │─────────►│  STM32G474RE │                   │
-│  │  IR Thermo   │          │  (Controller)│                   │
+│  ┌──────────────┐  CAN     ┌──────────────┐                   │
+│  │  Induction   │─────────►│  STM32G474RE │  surface_temp in  │
+│  │  module temp │ (isolated│  + RV1106    │  HEAT_STATUS; no  │
+│  │  sensor      │   port)  │              │  sensor on Epicura│
 │  └──────────────┘          │              │                   │
-│                            │              │                   │
 │  ┌──────────────┐  GPIO    │              │                   │
 │  │  Reed Switch │─────────►│              │                   │
 │  │  (Pot Detect)│          └──────────────┘                   │
@@ -49,11 +49,9 @@ This document details the sensing subsystem components for the Epicura kitchen r
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Camera Module IMX415-98 | Luckfox IMX415-98 IR-CUT 8 MP (MIPI CSI 4-lane, 22-pin FPC included) | 1 | $54.00 | $54.00 | Luckfox / Waveshare | 8 MP 3840x2160, 98 deg F2.0 lens, IR-CUT; run at 1280x720 @ 30fps into the RV1106 ISP; ISP tuning file shipped with the Pico Zero image |
 
-### 3.2 Thermal & Weight Sensors
+### 3.2 Thermal Sensors
 
-| Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
-|-----------|-------------|-----|------------|----------|----------|-------|
-| IR Thermometer | MLX90614ESF-BAA | 1 | $12.00 | $12.00 | Mouser / DigiKey | Non-contact, I2C, 90° FOV, -70 to +380°C |
+None. The MLX90614 IR thermometer is removed: the commercial induction surface regulates on its own under-glass sensor and reports `surface_temp` at 10 Hz on the isolated CAN bus. Food-state decisions are made by the camera and CV pipeline.
 
 ### 3.3 Detection & Illumination
 
@@ -68,7 +66,6 @@ This document details the sensing subsystem components for the Epicura kitchen r
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Decoupling Caps (100nF) | 0603, X7R | 5 | $0.10 | $0.50 | Any | I2C/SPI line filtering and bypass |
-| Pull-up Resistors (4.7k ohm) | 0603, 1% | 2 | $0.10 | $0.20 | Any | I2C bus pull-ups for MLX90614 |
 
 ---
 
@@ -77,12 +74,11 @@ This document details the sensing subsystem components for the Epicura kitchen r
 | Item | Cost |
 |------|------|
 | IMX415-98 Camera | $54.00 |
-| MLX90614 IR Thermometer | $12.00 |
 | Reed Switch | $1.00 |
 | LED Ring (WS2812B) | $5.00 |
 | 74AHCT1G125 Level Shifter | $0.30 |
-| Passive Components | $0.70 |
-| **Category Subtotal** | **$73.00** |
+| Passive Components | $0.50 |
+| **Category Subtotal** | **$60.80** |
 
 ---
 
@@ -96,12 +92,10 @@ This document details the sensing subsystem components for the Epicura kitchen r
 - Fixed focus simplifies mounting. 3 MP is more than sufficient for food stage classification (model input is 224x224 pixels).
 - Same module for prototype and production; the FPC plugs directly into the Pico Zero MIPI CSI connector.
 
-### 5.2 MLX90614ESF-BAA IR Thermometer
-- **90° FOV (BAA variant):** Covers entire pot surface from overhead mounting
-- **Temperature range:** -70°C to +380°C (food range: 20°C to 250°C)
-- **Accuracy:** ±0.5°C in 0-50°C range, ±2°C at higher temperatures
-- **Interface:** I2C (SMBus compatible), default address 0x5A
-- **Mounting:** 15-20 cm above pot surface for full pot coverage
+### 5.2 Cooking Temperature Without a Thermometer
+- The induction module's under-glass sensor (pot-bottom temperature) is reported in HEAT_STATUS (0x180) at 0.1 °C / 10 Hz and used for stage transitions and the STM32 over-temperature cut-off
+- Removes the IR sensor, its emissivity calibration, the steam shroud and one I2C device from the Unified PCB (−$12.20)
+- Recipe `temp_target` values are pot-bottom targets; browning/boiling detection is the camera's job
 
 ---
 
@@ -126,3 +120,4 @@ This document details the sensing subsystem components for the Epicura kitchen r
 | 2.0 | 2026-02-20 | Manas Pradhan | Removed NTC thermistors (coil temp via CAN, ambient not needed); subtotal $64.90 → $62.70 |
 | 2.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 for the RV1106 ISP (IMX219/IMX477 dropped); LED ring now driven by STM32 PB14 via 74AHCT1G125 (+$0.30); subtotal $43.70 → $31.00 |
 | 2.2 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT ($54): SC3336 not compatible with the Pico Zero; subtotal $31.00 → $73.00 |
+| 2.3 | 2026-11-04 | Manas Pradhan | MLX90614 IR thermometer and its pull-ups removed (cooking temperature from the induction module over CAN); subtotal $73.00 → $60.80 |

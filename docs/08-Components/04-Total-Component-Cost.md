@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 10.1
+version: 10.3
 status: Draft
 ---
 
@@ -17,30 +17,32 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Category | Subtotal | % of Total | Details |
 |----------|----------|------------|---------|
-| [[01-Compute-Module-Components|Compute Modules]] | $85.00 | 12% | Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD, cables |
-| [[02-Actuation-Components|Actuation]] | $274.98 | 40% | Induction hob, Dispenser Servo Block (4 servos + PCA9685, FID/CID carousels + canisters), PCF8574 #2 GPIO expander, SLD pumps/solenoids/load cells, ISO1050DUB CAN transceiver, 24V BLDC motor, relays, exhaust fan, filters |
-| [[03-Sensor-Components|Sensors]] | $73.00 | 11% | IMX415-98 camera, IR thermo, reed switch, LED ring + level shifter |
-| **Component Total** | **$432.98** | **63%** | Electronic components only |
+| [[01-Compute-Module-Components|Compute Modules]] | $91.50 | 13% | Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD, RV1106 CAN node (MCP2518FD + ISO1050DUB #2), cables |
+| [[02-Actuation-Components|Actuation]] | $296.18 | 42% | Induction hob, Dispenser Servo Block (4 servos + PCA9685, FID/CID carousels + canisters), PCF8574 #2 GPIO expander, SLD pumps/solenoids/load cells, ISO1050DUB + SN65HVD230 CAN transceivers, 24V CAN servo stirring motor, relays, exhaust fan, filters |
+| [[03-Sensor-Components|Sensors]] | $60.80 | 9% | IMX415-98 camera, reed switch, LED ring + level shifter (no thermometer: module-reported temperature) |
+| **Component Total** | **$448.48** | **63%** | Electronic components only |
 
 ---
 
 ## 3. Detailed Component Breakdown
 
-### 3.1 Compute Modules ($85.00)
+### 3.1 Compute Modules ($91.50)
 
 | Item | Cost |
 |------|------|
 | Luckfox Pico Zero (RV1106G3, 256MB, 8GB eMMC) | $47.00 |
 | STM32G474RE Nucleo | $18.00 |
 | 4" ST7796S SPI LCD + FT6336 touch | $15.00 |
+| RV1106 CAN node (MCP2518FD + crystal, ISO1050DUB #2) | $6.50 |
 | Cables | $5.00 |
 
-### 3.2 Actuation ($274.98)
+### 3.2 Actuation ($296.18)
 
 | Item | Cost |
 |------|------|
-| Microwave Induction Surface (CAN) | $60.00 |
-| 24V BLDC Motor (main arm) | $25.00 |
+| Microwave Induction Surface (CAN, internal temperature control) | $60.00 |
+| 24V CAN Servo Motor (main arm) | $45.00 |
+| SN65HVD230 + stir-bus passives (regular CAN port) | $1.20 |
 | Dispenser Servos — DSB (4x DS3218-class) | $40.00 |
 | PCA9685 + DSB Rail Parts | $2.50 |
 | FID Canisters (6x, ¼ tsp measure wheels) | $18.00 |
@@ -51,7 +53,7 @@ This document provides a consolidated view of all component costs for the Epicur
 | Peristaltic Pumps — SLD (2x) | $20.00 |
 | Solenoid Valves — SLD (2x) | $8.00 |
 | Load Cells + HX711 — SLD (2×) | $16.00 |
-| ISO1050DUB (isolated CAN transceiver) | $3.50 |
+| ISO1050DUB #1 (isolated CAN transceiver, STM32 node) | $3.50 |
 | CAN Termination + Decoupling | $0.13 |
 | Safety Relay Module (2x) | $6.00 |
 | Motor Driver Board | $8.00 |
@@ -59,14 +61,13 @@ This document provides a consolidated view of all component costs for the Epicur
 | Exhaust Fan + Filtration | $22.50 |
 | Piezo Buzzer + MOSFET | $0.85 |
 
-### 3.3 Sensors ($73.00)
+### 3.3 Sensors ($60.80)
 
 | Item | Cost |
 |------|------|
 | IMX415-98 Camera | $54.00 |
-| MLX90614 IR Thermometer | $12.00 |
 | Reed Switch + LED Ring + 74AHCT1G125 | $6.30 |
-| Passive Components | $0.70 |
+| Passive Components | $0.50 |
 
 ---
 
@@ -76,11 +77,11 @@ This document provides a consolidated view of all component costs for the Epicur
 |------|------|-------|
 | Enclosure (3D printed) | $80.00 | PLA/PETG filament, prototype enclosure + internal brackets |
 | Mechanical Parts (shaft, brackets, fasteners) | $50.00 | Stainless steel shaft (8mm), aluminum brackets, M3/M4 fasteners |
-| Custom PCB (Unified PCB) | $25.50 | Single 4-layer board, 5 pcs (JLCPCB) |
-| Power Supply Module | $30.00 | Mean Well LRS-75-24 (24V/3.2A/76.8W) + buck converters (24V→5V) |
+| Custom PCB (Unified PCB) | $25.50 | Single 4-layer board, 5 pcs (JLCPCB); hosts the Pico Zero slot, both CAN ports, dispenser drivers and the TP5100 charger |
+| Power Supply Module + Battery | $42.00 | Mean Well LRS-75-24 (24V/3.2A/76.8W) $30 + 2S1P 18650 Li-ion pack with PCM and NTC $12 (replaces the external 12V UPS, $15-30, previously outside the BOM) |
 | Wiring / Connectors / Misc | $30.00 | JST, Dupont, ring terminals, heat shrink, cable ties |
 | Pot (induction-compatible) | $20.00 | Stainless steel 304, 3-4L capacity, flat base |
-| **Additional Total** | **$250.00** | |
+| **Additional Total** | **$262.00** | |
 
 ---
 
@@ -88,10 +89,10 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Category | Cost |
 |----------|------|
-| Electronic Components | $432.98 |
-| Mechanical / Other | $250.00 |
-| **Total BOM (Prototype)** | **$682.98** |
-| **With Contingency (+20%)** | **~$820** |
+| Electronic Components | $448.48 |
+| Mechanical / Other | $262.00 |
+| **Total BOM (Prototype)** | **$710.48** |
+| **With Contingency (+20%)** | **~$853** |
 | **With Tools & Consumables** | **$950-1,250** |
 
 ---
@@ -106,17 +107,17 @@ This document provides a consolidated view of all component costs for the Epicur
 | Microwave Induction Surface | $60.00 (CAN module) | $40.00 (bulk pricing) | Self-contained module, no custom driver |
 | FID + CID servo carousels (4 servos, PCA9685, rings, canisters) | $86.50 | $45.00 | Bulk servos, injection-molded rings and canisters |
 | Pumps + Solenoids — SLD | $28.00 | $14.00 | Bulk pricing |
-| 24V BLDC Stirring Motor | $25.00 | $15.00 | Bulk pricing |
-| Sensors (all) | $73.00 | $30.00 | Direct from manufacturer, MOQ pricing |
+| 24V CAN Servo Stirring Motor | $45.00 | $30.00 | Bulk pricing |
+| Sensors (all) | $60.80 | $28.00 | Direct from manufacturer, MOQ pricing |
 | Enclosure | $80.00 (3D print) | $15.00 (injection mold) | Mold cost amortized over production run |
 | PCBs | $25.50 (prototype) | $8.00 (panel production) | Single unified PCB (controller + driver merged) |
-| Power Supply | $30.00 | $12.00 | Integrated SMPS on main PCB |
+| Power Supply + 2S battery pack | $42.00 | $20.00 | Integrated SMPS on main PCB; bulk cells |
 | Mechanical | $50.00 | $15.00 | Stamped brackets, bulk fasteners |
 | Pot + Accessories | $20.00 | $10.00 | OEM sourcing |
 | Wiring / Connectors | $30.00 | $10.00 | Custom harness, bulk connectors |
 | Exhaust + Filters | $22.50 | $8.00 (OEM blower + bulk filters) | Custom blower + injection-molded housing |
-| Other (CAN, relays, load cells, cables, buzzer) | $72.48 | $20.00 (integrated into PCB + bulk) | Small components absorbed into custom PCB at volume |
-| **Total Unit** | **~$683** | **~$273** | **~60% cost reduction** |
+| Other (CAN nodes + stir-bus transceiver, relays, load cells, cables, buzzer) | $80.18 | $22.00 (integrated into PCB + bulk) | Small components absorbed into custom PCB at volume |
+| **Total Unit** | **~$710** | **~$285** | **~60% cost reduction** |
 
 ---
 
@@ -126,28 +127,29 @@ This document provides a consolidated view of all component costs for the Epicur
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                 Epicura Prototype Component Costs                         │
 │                                                                          │
-│  Compute Modules (12%)  ████████████                                     │
+│  Compute Modules (13%)  █████████████                                    │
 │  └─ RV1106 board (7%)   ███████                                          │
 │  └─ Display (2%)        ██                                               │
 │  └─ STM32 (3%)          ███                                              │
+│  └─ CAN node+cables (2%)██                                               │
+│                                                                          │
+│  Actuation (42%)        ██████████████████████████████████████████       │
+│  └─ FID/CID (12%)       ████████████                                     │
+│  └─ Induction (8%)      ████████                                         │
+│  └─ Stir motor (6%)     ██████                                           │
+│  └─ SLD (4%)            ████                                             │
+│  └─ Other (12%)         ████████████                                     │
+│                                                                          │
+│  Sensors (9%)           █████████                                        │
+│  └─ Camera (8%)         ████████                                         │
 │  └─ Other (1%)          █                                                │
 │                                                                          │
-│  Actuation (40%)        ████████████████████████████████████████         │
-│  └─ FID/CID (13%)       █████████████                                   │
-│  └─ Induction (9%)      █████████                                        │
-│  └─ SLD (4%)            ████                                             │
-│  └─ Other (14%)         ██████████████                                   │
-│                                                                          │
-│  Sensors (11%)          ███████████                                      │
-│  └─ Camera (8%)         ████████                                         │
-│  └─ Other (3%)          ███                                              │
-│                                                                          │
 │  Additional (37%)       █████████████████████████████████████            │
-│  └─ Enclosure (12%)     ████████████                                     │
+│  └─ Enclosure (11%)     ███████████                                      │
 │  └─ Mechanical (7%)     ███████                                          │
-│  └─ PCBs/PSU (8%)       ████████                                         │
+│  └─ PCBs/PSU/battery (10%) ██████████                                    │
 │                                                                          │
-│  Total Prototype BOM: ~$683                                              │
+│  Total Prototype BOM: ~$710                                              │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -157,15 +159,15 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Phase | Description | Estimated Spend | Cumulative |
 |-------|-------------|----------------|------------|
-| Phase 1 | Hardware Setup (Luckfox Pico Zero + STM32 + 4" LCD + PSU) | $150-250 | $150-250 |
-| Phase 2-3 | Induction + Arm (hob + servos + load cells + mechanical) | $200-300 | $350-550 |
-| Phase 4 | Vision (IMX415-98 camera + LED ring + level shifter + training data ingredients) | $75-105 | $425-655 |
-| Phase 5 | Dispensing (Dispenser Servo Block: 4 servos + PCA9685, FID/CID carousels + canisters, SLD pumps/solenoids/2× load cells) | $130-170 | $555-825 |
-| Phase 6 | UI (display already counted; app dev = $0 software) | $0-20 | $555-845 |
-| Phase 7 | Integration (consumables, replacements, debugging) | $50-100 | $605-945 |
-| Contingency | Unexpected costs, rework, replacement parts | $200-400 | $805-1,345 |
-| Tools | Soldering station, multimeter, 3D printer access | $100-200 | $905-1,545 |
-| Ingredients | 30+ cook sessions for testing and training data | $50-100 | $955-1,645 |
+| Phase 1 | Hardware Setup (Luckfox Pico Zero + STM32 + 4" LCD + PSU + 2S battery pack) | $160-260 | $160-260 |
+| Phase 2-3 | Induction + Arm (hob + CAN servo motor + load cells + mechanical) | $220-320 | $380-580 |
+| Phase 4 | Vision (IMX415-98 camera + LED ring + level shifter + training data ingredients) | $75-105 | $455-685 |
+| Phase 5 | Dispensing (Dispenser Servo Block: 4 servos + PCA9685, FID/CID carousels + canisters, SLD pumps/solenoids/2× load cells) | $130-170 | $585-855 |
+| Phase 6 | UI (display already counted; app dev = $0 software) | $0-20 | $585-875 |
+| Phase 7 | Integration (consumables, replacements, debugging) | $50-100 | $635-975 |
+| Contingency | Unexpected costs, rework, replacement parts | $200-400 | $835-1,375 |
+| Tools | Soldering station, multimeter, 3D printer access | $100-200 | $935-1,575 |
+| Ingredients | 30+ cook sessions for testing and training data | $50-100 | $985-1,675 |
 | **Total Project Budget** | | **$1,500-2,500** | |
 
 ---
@@ -176,13 +178,14 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Rank | Component | Cost | % of BOM | Notes |
 |------|-----------|------|----------|-------|
-| 1 | Enclosure (3D print) | $80.00 | 12% | Prototype only; injection mold: $15/unit |
-| 2 | Microwave Induction Surface | $60.00 | 9% | Self-contained CAN module; bulk: $40 |
+| 1 | Enclosure (3D print) | $80.00 | 11% | Prototype only; injection mold: $15/unit |
+| 2 | Microwave Induction Surface | $60.00 | 8% | Self-contained CAN module with internal temperature control; bulk: $40 |
 | 3 | IMX415-98 IR-CUT camera | $54.00 | 8% | Only Luckfox colour camera supported on the Pico Zero; bulk: ~$30 |
 | 4 | Mechanical Parts | $50.00 | 7% | Shaft, brackets, fasteners |
 | 5 | Luckfox Pico Zero (RV1106G3) | $47.00 | 7% | Bare RV1106G3 or Core1106 SoM on custom PCB: ~$18 |
-| 6 | Dispenser Servos (4x, DSB) | $40.00 | 6% | DS3218-class; bulk: ~$6 each |
-| 7 | Unified PCB | $25.50 | 4% | Single board; panel production: $8/unit |
+| 6 | 24V CAN Servo Stirring Motor | $45.00 | 6% | CyberGear/RobStride-class; bulk: ~$30 |
+| 7 | Dispenser Servos (4x, DSB) | $40.00 | 6% | DS3218-class; bulk: ~$6 each |
+| 8 | Unified PCB | $25.50 | 4% | Single board; panel production: $8/unit |
 
 ### 9.2 Cost Reduction Opportunities
 
@@ -238,3 +241,5 @@ This document provides a consolidated view of all component costs for the Epicur
 | 9.1 | 2026-11-04 | Manas Pradhan | Application processor changed to Luckfox Pico Zero (RV1106G3) with 4" SPI LCD and SC3336 camera: Compute $196.00→$85.00, Sensors $43.70→$31.00; component total $554.68→$430.98; prototype BOM $804.68→$680.98; production unit ~$345→~$285 |
 | 10.0 | 2026-11-04 | Manas Pradhan | Dispensers redesigned as servo carousels (Dispenser Servo Block): Actuation $314.98→$274.98 (−$40); component total $430.98→$390.98; prototype BOM $680.98→$640.98; production unit ~$285→~$261 |
 | 10.1 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 ($54): Sensors $31.00 → $73.00, component total $390.98 → $432.98, prototype BOM $640.98 → $682.98, production ~$273; chart, phases and ranking recomputed |
+| 10.2 | 2026-11-04 | Manas Pradhan | RV1106 CAN node (MCP2518FD + ISO1050DUB #2, $6.50) added to Compute: $85.00 → $91.50; component total $432.98 → $439.48; prototype BOM $682.98 → $689.48; production ~$275 |
+| 10.3 | 2026-11-04 | Manas Pradhan | MLX90614 removed (Sensors $73.00 → $60.80); CAN servo stirring motor + SN65HVD230 port (Actuation $274.98 → $296.18); 2S Li-ion pack added to Power ($30 → $42, replaces the external 12V UPS); component total $439.48 → $448.48; prototype BOM $689.48 → $710.48; production ~$285 |

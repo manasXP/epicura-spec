@@ -9,6 +9,7 @@ aliases: [Repository Plan, Repo Plan]
 > |------|--------|--------|
 > | 2026-02-16 | Manas Pradhan | Initial version — 6 repositories |
 > | 2026-11-04 | Manas Pradhan | `epicura-cm5` renamed `epicura-rv1106` (C11/CMake, Buildroot external tree, LVGL, RKNN, swupdate); UART bridge protocol replaces the SPI protocol as a cross-repo contract |
+> | 2026-11-04 | Manas Pradhan | CAN ID map (isolated bus shared by RV1106, STM32 and the induction surface) replaces the UART bridge protocol as the contract; heater PID moves to `epicura-rv1106`; UART2 kept for STM32 flashing |
 
 # Repository Plan
 
@@ -82,22 +83,22 @@ epicura/
 
 ### 2.2 epicura-firmware
 
-**Purpose:** STM32G474RE real-time control firmware — PID, servo, sensors, CAN bus, dispensers, safety.
+**Purpose:** STM32G474RE real-time control firmware — servo, sensors, CAN bus node (commands, telemetry, heater off-switch), dispensers, safety.
 
 ```
 epicura-firmware/
 ├── Core/
 │   ├── Inc/                           # Header files
 │   │   ├── main.h
-│   │   ├── pid_controller.h
+│   │   ├── heater_guard.h              # HEAT_STATUS monitor, HEAT_ON_OFF=0 / E_STOP off-switch
 │   │   ├── servo_driver.h
 │   │   ├── can_interface.h
-│   │   ├── dispenser_asd.h
+│   │   ├── dispenser_fid.h
 │   │   ├── dispenser_cid.h
 │   │   ├── dispenser_sld.h
 │   │   ├── sensor_manager.h
 │   │   ├── safety_manager.h
-│   │   ├── uart_protocol.h
+│   │   ├── can_protocol.h              # ID map, seq/ACK, payload packing
 │   │   └── calibration.h
 │   └── Src/                           # Source files (matching headers)
 ├── Drivers/
@@ -122,7 +123,7 @@ epicura-firmware/
 
 ### 2.3 epicura-rv1106
 
-**Purpose:** All RV1106-side software — the single `epicurad` C application (LVGL UI, recipe engine, ISP/NPU vision, STM32 UART bridge, cloud sync, SQLite), the Buildroot external tree that produces the Luckfox Pico Zero image, RKNN models, and swupdate OTA packaging. No Docker, database server, broker or interpreter runs on the device.
+**Purpose:** All RV1106-side software — the single `epicurad` C application (LVGL UI, recipe engine, ISP/NPU vision, CAN node with the heater PID, cloud sync, SQLite), the Buildroot external tree that produces the Luckfox Pico Zero image, RKNN models, and swupdate OTA packaging. No Docker, database server, broker or interpreter runs on the device.
 
 ```
 epicura-rv1106/
@@ -132,7 +133,9 @@ epicura-rv1106/
 │   ├── ui/                            # LVGL 9 screens (home, recipe, cooking, settings, history); fbtft + evdev glue
 │   ├── engine/                        # libyaml recipe parser, cooking state machine, dispensing orchestrator
 │   ├── cv/                            # rockit VI/ISP setup, rknn_api inference, 3-frame vote, VENC/RGA control
-│   ├── bridge/                        # UART2 framing (SOF, byte stuffing, CRC-16), ACK/retry, heartbeat, STM32 bootloader flasher
+│   ├── can/                           # SocketCAN can0: ID map, seq/ACK/retry, HB_AP heartbeat, telemetry ring buffer
+│   ├── heat/                          # 10 Hz PID → HEAT_SET_POWER; HEAT_STATUS limits
+│   ├── stm32_flash/                   # BOOT0/NRST GPIO + ST USART bootloader flasher over UART2
 │   ├── sync/                          # libcurl REST client, libmosquitto MQTT client, sync_outbox drain
 │   ├── db/                            # SQLite schema, migrations, data access
 │   └── rtsp-stream/                   # On-demand child process: VENC H.264 → RTSP :554
@@ -140,7 +143,7 @@ epicura-rv1106/
 │   ├── Config.in
 │   ├── external.mk
 │   ├── external.desc
-│   ├── board/epicura-pico-zero/       # defconfig, DT overlay (SPI0 LCD, I2C3 touch, UART2), eMMC partition table, rootfs overlay (/etc/init.d)
+│   ├── board/epicura-pico-zero/       # defconfig, DT overlay (SPI0 LCD + MCP2518FD CAN, I2C3 touch, UART2 service link), eMMC partition table, rootfs overlay (/etc/init.d)
 │   └── package/
 │       ├── epicurad/                  # Builds app/ into the image
 │       └── epicura-assets/            # LVGL fonts/icons, default recipes, ISP tuning → /oem
@@ -151,7 +154,7 @@ epicura-rv1106/
 │   ├── sw-description                 # A/B boot + rootfs slots, signed .swu
 │   └── keys/                          # Public key only (signing key lives in CI secrets)
 ├── tests/
-│   ├── unit/                          # Unity + CMock: engine, bridge framing, db, sync (host build, ctest)
+│   ├── unit/                          # Unity + CMock: engine, CAN codec, heat PID, db, sync (host build, ctest)
 │   └── hil/                           # Hardware-in-loop scripts run on the board
 ├── tools/
 │   ├── convert_rknn.py                # TFLite/ONNX → INT8 .rknn with RKNN-Toolkit2 (PC side)
@@ -378,8 +381,8 @@ epicura                (docs + PCB design — standalone)
        ▼ (PCB fabrication produces hardware)
 epicura-firmware       (runs on STM32, no code deps on other repos)
        │
-       ▼ (UART bridge protocol spec shared via epicura docs)
-epicura-rv1106         (runs on RV1106, talks to firmware over UART)
+       ▼ (CAN ID map shared via epicura docs)
+epicura-rv1106         (runs on RV1106, talks to firmware and heater over CAN)
        │
        ▼ (MQTT topics + REST API contracts shared via epicura docs)
 epicura-api            (cloud API + admin portal monorepo)
@@ -389,7 +392,7 @@ epicura-api            (cloud API + admin portal monorepo)
 ```
 
 **Shared contracts** (no code sharing, contracts defined in `epicura` docs):
-- UART bridge protocol spec (framing, message types incl. SET_LED) → between `epicura-firmware` and `epicura-rv1106`
+- CAN ID map (E_STOP, HB_AP, heater 0x1xx, commands 0x2xx incl. SET_LED, reports 0x3xx) → between `epicura-firmware`, `epicura-rv1106` and the induction surface module
 - MQTT topic definitions → between `epicura-rv1106` and `epicura-api`
 - REST API OpenAPI spec → between `epicura-api` and all frontend repos
 - BLE service/characteristic UUIDs → between `epicura-firmware` and mobile repos

@@ -38,7 +38,7 @@ You are a senior C developer with expertise in building autonomous cooking orche
 1. **Define schema** - YAML recipe format with metadata, ingredients (per-subsystem), cooking segments (heat profile, stir profile, duration)
 2. **Build parser** - libyaml event parser into fixed-size C structs (`recipe_t`, `stage_t`, `ingredient_t`, bounded arrays), schema validation in C with field-level error messages, ingredient-to-subsystem mapping; validated recipes are cached in SQLite as JSON
 3. **Design state machine** - Hierarchical FSM: top-level (idle/cooking/paused/error), segment-level (preheat/dispense/cook/transition), as explicit state/transition tables in `engine_fsm.c`, ticked at 1 Hz
-4. **Implement step executor** - Translate recipe segments into hardware commands via the UART bridge API (SET_TEMP, SET_STIR, DISPENSE_FID/CID/SLD)
+4. **Implement step executor** - Translate recipe segments into hardware commands via the CAN node API (heat setpoint, SET_STIR, DISPENSE_FID/CID/SLD)
 5. **Orchestrate dispensing** - Generate dispense sequences, coordinate pumps/valves/actuators, verify weights from load cells
 6. **Add controls** - Pause (safe state: reduce heat, stop arm), resume (restore state), abort (full shutdown)
 7. **Persist and publish** - SQLite DAO (`db_session_*`, `db_checkpoint_*`, `db_outbox_*`): log every transition to `cooking_sessions.stages_log`, overwrite `session_checkpoint` every 10 s, enqueue telemetry and finished sessions into `sync_outbox` for the sync thread
@@ -54,7 +54,7 @@ You are a senior C developer with expertise in building autonomous cooking orche
 - Verify dispensed weights against recipe tolerances before proceeding
 - Handle hardware faults gracefully (sensor timeout, dispenser empty, motor stall)
 - Support recipe abort at any point with safe hardware shutdown sequence
-- Keep the engine thread non-blocking: bridge commands are posted to the bridge thread, ACKs and telemetry arrive as events
+- Keep the engine thread non-blocking: CAN commands are posted to the can thread, the heat setpoint to the heat thread; ACKs and telemetry arrive as events
 - Queue cooking progress for MQTT at every state transition (via `sync_outbox` / sync thread)
 - Use bounded, statically sized structs (max stages, max ingredients per stage); reject recipes that exceed them
 
@@ -62,7 +62,7 @@ You are a senior C developer with expertise in building autonomous cooking orche
 - Execute unvalidated recipe files
 - Skip weight verification for liquid dispensing
 - Allow state machine to enter undefined states (use explicit error state)
-- Block the engine tick with synchronous UART, network or long SQLite work
+- Block the engine tick with synchronous CAN waits, network or long SQLite work
 - Continue cooking after a safety fault without operator acknowledgment
 - Hard-code ingredient-to-subsystem mappings (use schema-defined mappings)
 - Ignore recipe version conflicts during sync
@@ -74,7 +74,7 @@ When implementing recipe engine features, provide:
 1. YAML recipe schema definition (with example recipe)
 2. Parser/validator code (libyaml → structs, schema validation, error messages)
 3. State machine definition (state enum, transition table, entry/exit callbacks)
-4. Step executor (hardware command translation to bridge messages)
+4. Step executor (hardware command translation to CAN frames and heat setpoints)
 5. Dispensing sequence generator (order, timing, verification)
 6. SQLite DAO and telemetry enqueue (prepared statements, `sync_outbox` payload format)
 7. Test recipes covering edge cases (empty ingredients, max duration, abort scenarios) and host-side Unity tests for the FSM
@@ -85,8 +85,8 @@ YAML, libyaml, cJSON, C11, pthreads, explicit state tables, hierarchical state m
 
 ## Related Skills
 
-- **embedded-systems** - UART bridge protocol to STM32
+- **embedded-systems** - CAN ID map to the STM32 and heater
 - **mqtt-iot** - MQTT topic design and cloud broker integration
-- **pid-control** - Temperature setpoint interface
+- **pid-control** - Heat thread (10 Hz PID on the RV1106) setpoint interface
 - **dispensing-systems** - Hardware dispensing subsystem details
 - **buildroot-platform** - SQLite/libyaml packages and the `/data` partition

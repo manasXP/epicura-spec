@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -260,7 +260,7 @@ For heavy-steam recipes (boiling, covered simmering), reducing steam volume befo
 |--------|-----------|
 | Grease buildup in filter | Washable SS mesh; cleaning reminder in app every 2-4 weeks |
 | Carbon filter ignition | Carbon is downstream of grease mesh (minimal oil exposure); max air temp at filter <80C during normal operation |
-| Fan failure during high-heat cooking | STM32 monitors fan RPM via tachometer; if fan stalls during sear/tadka, sends CAN command to reduce power to simmer and alerts user |
+| Fan failure during high-heat cooking | STM32 monitors fan RPM via tachometer; if fan stalls during sear/tadka, flags FAN_STALL in TELEMETRY on the CAN bus; the RV1106 heat thread reduces power to simmer (the STM32 never sends power levels) and alerts user |
 | Blocked exhaust (clogged filter) | Pressure drop sensor (optional) or timer-based replacement reminder |
 
 ### 7.2 Fan-Induction Interlock
@@ -274,9 +274,9 @@ The exhaust fan is interlocked with the microwave induction surface for safety:
 │   Heating ON ──► Fan must be running              │
 │                  (minimum 20% duty)               │
 │                                                   │
-│   Fan stall detected ──► Send CAN command to      │
-│                          reduce to simmer (400W)   │
-│                          Alert RV1106 + user       │
+│   Fan stall detected ──► FAN_STALL flag on CAN    │
+│                          RV1106 reduces to simmer  │
+│                          (400W) + alerts user      │
 │                                                   │
 │   Fan confirmed OFF ──► Block sear/boil profiles  │
 │                         (allow simmer/warm only)   │
@@ -343,7 +343,7 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 - [ ] Grease capture: cook tadka (oil + mustard seeds), inspect mesh for oil residue
 - [ ] Odor reduction: cook onion-garlic base, compare exhaust smell with/without carbon filter
 - [ ] Steam handling: boil 2L water for 10 min, check camera lens for fogging
-- [ ] Fan interlock: simulate fan stall during sear mode, verify heater power reduction via CAN
+- [ ] Fan interlock: simulate fan stall during sear mode, verify the RV1106 reduces heater power (FAN_STALL flag → HEAT_SET_POWER)
 - [ ] Post-cook purge: verify fan runs 2 min after heating off
 - [ ] Filter replacement: verify tool-less cartridge removal and reinsertion
 - [ ] Long-duration: run 20+ cook cycles, inspect duct for grease accumulation
@@ -382,3 +382,4 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); exhaust control and command codes unchanged |
+| 1.2 | 2026-11-04 | Manas Pradhan | Fan-heater interlock routed through the RV1106 heat thread (STM32 flags FAN_STALL on CAN; it no longer sends power commands) |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.2
+version: 3.0
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V BLDC motor with integrated ESC, controlled by the STM32 via PWM speed control, EN (enable), and DIR (direction) signals, and communicates with the RV1106 application processor for pattern selection and speed commands.
+The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V integrated BLDC servo motor with a **CAN bus interface**, commanded by the STM32 over the Unified PCB's regular (non-isolated) CAN port (FDCAN2, J_CAN_STIR) with velocity and position commands, and powered from a switched 24 V output (J_STIR_PWR). The RV1106 application processor selects patterns and speeds over the isolated host CAN bus; the STM32 translates them into motor commands.
 
 ## 2. Arm Assembly Design
 
@@ -28,9 +28,9 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 │                 GANTRY TOP                  │
 │                                             │
 │            ┌──────────────┐                 │
-│            │ BLDC Motor   │ ◄── PWM+EN+DIR from STM32
-│            │ (24V, integ. │                 │
-│            │  ESC)        │                 │
+│            │ CAN Servo    │ ◄── CAN (FDCAN2) + 24 V
+│            │ Motor (24V,  │     from the Unified PCB
+│            │ integ. drive)│                 │
 │            └──────┬───────┘                 │
 │                   │                         │
 │            ┌──────┴───────┐                 │
@@ -65,32 +65,32 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 
 ## 3. Motor Selection
 
-### 3.1 BLDC Motor Specifications
+### 3.1 CAN Servo Motor Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| Motor Type | 24V brushless DC (BLDC) with integrated driver/ESC |
-| Supply Voltage | 24V DC (direct from PSU rail) |
-| Stall Torque | 30-50 kg-cm (model TBD) |
-| Speed Range | 0-300 RPM (proportional to PWM duty cycle) |
-| Control Interface | PWM (10 kHz, 0-100% duty) + EN (digital) + DIR (digital) |
-| Tachometer | FG output (deferred; PA3 reserved for future use) |
+| Motor Type | 24V integrated BLDC servo (motor + planetary gearbox + encoder + driver in one housing) with CAN bus interface — CyberGear/RobStride-class actuator or an industrial 24 V BLDC gearmotor with a CAN driver (model TBD) |
+| Supply Voltage | 24V DC from the Unified PCB switched rail (J_STIR_PWR, 5 A fuse, Q_STIR high-side switch) |
+| Continuous / Peak Torque | ≥ 3 N·m (30 kg-cm) continuous, ≥ 5 N·m peak |
+| Speed Range | 0-300 RPM at the output shaft |
+| Control Interface | CAN 2.0B, 1 Mbps, 29-bit IDs (motor protocol); velocity mode for stirring, position mode for homing/parking; enable/disable, zero-set and parameter frames |
+| Feedback | Encoder position (absolute single-turn, ≥ 14-bit), velocity, phase current, driver temperature, fault flags — streamed at the command rate (50 Hz) |
+| Command timeout | Configurable; set to ≤ 500 ms so a silent bus stops the motor |
 | Gear Type | Planetary gearbox (integrated) |
 | IP Rating | IP54 or better recommended (kitchen environment) |
-| Weight | ~200-400g (varies by model) |
-| Price (approx.) | $20-30 USD |
+| Weight | ~300-500g (varies by model) |
+| Price (approx.) | $35-60 USD |
 
 ### 3.2 Selection Rationale
 
-The 24V BLDC motor replaces the DS3225 hobby servo for the following advantages:
+The CAN servo replaces the PWM/EN/DIR BLDC of revision 2.x for the following advantages:
 
-- **True continuous rotation** — no modification needed (servos require continuous-rotation mod)
-- **Higher torque** — 30-50 kg-cm vs 25 kg-cm for DS3225, better margin for thick Indian gravies
-- **Better thermal handling** — brushless design eliminates brush wear and reduces heat buildup during sustained operation
-- **No gear wear** — planetary gearbox more durable than servo spur gears under continuous load
-- **Direct 24V operation** — eliminates the dedicated 6.5V buck converter (MP1584EN #2 retained for future use)
-- **Speed feedback** — FG (tachometer) output available for closed-loop speed control (deferred to post-prototype)
-- **Direction control** — hardware DIR pin for instant CW/CCW switching (no pulse-width manipulation)
+- **Closed-loop speed and position** — the integrated encoder gives true RPM and shaft angle, so stirring speed, scrape offsets and parking are exact; no FG tachometer or PA3 reservation needed
+- **Stall and over-torque from the source** — the motor reports phase current and temperature; stall detection no longer relies on the INA219 24 V rail heuristic
+- **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA8, PA4 and PA5 and TIM1
+- **Shared physical layer** — the Unified PCB already has CAN; a second FDCAN controller and a $1 transceiver add the port
+- **Torque headroom** — ≥ 3 N·m continuous for thick Indian gravies, with current limits set in the motor
+- **Safe by default** — motor firmware stops on command timeout; the STM32 also removes 24 V with Q_STIR on E-stop and at boot
 
 ## 4. Materials
 
@@ -139,17 +139,17 @@ Reverse:     ┌────CW────┐┌───CCW────┐┌�
 
 ## 6. Speed Control
 
-### 6.1 PWM Configuration
+### 6.1 CAN Velocity Command
 
 | Parameter | Value |
 |-----------|-------|
-| PWM Frequency | 10 kHz |
-| Duty Cycle Range | 0-100% |
-| Speed at 0% duty | Stopped |
-| Speed at 100% duty | ~300 RPM (max, motor-dependent) |
-| EN Pin | PA4 (GPIO) — high = enabled, low = disabled |
-| DIR Pin | PA5 (GPIO) — high = CW, low = CCW |
-| STM32 Timer | TIM1_CH1 (PA8), ARR=16999, PSC=0 at 170 MHz → 10 kHz |
+| Bus | STM32 FDCAN2 (PB12 RX / PB13 TX) → SN65HVD230 → J_CAN_STIR, 1 Mbps |
+| Command rate | 50 Hz (Motor Control task) |
+| Velocity command | Signed target in rad/s (motor protocol units); sign = direction (positive = CW) |
+| Speed range | 0–300 RPM at the shaft; current limit set in the motor to the stall threshold |
+| Enable / disable | Motor enable frame on pattern start; disable frame on ARM_STOP, E-stop and heartbeat loss |
+| Power | 24V_STIR switched on by PCF8574 #2 P5 before the enable frame; off when the arm is parked for > 60 s |
+| Feedback | Velocity, position, current, temperature parsed every cycle; `motor_rpm` published in TELEMETRY (0x310) |
 
 ### 6.2 Speed Ramping
 
@@ -171,35 +171,33 @@ Target Speed
 
 - **Acceleration limit:** 30 RPM/s (prevents sudden splashing)
 - **Deceleration limit:** 60 RPM/s (faster stop for safety)
-- **Emergency stop:** Immediate halt (no ramp, used for safety conditions only)
+- **Emergency stop:** Immediate halt (motor disable frame + Q_STIR off, no ramp; safety conditions only)
 
 ## 7. Home Position Sensor
 
 ### 7.1 Calibration Reference
 
-- **Sensor Type:** Hall effect sensor (SS49E or equivalent) with small magnet on shaft
-- **Position:** Fixed mount at gantry, detects one specific rotational position
-- **Purpose:** Zero reference for absolute position tracking and parking
-- **Calibration:** On system boot, arm rotates slowly until Hall sensor triggers, establishing home position
-- **Parking:** Arm returns to home position after cooking to allow pot removal and ingredient loading
+- **Primary:** The motor's absolute single-turn encoder. The home angle is stored in the motor (zero-set) at assembly and re-read at boot; no homing move is needed
+- **Backup:** Optional Hall effect sensor (SS49E or equivalent) with a magnet on the shaft, read by a spare STM32 GPIO, to re-zero the encoder after a paddle/shaft service
+- **Parking:** Arm returns to the home angle (position-mode command) after cooking to allow pot removal and ingredient loading
 
 ## 8. STM32 Control Interface
 
-### 8.1 PWM Hardware Configuration
+### 8.1 Motor Bus (FDCAN2)
 
 ```c
-// Timer configuration for BLDC motor PWM
-// STM32G4 TIM1 Channel 1, 10 kHz output
-TIM1->PSC  = 0;                                   // No prescaler (170 MHz)
-TIM1->ARR  = 17000 - 1;                           // 10 kHz period
-TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
-
-// GPIO configuration for BLDC EN and DIR
-// PA4 = BLDC_EN (output, default LOW = disabled)
-// PA5 = BLDC_DIR (output, default LOW = CW)
+/* FDCAN2 on PB12 (RX) / PB13 (TX), AF9 — regular (non-isolated) motor bus */
+/* Classic CAN, 1 Mbps nominal bit timing from the 170 MHz kernel clock    */
+/* Extended (29-bit) IDs as required by the motor protocol                 */
+/* RX FIFO0 filter: motor feedback IDs only; TX: enable, velocity, position */
+/* Motor Control task (50 Hz): send velocity target, parse feedback,        */
+/* ramp-limit, detect stall from reported current                           */
+/* Boot-safe: PCF8574 #2 P5 (24V_STIR) low until the first SET_STIR         */
 ```
 
-### 8.2 Command Protocol (RV1106 to STM32)
+The motor's own protocol (frame layout, units, parameter IDs) is wrapped in `stir_motor.c`; the rest of the firmware sees `stir_set_velocity()`, `stir_set_position()`, `stir_enable()` and a `stir_feedback_t` struct.
+
+### 8.2 Command Protocol (RV1106 to STM32, CAN IDs 0x202 and 0x221–0x225)
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
@@ -210,15 +208,15 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 | ARM_STATUS | 0x24 | none | status_byte, current_rpm, position | Query arm status (distinct from STATUS 0x12) |
 | SET_RAMP | 0x25 | accel_limit (2 bytes, RPM/s) | ACK/NAK | Configure acceleration limit |
 
-Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]], the single source of truth for the bridge protocol.
+Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]], the single source of truth for the CAN bus protocol: each code is the low byte of a 0x2xx CAN ID, frames carry a sequence byte first, and responses arrive in ACK/NAK 0x3FF.
 
 ### 8.3 FreeRTOS Task Configuration
 
 | Task | Priority | Stack Size | Update Rate | Description |
 |------|----------|------------|-------------|-------------|
-| Motor Control | 3 (high) | 256 words | 50 Hz (20ms) | BLDC PWM duty cycle + EN/DIR GPIO update, speed ramping, pattern execution |
-| Home Seek | 2 (medium) | 128 words | On-demand | Calibration sequence on boot or command |
-| Stall Monitor | 3 (high) | 128 words | 10 Hz | Current monitoring for stall detection |
+| Motor Control | 3 (high) | 256 words | 50 Hz (20ms) | FDCAN2 velocity/position commands, feedback parsing, speed ramping, pattern execution |
+| Home / Park | 2 (medium) | 128 words | On-demand | Position-mode move to the stored home angle (ARM_HOME, end of cook) |
+| Stall Monitor | 3 (high) | 128 words | 50 Hz | Motor-reported current and temperature window; INA219 as plausibility check |
 
 ## 9. Safety
 
@@ -226,9 +224,10 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 
 | Safety Feature | Detection Method | Threshold | Action |
 |----------------|------------------|-----------|--------|
-| Stall Detection | INA219 24V rail current spike or FG dropout (future) | >3.0A sustained for 500ms | Disable EN, retry up to 3 times, then error |
-| Over-Torque | INA219 current spike detection | >4.0A instantaneous | Immediate EN disable, log event |
-| Thermal Protection | Motor current monitoring (thermal proxy) | Sustained high current | Reduce speed 50%, alert if threshold exceeded |
+| Stall Detection | Motor-reported phase current with velocity error (commanded vs. measured) | Current above the configured limit with < 20 % of commanded speed for 500 ms | Disable motor, retry up to 3 times, then error |
+| Over-Torque | Motor current limit (set in the motor) + STM32 check of reported current | > configured peak (≈ 5 N·m equivalent) | Motor limits current itself; STM32 disables and logs |
+| Thermal Protection | Motor-reported driver/winding temperature | > 80 °C | Reduce speed 50%, alert; disable at 95 °C |
+| Power Isolation | Q_STIR high-side switch on 24V_STIR (PCF8574 #2 P5) | E-stop, heartbeat loss, boot | 24 V removed from the motor independently of CAN |
 | Mechanical Guard | Physical shroud above pot rim | - | Prevents finger access to paddle zone |
 
 ### 9.2 Stall Recovery Sequence
@@ -237,7 +236,7 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ Stall   │    │ Stop     │    │ Wait     │    │ Retry    │
 │ Detected│──► │ Motor    │──► │ 2s       │──► │ Reverse  │
-│ (>3.0A) │    │          │    │          │    │ 180 deg  │
+│(current)│    │          │    │          │    │ 180 deg  │
 └─────────┘    └──────────┘    └──────────┘    └─────┬────┘
                                                       │
                                               ┌───────▼───────┐
@@ -291,18 +290,20 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | Splash Containment | Run at 90 RPM with 1.5L water, measure splatter | No liquid escapes pot rim (with guard installed) |
 | Cleaning Cycle | Disassemble, wash, reassemble 100 times | No wear on twist-lock, secure fit maintained |
 | Noise Level | Measure at 30cm during operation at 60 RPM | <50 dB(A) |
-| Speed Accuracy | Tachometer measurement at each speed setting | Within +/- 5 RPM of commanded speed |
+| Speed Accuracy | Motor-reported velocity vs. external tachometer at each speed setting | Within +/- 5 RPM of commanded speed |
+| CAN Link | 1 Mbps bus, 50 Hz commands for 4 hours | No bus-off, no missed feedback frame > 100 ms |
 | Ramp Profile | Record speed vs. time during acceleration | Within +/- 10% of configured ramp rate |
 | Home Position | 50 consecutive home-seek operations | Repeatable within +/- 2 degrees |
 
 ### 11.2 Prototype Validation Checklist
 
-- [ ] BLDC motor drives paddle through 360-degree rotation smoothly
+- [ ] CAN servo motor drives paddle through 360-degree rotation smoothly; feedback RPM matches commanded within ±5 RPM
+- [ ] Motor stops within 500 ms when CAN commands cease (command timeout) and when Q_STIR removes 24 V
 - [ ] Twist-lock paddle attachment holds securely during vigorous stirring
 - [ ] Stall detection triggers within 500ms of blockage
 - [ ] Speed ramping prevents visible splashing at all pattern transitions
 - [ ] Steam seal prevents moisture ingress to motor housing over 2-hour cook
-- [ ] Home position sensor calibrates reliably on every boot
+- [ ] Home angle from the encoder is repeatable within ±2 degrees across power cycles
 - [ ] All food-contact surfaces pass dishwasher cycle without degradation
 - [ ] Noise level below 50 dB(A) at maximum operational speed
 
@@ -316,7 +317,7 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 - [[04-Vision-System|Vision System]]
 - [[01-Safety-Compliance|Safety & Compliance]]
 
-#epicura #robotic-arm #subsystem #bldc-motor
+#epicura #robotic-arm #subsystem #bldc-motor #canbus
 
 ---
 
@@ -328,3 +329,5 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | 2.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo with 24V BLDC motor (integrated ESC); updated motor selection, PWM config (10 kHz), control interface (PWM+EN+DIR), command protocol (added direction param), stall detection (INA219-based), and testing procedures |
 | 2.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); motor control and command protocol unchanged |
 | 2.2 | 2026-11-04 | Manas Pradhan | Bridge codes aligned to the software doc: SET_PATTERN 0x20 → SET_STIR 0x02; STOP/HOME/STATUS renamed ARM_STOP/ARM_HOME/ARM_STATUS |
+| 2.3 | 2026-11-04 | Manas Pradhan | Command protocol mapped onto the shared CAN bus (IDs 0x202, 0x221–0x225) |
+| 3.0 | 2026-11-04 | Manas Pradhan | Stirring motor changed to a 24 V integrated CAN servo on the Unified PCB's regular (non-isolated) CAN port (STM32 FDCAN2, PB12/PB13, SN65HVD230, 1 Mbps, J_CAN_STIR) with switched 24 V (J_STIR_PWR, Q_STIR); PWM/EN/DIR on PA8/PA4/PA5 retired; encoder feedback replaces FG tachometer and Hall homing (Hall kept as optional backup); stall/over-torque from motor-reported current; motor specs, control interface, tasks, safety and tests updated |

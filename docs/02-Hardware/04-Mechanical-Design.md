@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.3
+version: 2.4
 status: Draft
 ---
 
@@ -404,7 +404,8 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 | PSU (switch-mode) | 15-30W (at full load, ~85% efficient) | Rear-bottom |
 | RV1106 (Luckfox Pico Zero) | ~1W | Rear-top |
 | STM32 + sensors | <1W | Side |
-| BLDC stirring motor | 12-48W (intermittent) | Top gantry |
+| CAN servo stirring motor | 12-48W (intermittent) | Top gantry |
+| 2S Li-ion battery pack | <1W (charging) | Cool zone, away from the surface module and PSU (< 45C) |
 
 ### 8.2 Cooling Strategy
 
@@ -538,13 +539,13 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 ### 10.3 Assembly Sequence (Prototype)
 
 1. Mount microwave induction surface module into base
-2. Route CAN bus cable from module to controller PCB
+2. Route CAN bus cable from module to J_CAN on the Unified PCB (isolated bus shared by the RV1106 and the STM32)
 3. Mount PSU module in rear-bottom compartment
 6. Install STM32 control PCB on side bracket
 7. Install Luckfox Pico Zero in rear-top area (no carrier board; four 3.0 mm mounting holes)
 8. Wire PSU to all DC loads (color-coded connectors)
-9. Wire STM32 to sensors, servos, CAN bus (to microwave surface)
-10. Wire Pico Zero UART2 to STM32 USART2
+9. Wire STM32 to sensors and servos (its CAN node is on-board)
+10. Wire Pico Zero SPI0 CS1 + INT to the MCP2518FD CAN controller and UART2 to STM32 USART2 (service link)
 11. Connect IMX415-98 camera FPC to the Pico Zero CSI connector, mount camera on gantry
 12. Mount 4" display, connect SPI (LCD) and I2C (touch)
 13. Install gantry assembly (bridge + arm motor + camera)
@@ -577,3 +578,4 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | 2.1 | 2026-11-04 | Manas Pradhan | Compute module changed to Luckfox Pico Zero (RV1106G3, no carrier, no heatsink); 10.1" display replaced by 4" 480x320 SPI LCD (cut-out to be confirmed); camera is SC3336 on the Pico Zero CSI FPC; assembly steps updated |
 | 2.2 | 2026-11-04 | Manas Pradhan | Dispensers redesigned as servo carousels: FID (6 canisters, 3 servos) replaces P-ASD/ASD hoppers, CID (5 slots + cover, 1 servo) replaces two push-plate trays; layout, specs, sequence, cleaning, fabrication and assembly updated |
 | 2.3 | 2026-11-04 | Manas Pradhan | Display cut-out fixed from the 4.0" ST7796S/FT6336U module drawing (active 83.52 x 55.68 mm); camera IMX415-98 |
+| 2.4 | 2026-11-04 | Manas Pradhan | Assembly steps updated for the shared isolated CAN bus (RV1106 CAN node on the Unified PCB; UART2 service link) |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 9.0
+version: 10.0
 status: Draft
 ---
 
@@ -18,9 +18,9 @@ This document details the actuation subsystem components for the Epicura kitchen
 │                    Actuation Subsystem                          │
 │                                                                 │
 │  ┌──────────────┐         ┌──────────────┐                     │
-│  │  STM32G474RE │── PWM+EN►│  24V BLDC    │                     │
-│  │  (Controller)│         │  Motor       │                     │
-│  │              │         └──────────────┘                     │
+│  │  STM32G474RE │── CAN  ►│  24V CAN     │                     │
+│  │  (Controller)│ FDCAN2  │  Servo Motor │                     │
+│  │              │ + 24V sw└──────────────┘                     │
 │  │              │                                               │
 │  │              │── I2C  ►┌──────────────┐  ┌──────────────┐   │
 │  │              │ PCA9685 │  DSB: FID x3 │─►│ Carousels    │   │
@@ -46,7 +46,9 @@ This document details the actuation subsystem components for the Epicura kitchen
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Microwave Induction Surface (1800W, CAN) | Commercial module | 1 | $60.00 | $60.00 | Supplier TBD | Self-contained module with CAN bus port; no teardown needed |
-| 24V BLDC Motor w/ Integrated ESC | TBD (24V, 30-50 kg-cm) | 1 | $25.00 | $25.00 | AliExpress | Main stirring arm; brushless, continuous rotation, integrated driver |
+| 24V CAN Servo Motor (stirring) | CyberGear/RobStride-class integrated BLDC servo, ≥ 3 N·m continuous, CAN 1 Mbps (model TBD) | 1 | $45.00 | $45.00 | AliExpress / Robstride | Main stirring arm; encoder feedback, velocity + position modes; on the Unified PCB's regular CAN port (FDCAN2) with switched 24 V |
+| SN65HVD230 CAN Transceiver (stir-motor port) | SN65HVD230DR (SOIC-8) | 1 | $0.90 | $0.90 | TI / LCSC | Non-isolated 3.3 V transceiver on STM32 FDCAN2 → J_CAN_STIR |
+| Stir-Motor Bus Passives + 24 V Switch | 120Ω, PESD1CAN, AO4407A + 2N7002, 5 A polyfuse | 1 lot | $0.30 | $0.30 | LCSC | Termination/ESD at J_CAN_STIR; Q_STIR high-side switch costed with PCB passives |
 | Dispenser Servo (DSB) — FID x3 + CID x1 | DS3218-class, 270°, 20 kg·cm, metal gear | 4 | $10.00 | $40.00 | AliExpress | C1 CID index, F1 FID index, F2 FID dose, F3 FID steam gate; one part number |
 | PCA9685 16-ch PWM Servo Driver — DSB | PCA9685PW (TSSOP-28) | 1 | $1.50 | $1.50 | LCSC / Mouser | I2C1 addr 0x41, CH0-CH3 used, OE → PB4 |
 | DSB 6.5 V Rail Parts | AO3401 P-MOSFET + 3 A PTC + 1000 µF | 1 lot | $1.00 | $1.00 | LCSC | Rail from MP1584EN #2, switched by PCF8574 #2 P4 |
@@ -61,7 +63,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 | 2 kg Load Cell + HX711 — SLD (oil) | Generic 2 kg strain gauge + HX711 | 1 | $8.00 | $8.00 | Amazon | SLD oil reservoir closed-loop metering + level alert |
 | 2 kg Load Cell + HX711 — SLD (water) | Generic 2 kg strain gauge + HX711 | 1 | $8.00 | $8.00 | Amazon | SLD water reservoir closed-loop metering + level alert |
 | PCF8574 #2 I2C GPIO Expander — SLD/LED | PCF8574 (SOIC-16) | 1 | $0.50 | $0.50 | LCSC / Mouser | SLD solenoids + status LED + LED ring power (I2C1, addr 0x21) |
-| ISO1050DUB (isolated CAN transceiver) | ISO1050DUBR | 1 | $3.50 | $3.50 | TI / Mouser | 5 kV RMS galvanic isolation, SOIC-8; on Driver PCB, CAN bus to induction module |
+| ISO1050DUB #1 (isolated CAN transceiver, STM32 node) | ISO1050DUBR | 1 | $3.50 | $3.50 | TI / Mouser | 5 kV RMS galvanic isolation, SOIC-8; on the Unified PCB's isolated CAN port (J_CAN_HEAT), 3-node bus shared with the RV1106 (ISO1050DUB #2 + MCP2518FD costed under Compute) and the induction module |
 | CAN Termination + Decoupling | 120Ω + MLCC caps | 1 lot | $0.13 | $0.13 | LCSC | CAN bus passives on Driver PCB |
 | Relay Module (5V, 10A) | SRD-05VDC-SL-C | 2 | $3.00 | $6.00 | Amazon | Induction on/off and power cycling control (prototype) |
 | Motor Driver Board | L298N or custom | 1 | $8.00 | $8.00 | Amazon | Servo power distribution and level shifting |
@@ -82,7 +84,8 @@ This document details the actuation subsystem components for the Epicura kitchen
 | Item | Cost |
 |------|------|
 | Microwave Induction Surface (CAN) | $60.00 |
-| 24V BLDC Motor (main arm) | $25.00 |
+| 24V CAN Servo Motor (main arm) | $45.00 |
+| SN65HVD230 + stir-bus passives | $1.20 |
 | Dispenser Servos — DSB (4x) | $40.00 |
 | PCA9685 + DSB Rail Parts | $2.50 |
 | FID Canisters (6x) | $18.00 |
@@ -100,7 +103,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 | Connectors + Wiring | $18.00 |
 | Exhaust Fan + Filtration | $22.50 |
 | Piezo Buzzer + MOSFET | $0.85 |
-| **Category Subtotal** | **$274.98** |
+| **Category Subtotal** | **$296.18** |
 
 ---
 
@@ -109,19 +112,17 @@ This document details the actuation subsystem components for the Epicura kitchen
 ### 5.1 Microwave Induction Surface Strategy
 - **Both Prototype and Production:** Commercial microwave induction surface with CAN bus port
   - Self-contained module: internal coil, driver, safety circuits
-  - STM32 controls power level (0-100%) via CAN 2.0B at 500 kbps
+  - RV1106 sends temperature setpoints (HEAT_SET_TEMP) or power levels (HEAT_SET_POWER) via CAN 2.0B at 500 kbps on the shared isolated bus; the module runs its own temperature loop on its own sensor (no IR thermometer in Epicura); the STM32 can force the module off (HEAT_ON_OFF=0)
   - No custom IGBT driver design needed
   - Safety relay on AC mains provides system-level hard disconnect
   - Module-internal pot detection and thermal cutoff
 
-### 5.2 24V BLDC Motor Selection
-- **30-50 kg-cm torque** provides ample margin for thick curries and dals
-- **Brushless design** eliminates brush wear, better thermal handling for sustained operation
-- **True continuous rotation** — no servo modification needed
-- **Integrated ESC** — no external H-bridge or buck converter required
-- **Direct 24V operation** — powered from main PSU rail; 6.5V buck converter (MP1584EN #2) retained for future use
-- Control: 10 kHz PWM (speed) + EN (enable) + DIR (direction) from STM32
-- **Specific model TBD** — document generically as "24V BLDC, 30-50 kg-cm, integrated ESC"
+### 5.2 24V CAN Servo Motor Selection
+- **≥ 3 N·m (30 kg-cm) continuous torque** provides ample margin for thick curries and dals; current limit set in the motor
+- **Integrated BLDC + planetary gearbox + encoder + driver** in one housing; true continuous rotation
+- **CAN interface (1 Mbps)** on the Unified PCB's regular CAN port (STM32 FDCAN2, SN65HVD230): velocity mode for stirring, position mode for parking; feedback of rpm, angle, current and temperature replaces the FG tachometer, Hall homing and INA219 stall heuristic
+- **Switched 24V** from Q_STIR on the PCB (J_STIR_PWR); motor command timeout ≤ 500 ms configured at start-up
+- **Specific model TBD** — document generically as "24V integrated CAN servo, ≥ 3 N·m, 1 Mbps CAN" (CyberGear/RobStride-class or industrial equivalent)
 
 ### 5.3 Dispenser Servo Block (FID + CID)
 - **One control block for both carousels**: 4× identical DS3218-class 270° servos on a PCA9685 (I2C1, 0x41), OE on PB4, switched 6.5 V rail from MP1584EN #2 (previously retained for future use)
@@ -141,7 +142,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 | Item | Prototype | Production (1000 qty) | Savings |
 |------|-----------|----------------------|---------|
 | Microwave surface | $60 | $40 (bulk) | 33% |
-| 24V BLDC motor | $25 | $15 (bulk) | 40% |
+| 24V CAN servo motor | $45 | $30 (bulk) | 33% |
 | FID + CID servo carousels (4 servos, PCA9685, rings, canisters) | $86.50 | $45 (bulk, molded rings/canisters) | 48% |
 | Peristaltic pumps x2 (SLD) | $20 | $10 (bulk) | 50% |
 | Solenoid valves x2 (SLD) | $8 | $4 (bulk) | 50% |
@@ -177,3 +178,5 @@ This document details the actuation subsystem components for the Epicura kitchen
 | 7.0 | 2026-03-11 | Manas Pradhan | CID-1: replaced DC linear actuator ($8) + DRV8876 ($2.50) with NEMA 23 stepper ($15) + external driver ($10); CID-2 unchanged; limit switches 4→3; net +$14.00; subtotal $300.48→$314.48 |
 | 8.0 | 2026-03-11 | Manas Pradhan | Added PCF8574 #2 ($0.50) for GPIO headroom; SLD solenoid gates now via PCF8574 #2 (0x21); subtotal $314.48→$314.98 |
 | 9.0 | 2026-11-04 | Manas Pradhan | Replaced P-ASD pneumatic system ($90) + PCF8574 #1 ($0.50) and CID stepper/driver/linear actuator/DRV8876/limit switches ($37) with the Dispenser Servo Block: 4× DS3218-class servos ($40), PCA9685 + rail parts ($2.50), FID canisters ($18), FID/CID carousels, base plate, gears, bearings ($26); servo cables 3→4; net −$40.00; subtotal $314.98→$274.98 |
+| 9.1 | 2026-11-04 | Manas Pradhan | ISO1050DUB row renamed #1 (STM32 node) on the 3-node isolated CAN bus; induction note: power commanded by the RV1106, STM32 off-switch only |
+| 10.0 | 2026-11-04 | Manas Pradhan | 24V BLDC (PWM/EN/DIR, $25) replaced by a 24V CAN servo motor ($45) on the Unified PCB's regular CAN port; SN65HVD230 transceiver + stir-bus passives added ($1.20); induction note updated for module-internal temperature control; subtotal $274.98 → $296.18 |

@@ -31,9 +31,9 @@
 - [ ] Order Luckfox Pico Zero (RV1106G3)
 - [ ] Order STM32G474 Nucleo dev board
 - [ ] Source a ommercial induction hob for teardown
-- [ ] Order 24V BLDC motor (30-50 kg-cm, integrated ESC)
+- [ ] Order 24V integrated CAN servo motor (≥ 3 N·m, CyberGear/RobStride-class)
+- [ ] Order 2S1P 18650 Li-ion pack with PCM + NTC
 - [ ] Order IMX415-98 camera module
-- [ ] Order MLX90614 IR thermometer
 - [ ] Order HX711 + load cells
 - [ ] Order a 4" ST7796S SPI touchscreen display
 - [ ] 3D print enclosure prototype
@@ -42,11 +42,12 @@
 
 - [ ] RV1106 Buildroot image bring-up
 - [ ] STM32 FreeRTOS project setup
-- [ ] RV1106 ↔ STM32 UART communication
-- [ ] Induction PID control loop
+- [ ] Isolated CAN bus: RV1106 (MCP2518FD) ↔ STM32 ↔ induction surface
+- [ ] Induction setpoint keep-alive (RV1106 heat thread; module runs its own PID)
+- [ ] Stir motor CAN driver on STM32 FDCAN2
 - [ ] Servo arm stirring patterns
 - [ ] Load cell calibration
-- [ ] IR thermometer integration
+- [ ] Battery backup: POWER_FAIL handling, pack voltage monitoring, shutdown at 6.2 V
 - [ ] Camera capture pipeline
 - [ ] RKNN model inference on the NPU
 - [ ] Recipe state machine engine
