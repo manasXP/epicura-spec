@@ -17,7 +17,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 │             │                               │                       │
 │  ┌──────────▼───────────┐        ┌──────────▼───────────┐           │
 │  │  4" Touchscreen      │        │  Induction Heater    │           │
-│  │  SC3336 Camera       │        │  Servo Arm           │           │
+│  │  IMX415-98 Camera    │        │  Servo Arm           │           │
 │  │  WiFi/BT             │        │  Load Cells          │           │
 │  │                      │        │  NTC + IR Sensors    │           │
 │  └──────────────────────┘        └──────────────────────┘           │
@@ -30,7 +30,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 - **AI Vision** — Overhead camera with hardware ISP and MobileNetV2 INT8 on the RV1106 NPU (RKNN) for food color/texture analysis and cooking stage detection
 - **Induction PID Control** — 1,800W microwave induction surface (CAN bus) with closed-loop PID, ±5°C accuracy
 - **Robotic Stirring Arm** — Single-axis servo arm with multiple stir patterns and auto-scraping
-- **Three-Subsystem Dispensing** — Seasonings (servo-gated hoppers), coarse ingredients (linear actuator trays), liquids (peristaltic pumps)
+- **Three-Subsystem Dispensing** — Fine ingredients (6-canister servo carousel, ¼ tsp dosing), coarse ingredients (5-slot servo carousel), liquids (peristaltic pumps)
 - **Touchscreen + Mobile Apps** — 4" LVGL touchscreen UI, native iOS (Swift) and Android (Kotlin) companion apps
 - **100+ Indian Recipes** — Curries, dal, rice, biryani with regional variations and dietary customization
 - **Cloud + Offline** — Cloud-updatable recipe library with full local fallback
@@ -41,7 +41,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 |-----------|------|---------|
 | Compute (AI) | Luckfox Pico Zero — RV1106G3 (Cortex-A7 @ 1.2 GHz, 1 TOPS NPU, ISP, 256MB, 8GB eMMC) | Vision, recipe engine, UI, cloud sync |
 | Compute (Control) | STM32G474 (Cortex-M4F, 170 MHz) | PID, servo driver, sensor polling, safety |
-| Camera | SC3336 (3MP, MIPI CSI) | Food stage detection via ISP + NPU |
+| Camera | IMX415-98 (8 MP, MIPI CSI) | Food stage detection via ISP + NPU |
 | IR Thermometer | MLX90614 | Non-contact food surface temp |
 | Load Cells | 4× strain gauge + HX711 | Weight-based dispensing verification |
 | Induction Surface | 1,800W commercial module | CAN bus controlled cooking heat |
@@ -93,7 +93,7 @@ See [Repository Plan](02-Repository-Plan.md) for directory structures, CI/CD, an
 
 ## Estimated BOM
 
-~$431 for prototype. See [Total Component Cost](__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost.md) for breakdown.
+~$433 for prototype. See [Total Component Cost](__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost.md) for breakdown.
 
 ## Development Roadmap
 

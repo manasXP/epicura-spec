@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 ---
 
@@ -27,7 +27,7 @@ This document details the compute subsystem components for the Epicura kitchen r
 │         │    │                    │  │    │    │               │
 │         ▼    ▼                    ▼  ▼    ▼    ▼               │
 │      Camera Display           Servos Load MLX                 │
-│      SC3336 4" LCD            Arm   Cell  90614               │
+│      IMX415 4" LCD            Arm   Cell  90614               │
 │             480x320           Gates       HX711               │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -40,8 +40,8 @@ This document details the compute subsystem components for the Epicura kitchen r
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Luckfox Pico Zero (RV1106G3, 256MB DDR3L, 8GB eMMC) | Luckfox Pico Zero | 1 | $47.00 | $47.00 | Waveshare / Luckfox store (₹3,339 Hubtronics India) | Core compute: NPU inference, ISP vision, LVGL UI, recipe engine, cloud sync; on-board Wi-Fi 6 + BT 5.2; no carrier board needed |
 | STM32G474RE Nucleo | NUCLEO-G474RE | 1 | $18.00 | $18.00 | STMicroelectronics / Mouser | Motor controller dev board; CAN-FD + advanced timers |
-| 4" IPS Display (480x320) with capacitive touch | ST7796S + FT6336 | 1 | $15.00 | $15.00 | Waveshare / AliExpress | SPI0 display (50 MHz, fbtft) + I2C3 touch (evdev); prototype and production display |
-| SC3336 Camera Module (3MP, MIPI CSI) | SC3336 | 1 | - | - | See [[03-Sensor-Components\|Sensor Components]] | Costed under Sensors ($12.00, FPC included); plugs into the Pico Zero MIPI CSI FPC connector |
+| 4" IPS Display (480x320) with capacitive touch | 4.0" ST7796S + FT6336U SPI module (108 x 60.88 mm incl. header) | 1 | $15.00 | $15.00 | Waveshare / AliExpress | SPI0 display (50 MHz, fbtft) + I2C3 touch (evdev); prototype and production display |
+| IMX415-98 IR-CUT Camera Module (8 MP, MIPI CSI) | IMX415-98 | 1 | - | - | See [[03-Sensor-Components\|Sensor Components]] | Costed under Sensors ($54.00, FPC included); plugs into the Pico Zero MIPI CSI FPC connector |
 | (Storage on eMMC) | - | - | - | - | Included | 8GB eMMC on Pico Zero for A/B OS slots, models and data; microSD slot for expansion only |
 | USB-C Cable (debug/power) | - | 1 | $5.00 | $5.00 | Generic | Pico Zero power, eMMC flashing and USB debug |
 
@@ -75,8 +75,8 @@ What it cannot do, and how the stack adapts:
 - **256MB RAM, one Cortex-A7 @ 1.2 GHz:** no Docker, PostgreSQL, Node.js or Python on the device. One native C11 application (`epicurad`) with SQLite, libmosquitto and libcurl; steady state ~80MB, peak ~95MB
 - **No 3D GPU:** no Kivy. LVGL 9, software rendered at 20 Hz on a 480x320 framebuffer
 - **No DSI/HDMI output, and the Pico Zero does not break out the RGB LCD pins:** the 10.1" 1280x800 panel is dropped for a 4" 480x320 SPI LCD
-- **One usable SPI controller**, taken by the display: the STM32 bridge moves from SPI to UART2 at 1 Mbps (CAN remains the production alternative)
-- **Narrow camera driver list:** SC3336 is the Luckfox-supported sensor with an ISP tuning file in the SDK; IMX219/IMX477 are dropped
+- **One usable SPI controller**, taken by the display: the STM32 bridge moves from SPI to UART2 at 1 Mbps
+- **Narrow camera driver list:** the IMX415-98 IR-CUT is the only colour camera Luckfox supports on the Pico Zero (the SC3336 module is marked incompatible with the Zero); IMX219/IMX477 are dropped
 - **2.4 GHz Wi-Fi only, no Ethernet on the board:** cloud sync and SSH go over Wi-Fi; UART0 is the debug console
 - **8GB eMMC:** A/B boot + rootfs slots (2x32MB + 2x256MB), 64MB `oem` (models, ISP tuning, LVGL assets), ~6GB `data`
 
@@ -84,11 +84,11 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 
 ### 5.2 STM32G474RE Selection Rationale
 - **Cortex-M4F @ 170 MHz** with FPU for PID calculations
-- **CAN-FD** peripheral (future production bus architecture)
+- **CAN-FD** peripheral (induction module bus)
 - **Advanced timers** (TIM1, TIM8) with complementary PWM for servo control
 - **12-bit ADC** (5 Msps) for analog sensor reading
 - **USART2 (PA2/PA3)** for the RV1106 UART link at 1 Mbps; the same USART is a system-bootloader port, so it also carries STM32 firmware updates
-- Nucleo board provides ST-Link debugger and Arduino-compatible headers. Caveat: on the NUCLEO-G474RE, PA2/PA3 go to the ST-Link VCP by default; open the solder bridges and route them to the CN10 header for the prototype, or use the custom controller PCB
+- Nucleo board provides ST-Link debugger and Arduino-compatible headers. Caveat: on the NUCLEO-G474RE (MB1367) PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3), or use the custom controller PCB
 
 ### 5.3 Display Choice
 - 4" 480x320 IPS LCD with ST7796S controller on SPI0 (fbtft, 50 MHz with DMA); the RV1106 has no DSI or HDMI output
@@ -129,3 +129,4 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 | 1.1 | 2026-02-20 | Manas Pradhan | Added ISO1050DUB isolated CAN transceiver to component list and cost summary |
 | 1.2 | 2026-02-20 | Manas Pradhan | Moved ISO1050DUB ($3.50) to Actuation Components (now on Driver PCB); subtotal $199.50 → $196.00 |
 | 1.3 | 2026-11-04 | Manas Pradhan | Replaced Raspberry Pi CM5 + CM5IO + 10.1" HDMI display with Luckfox Pico Zero (RV1106G3) + 4" ST7796S SPI LCD; CSI/HDMI cables removed; subtotal $196.00 → $85.00 |
+| 1.4 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); 4" display module part named; Nucleo SB numbers; CAN alternative removed |

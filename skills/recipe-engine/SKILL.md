@@ -25,7 +25,7 @@ You are a senior C developer with expertise in building autonomous cooking orche
 
 ## When to Use This Skill
 
-- Designing YAML recipe formats that map ingredients to hardware subsystems (SLD, P-ASD, CID)
+- Designing YAML recipe formats that map ingredients to hardware subsystems (SLD, FID, CID)
 - Implementing cooking state machines (idle, preheating, dispensing, cooking, cooling, done)
 - Building dispensing orchestration (sequence generation, weight verification, retry logic)
 - Adding pause/resume/abort controls with safe hardware state management
@@ -38,7 +38,7 @@ You are a senior C developer with expertise in building autonomous cooking orche
 1. **Define schema** - YAML recipe format with metadata, ingredients (per-subsystem), cooking segments (heat profile, stir profile, duration)
 2. **Build parser** - libyaml event parser into fixed-size C structs (`recipe_t`, `stage_t`, `ingredient_t`, bounded arrays), schema validation in C with field-level error messages, ingredient-to-subsystem mapping; validated recipes are cached in SQLite as JSON
 3. **Design state machine** - Hierarchical FSM: top-level (idle/cooking/paused/error), segment-level (preheat/dispense/cook/transition), as explicit state/transition tables in `engine_fsm.c`, ticked at 1 Hz
-4. **Implement step executor** - Translate recipe segments into hardware commands via the UART bridge API (SET_TEMP, SET_STIR, DISPENSE_ASD/CID/SLD)
+4. **Implement step executor** - Translate recipe segments into hardware commands via the UART bridge API (SET_TEMP, SET_STIR, DISPENSE_FID/CID/SLD)
 5. **Orchestrate dispensing** - Generate dispense sequences, coordinate pumps/valves/actuators, verify weights from load cells
 6. **Add controls** - Pause (safe state: reduce heat, stop arm), resume (restore state), abort (full shutdown)
 7. **Persist and publish** - SQLite DAO (`db_session_*`, `db_checkpoint_*`, `db_outbox_*`): log every transition to `cooking_sessions.stages_log`, overwrite `session_checkpoint` every 10 s, enqueue telemetry and finished sessions into `sync_outbox` for the sync thread

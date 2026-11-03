@@ -26,7 +26,7 @@ The RV1106 is the main application processor (AP) for Epicura. It runs Buildroot
 | Accelerators | 1 TOPS INT8 NPU, 5 MP hardware ISP, RGA 2D engine, H.264/H.265 encoder (no decoder, no 3D GPU) |
 | RAM | 256 MB DDR3L (in-package) |
 | Storage | 8 GB eMMC (A/B partitioned); microSD for storage expansion only |
-| Camera | MIPI CSI-2 2-lane (SC3336 3 MP, run at 1280×720 @ 30 fps) |
+| Camera | MIPI CSI-2 4-lane (IMX415-98 8 MP, run at 1280×720 @ 30 fps) |
 | Display | 4" 480×320 IPS LCD, ST7796S over SPI0, FT6336 capacitive touch over I2C3 |
 | Networking | Wi-Fi 6 (2.4 GHz), BLE 5.2 (on-board, external antenna connector); no Ethernet |
 | Board | 65 × 30 mm, 40-pin RPi-style header (28 GPIO, 3.3 V), USB-C (power + flashing), on-board mic, RTC battery header |
@@ -56,7 +56,7 @@ The RV1106 is the main application processor (AP) for Epicura. It runs Buildroot
 | FR-MPU-012 | Classify food stage (raw, browning, cooked, overcooked, anomaly) | Must | 3-frame majority vote; confidence ≥ 0.6 triggers state transition, else timer + temperature fallback |
 | FR-MPU-013 | Detect anomalies (smoke, dry pot, overflow) | Should | Alert within 1 s of anomaly frame |
 | FR-MPU-014 | Request LED ring illumination from the STM32 via SET_LED (0x20): mode OFF/CAPTURE/NIGHT, RGB, brightness | Must | CAPTURE mode (5000–6000 K neutral white) requested before every capture window; ring itself is driven by the STM32 (see [[05-MCU-Functional-Specification]] §2.8) |
-| FR-MPU-015 | Image enhancement in the ISP (dehaze, 2D/3D noise reduction, LSC, sharpening, AWB, AE) from the SC3336 tuning file in `/oem` | Must | No CPU image processing (no OpenCV / CLAHE); steam haze handled by ISP dehaze |
+| FR-MPU-015 | Image enhancement in the ISP (dehaze, 2D/3D noise reduction, LSC, sharpening, AWB, AE) from the IMX415-98 tuning file in `/oem` | Must | No CPU image processing (no OpenCV / CLAHE); steam haze handled by ISP dehaze |
 
 ### 2.3 User Interface
 
@@ -111,7 +111,7 @@ The RV1106 is the main application processor (AP) for Epicura. It runs Buildroot
 |----|-------------|----------|---------------------|
 | FR-MPU-050 | Bridge thread (C, pthread, `SCHED_FIFO`) on UART2 at 1,000,000 baud, 8N1 | Must | SOF 0x7E / 0x7D byte-stuffed framing, CRC-16/CCITT validation, ACK timeout 500 ms, 3 retries |
 | FR-MPU-051 | Send heartbeat to STM32 every 2 s | Must | Missed heartbeat → STM32 watchdog triggers safe state |
-| FR-MPU-052 | CAN bus (500 kbps) as production alternative transport | Could | Same message body and type codes; transport selected at build time |
+| FR-MPU-052 | UART is the production transport; no CAN alternative (RV1106 has no CAN controller, its only full SPI drives the LCD) | Must | Decision 2026-11-04; STM32 FDCAN serves the induction module only |
 | FR-MPU-053 | Parse unsolicited TELEMETRY (0x10) at 20 Hz | Must | Temp, motor RPM, weight, safety state available to engine/ui/sync threads via ring buffer; no data-ready line |
 
 ### 2.7 OTA Updates
@@ -159,9 +159,9 @@ The RV1106 is the main application processor (AP) for Epicura. It runs Buildroot
 ### 3.2 Camera (MIPI CSI)
 
 - Connector: MIPI CSI FPC on the Pico Zero (4-lane connector)
-- Interface: MIPI CSI-2, 2-lane (SC3336)
+- Interface: MIPI CSI-2, 4-lane (IMX415-98)
 - Cable length: ≤150 mm (signal integrity)
-- Sensor: SC3336 3 MP (2304×1296 native, 1/2.8"), run at 1280×720 @ 30 fps; ISP tuning file from the Luckfox SDK in `/oem`
+- Sensor: IMX415-98 8 MP (2304×1296 native, 1/2.8"), run at 1280×720 @ 30 fps; ISP tuning file from the Luckfox SDK in `/oem`
 - Paths: ISP main 1280×720 NV12 (preview / stream), ISP self-path 224×224 RGB888 (inference)
 
 ### 3.3 Display (SPI LCD)
@@ -249,23 +249,33 @@ typedef struct {
 | Type | Name | Payload | Description |
 |------|------|---------|-------------|
 | 0x01 | SET_TEMP | target_temp (°C), ramp_rate | Set induction target temperature |
-| 0x02 | SET_STIR | pattern, speed_rpm | Set servo stir pattern and speed |
-| 0x03 | DISPENSE_ASD | asd_id, target_g | Dispense seasoning from ASD hopper |
-| 0x04 | E_STOP | — | Emergency stop all actuators (no ACK) |
+| 0x02 | SET_STIR | pattern, speed_rpm, direction | Set stir pattern, speed and direction |
+| 0x04 | E_STOP | reason_code | Emergency stop all actuators (no ACK) |
 | 0x05 | HEARTBEAT | uptime_ms | Liveness, every 2 s |
 | 0x20 | SET_LED | mode (OFF/CAPTURE/NIGHT), r, g, b, brightness_pct | LED ring mode request (ring driven by STM32) |
-| 0x30 | DISPENSE_ASD | id, target_g | Seasoning dispense |
-| 0x31 | DISPENSE_CID | id, mode, position | Coarse ingredient dispense |
-| 0x32 | DISPENSE_SLD | channel, target_g | Liquid dispense |
+| 0x21 | SET_SPEED | speed_rpm, direction | Direct arm speed override |
+| 0x22 | ARM_STOP | — | Stop arm with decel ramp |
+| 0x23 | ARM_HOME | — | Return arm to home |
+| 0x24 | ARM_STATUS | — | Query arm status (status_byte, rpm, position) |
+| 0x25 | SET_RAMP | accel_limit (RPM/s) | Arm acceleration limit |
+| 0x30 | DISPENSE_FID | box_id (1–6), qty_quarter_tsp (1–40) | Seasoning dispense |
+| 0x31 | DISPENSE_CID | slot_id (1–5) | Coarse ingredient dispense |
+| 0x32 | DISPENSE_SLD | channel (OIL=1, WATER=2), target_g | Liquid dispense |
 | 0x35 | QUERY_WEIGHT | source (SLD_OIL=1, SLD_WATER=2) | Read SLD load cell |
+| 0x36 | PREFLIGHT | subsystem_mask | Check loaded subsystems |
 | 0x37 | TARE | source (SLD_OIL=1, SLD_WATER=2) | Zero SLD load cell |
+| 0x38 | DISPENSER_HOME | target (CID=1, FID=2, 0xFF=both) | Home dispensers |
+| 0x39 | DISPENSER_STATUS | — | Carousel positions and busy flags |
+
+Codes mirror [[02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]], the single source of truth.
 
 **Key Response Types (STM32 → RV1106):**
 
 | Type | Name | Payload | Description |
 |------|------|---------|-------------|
 | 0x10 | TELEMETRY | temp, motor_rpm, weight, state | Periodic status (20 Hz, unsolicited) |
-| 0x12 | STATUS | safety_state, error_code, flags | Safety/error report |
+| 0x11 | SENSOR_DATA | adc_values[], ir_temp, load_cells[] | Raw sensor snapshot |
+| 0x12 | STATUS | safety_state, error_code, flags | Safety/error report (fault codes in error_code) |
 | 0xFF | ACK | ack_msg_id, result_code | Acknowledge / NAK |
 
 ### 5.2 MQTT Topics (Cloud Broker)
@@ -359,9 +369,9 @@ The RV1106 is **not** the primary safety controller — the STM32 owns all safet
 ### 9.1 Hardware Dependencies
 
 - Luckfox Pico Zero 40-pin header provides 5 V power, SPI0 (LCD), I2C3 (touch), UART2 (bridge), GPIO (BOOT0/NRST)
-- Controller PCB (STM32) connects via USART2 (PA2/PA3) at 3.3 V; on a Nucleo-G474RE prototype PA2/PA3 must be freed from the ST-Link VCP solder bridges
+- Controller PCB (STM32) connects via USART2 (PA2/PA3) at 3.3 V; on a NUCLEO-G474RE prototype PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3); verify against the MB1367-G474RE-C04 schematic before soldering
 - Driver PCB provides the 5 V buck converter feeding the Pico Zero header
-- Camera FPC ≤150 mm; SC3336 module on the Pico Zero MIPI CSI connector
+- Camera FPC ≤150 mm; IMX415-98 module on the Pico Zero MIPI CSI connector
 - 74AHCT1G125 level shifter for the LED ring sits on the STM32 side (PB14), not on the AP
 
 ### 9.2 Software Dependencies

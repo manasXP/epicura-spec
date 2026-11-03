@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -550,6 +550,43 @@ Update appliance (e.g., rename).
 
 ---
 
+#### 6.3.6 `POST /appliances/:id/live-view`
+
+Request the on-demand live pot view. The backend publishes the MQTT `live_view_start` command to the device (see [[03-MQTT-Topics|MQTT Topics]] §5.1) and returns the stream location. The device encodes 1280x720 H.264 at 15 fps and serves one RTSP client; the stream tears itself down after `idle_timeout_s` with no viewer.
+
+**Request:**
+```json
+{
+  "prefer": "lan"
+}
+```
+
+`prefer` is `lan` (default) or `relay`. With `lan`, the response carries the device's last reported `lan_ip`; the app should fall back to `relay` if the RTSP connection fails within 5 s (different network, AP isolation).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "mode": "lan",
+    "url": "rtsp://192.168.1.42:554/pot",
+    "relay_url": "rtsps://relay.epicura.io/EPIC-001/pot?token=eyJ...",
+    "idle_timeout_s": 60,
+    "expires_at": "2026-02-14T12:42:00Z"
+  }
+}
+```
+
+`relay_url` is always included so the app can switch without a second request. `expires_at` is the relay token expiry (10 min, refreshed by calling again).
+
+**Errors:** `409 Conflict` if another viewer holds the stream (single client), `503 Service Unavailable` if the appliance is offline or cooking in a state that forbids streaming (E_STOP).
+
+#### 6.3.7 `DELETE /appliances/:id/live-view`
+
+Stop the live view early. The backend publishes `live_view_stop`. Returns `204 No Content`. Not required: the device stops on its own after `idle_timeout_s`.
+
+---
+
 ### 6.4 Cooking Sessions
 
 #### 6.4.1 `POST /sessions`
@@ -788,7 +825,7 @@ The Epicura device (RV1106, `epicurad`) hosts **no HTTP server**. It is a client
 | `PUT /users/me` | Preferences changed on the touchscreen | From `sync_outbox` (`kind = preferences`) |
 | `GET /firmware/latest?target=rv1106` | Daily, and on MQTT `ota_check` | Signed `.swu` applied by swupdate (A/B slots) |
 
-Live video is not served over HTTP. The app's live-view request reaches the device as the MQTT `live_view_start` command (see [[03-MQTT-Topics|MQTT Topics]]); the device then streams H.264 over RTSP at `rtsp://<device>:554/pot` on the same LAN, or through a cloud relay. The REST endpoint by which the app requests live view is not yet specified in this document.
+Live video is not served over HTTP. The app calls `POST /appliances/:id/live-view` (§6.3.6); the backend relays it to the device as the MQTT `live_view_start` command (see [[03-MQTT-Topics|MQTT Topics]]) and returns the RTSP URL (`rtsp://<lan_ip>:554/pot` on the same LAN) plus a cloud relay URL.
 
 ---
 
@@ -822,3 +859,4 @@ All list endpoints support cursor or offset pagination:
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: removed device-hosted local API section; device is a REST client only; `firmware_version_cm5` → `firmware_version_rv1106`, firmware target `rv1106` with `.swu` binaries |
+| 1.2 | 2026-11-04 | Manas Pradhan | Added POST/DELETE /appliances/:id/live-view (§6.3.6–6.3.7) for on-demand RTSP live view |

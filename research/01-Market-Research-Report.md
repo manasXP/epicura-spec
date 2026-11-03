@@ -99,7 +99,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 | **Price** | 3–4x cheaper than Posha; 60% cheaper than CookingPal Julia |
 | **India Focus** | Purpose-built for Indian cooking (tempering, slow simmering, spice dispensing) |
 | **AI Vision** | Real-time cooking stage detection; competitors rely on timers |
-| **Three-Subsystem Dispensing** | Seasoning (pneumatic), coarse ingredients (linear actuator), liquids (peristaltic) — most competitors have single-type dispensing |
+| **Three-Subsystem Dispensing** | Seasoning (servo carousel, ¼ tsp dosing), coarse ingredients (servo carousel), liquids (peristaltic) — most competitors have single-type dispensing |
 | **Offline Capable** | Full local recipe database; works without internet |
 | **Open Hardware** | Rockchip RV1106 (Luckfox Pico Zero) + STM32 = repairable, upgradeable, no vendor lock-in |
 
@@ -116,7 +116,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 | **AI Vision Monitoring** | Overhead camera with NPU edge AI (RKNN) detects cooking stages (raw → browning → simmering → done) |
 | **PID Induction Control** | 1,800W with ±5°C accuracy; sear at 250°C, simmer at 60°C |
 | **Robotic Stirring** | Single-axis servo arm with multiple stir patterns and auto-scraping |
-| **Three-Subsystem Dispensing** | P-ASD (6 sealed seasoning cartridges), CID (2 coarse ingredient trays), SLD (2 liquid reservoirs with load cells) |
+| **Three-Subsystem Dispensing** | FID (6 sealed seasoning canisters on a servo carousel), CID (5-slot servo carousel), SLD (2 liquid reservoirs with load cells) |
 | **4" Touchscreen** | LVGL-based UI for recipe browsing, cooking status, on-demand pot preview |
 | **Companion Mobile Apps** | Native iOS (SwiftUI) and Android (Jetpack Compose) apps for remote control and monitoring |
 | **Exhaust Filtration** | Built-in grease and carbon filters; no external venting needed |

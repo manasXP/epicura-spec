@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -246,7 +246,7 @@ Device alerts that require backend processing or user notification.
 
 ### 5.1 `live_view_start`
 
-Published by the backend when a mobile app requests the live pot view.
+Published by the backend when a mobile app requests the live pot view via `POST /appliances/:id/live-view` (see [[01-REST-API-Reference|REST API]] §6.3.6).
 
 **Payload:**
 ```json
@@ -463,3 +463,4 @@ The wildcard `+` in subscriptions matches any device ID, so the server handles a
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: single `cmd` topic with `command` field (`live_view_start`, `live_view_stop`, `recipe_sync_now`, `ota_check`, plus `cook`/`stop`/`config`); telemetry QoS 1 with `sync_outbox` offline spool; no on-device broker; status payload `firmware_rv1106`, `lan_ip` |
+| 1.2 | 2026-11-04 | Manas Pradhan | live_view_start now references POST /appliances/:id/live-view |

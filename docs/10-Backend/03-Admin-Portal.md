@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -141,7 +141,7 @@ The recipe editor is the most complex page, featuring a stage-by-stage builder t
 
 - Drag-and-drop stage reordering (via `[↕]` handle)
 - Each stage has: name, temperature target, duration, stir pattern, CV check class, and ingredients
-- Ingredients include subsystem (ASD/CID/SLD), ID/channel, name, and amount (g)
+- Ingredients include subsystem (FID/CID/SLD), box/slot/channel, name, and quantity (¼ tsp count for FID, slot for CID, ml for SLD)
 - JSON preview panel shows the `recipe_data` JSONB that will be stored
 - Schema validation via Zod before save (matches device recipe format)
 - "Preview" button renders the recipe as it would appear on the touchscreen UI
@@ -248,3 +248,4 @@ Admin can send push notifications to:
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Device renamed CM5 → RV1106; firmware target/column renamed, RV1106 OTA binary is a signed `.swu` |
+| 1.2 | 2026-11-04 | Manas Pradhan | Ingredient fields updated for FID (¼ tsp doses) / CID (slots) / SLD (ml) |

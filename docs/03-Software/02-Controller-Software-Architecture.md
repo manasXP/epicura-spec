@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.1
+version: 2.3
 status: Draft
 ---
 
@@ -23,7 +23,7 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 | **Role** | AI/Vision, UI, Recipe Engine, Storage, Cloud | PID, Motor, Sensors, Safety |
 | **Languages** | C11 (single application), LVGL | C (MISRA C subset) |
 | **Graphics** | LVGL 9 on 4" 480x320 SPI LCD, software rendering | None |
-| **IPC** | UART (primary) / CAN bus (alternative) | UART (primary) / CAN bus (alternative) |
+| **IPC** | UART 1 Mbps, framed + CRC-16 (no CAN alternative) | UART 1 Mbps to RV1106; FDCAN to induction module only |
 
 ---
 
@@ -55,7 +55,7 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 │  On-demand only:  rtsp-stream (child process, H.264 720p → phone)           │
 └───────────────────────────────────┬─────────────────────────────────────────┘
                                     │
-                            UART 1 Mbps / CAN Bus
+                            UART 1 Mbps (USART2) 
                                     │
 ┌───────────────────────────────────▼─────────────────────────────────────────┐
 │                       STM32G474RE (FreeRTOS)                                │
@@ -205,7 +205,7 @@ The Pico Zero exposes one full SPI controller. It goes to the display; the STM32
 | STM32 BOOT0 / NRST (OTA) | GPIO 32, GPIO 38 | | Enter system bootloader for firmware load |
 | LED ring (WS2812B) | **On STM32**, not on this header | | STM32 timer + DMA, 5 V logic; RV1106 sends SET_LED over the bridge |
 | Debug console | UART0 M0: TX 35, RX 37 | | Luckfox default |
-| Camera | MIPI CSI FPC (4-lane) | | **SC3336 3 MP** (Luckfox-supported, ISP tuning file shipped in SDK). IMX219/IMX477 dropped: no RV1106 tuning file |
+| Camera | MIPI CSI FPC (4-lane) | | **IMX415-98 IR-CUT 8 MP** (the colour camera Luckfox supports on the Pico Zero; ISP tuning file shipped in SDK; 22-pin FPC). SC3336 is marked incompatible with the Pico Zero; IMX219/IMX477 dropped: no RV1106 tuning file |
 | Wi-Fi / BLE | On-board module | | 2.4 GHz Wi-Fi 6, BT 5.2 |
 | Spare | UART3, UART4, I2C1, I2C2, PWM | | |
 
@@ -289,28 +289,30 @@ recipe:
     - name: "Add Spices to Oil"
       temp_target: 160
       ingredients:
-        - {subsystem: "ASD", id: 1, name: "turmeric", amount_g: 3}
-        - {subsystem: "ASD", id: 2, name: "chili_powder", amount_g: 5}
+        - {subsystem: "FID", box: 1, name: "turmeric", qty_quarter_tsp: 4}
+        - {subsystem: "FID", box: 2, name: "chili_powder", qty_quarter_tsp: 8}
       cv_check: "spice_bloom"
       stir: true
       stir_pattern: "intermittent"
     - name: "Add Onions & Tomatoes"
       temp_target: 150
       duration_seconds: 300
-      ingredients: [{subsystem: "CID", id: 1, name: "onion_tomato", mode: "FULL"}]
+      ingredients: [{subsystem: "CID", slot: 1, name: "onion_tomato"}]
       cv_check: "golden_brown"
       stir: true
       stir_pattern: "continuous"
     - name: "Season"
       temp_target: 140
       duration_seconds: 60
-      ingredients: [{subsystem: "ASD", id: 3, name: "salt_garam_masala", amount_g: 5}]
+      ingredients:
+        - {subsystem: "FID", box: 4, name: "salt", qty_quarter_tsp: 3}
+        - {subsystem: "FID", box: 5, name: "garam_masala", qty_quarter_tsp: 5}
       stir: true
       stir_pattern: "fold"
     - name: "Add Dal & Water"
       temp_target: 95
       ingredients:
-        - {subsystem: "CID", id: 2, name: "toor_dal", mode: "FULL"}
+        - {subsystem: "CID", slot: 2, name: "toor_dal"}
         - {subsystem: "SLD", channel: "WATER", name: "water", amount_g: 400}
     - name: "Simmer Dal"
       temp_target: 95
@@ -351,7 +353,7 @@ Every stage before inference is a hardware block. The CPU touches only the 8-cla
 
 ```
 ┌────────────┐   ┌─────────────────────┐   ┌───────────────┐   ┌────────────────┐
-│  SC3336    │   │  ISP (hardware)     │   │  ISP self-path│   │   NPU (RKNN)   │
+│  IMX415-98 │   │  ISP (hardware)     │   │  ISP self-path│   │   NPU (RKNN)   │
 │  MIPI CSI  │──►│  3A, 3DNR, dehaze,  │──►│  scale to     │──►│  MobileNetV2   │
 │  1280x720  │   │  LSC, sharpen       │   │  224x224 RGB  │   │  INT8, ~8 ms   │
 │  @ 30 fps  │   │  main path 720p NV12│   │  @ 2 fps      │   │                │
@@ -377,7 +379,7 @@ int cv_init(cv_ctx_t *cv)
 {
     /* Sensor → VI → ISP.  Main path 1280x720 NV12 (for preview/stream),
      * self path 224x224 RGB888 (for inference). Both paths are hardware. */
-    vi_open(&cv->vi, SENSOR_SC3336, 1280, 720, 30);
+    vi_open(&cv->vi, SENSOR_IMX415, 1280, 720, 30);
     isp_set_output(&cv->vi, ISP_PATH_MAIN, 1280, 720, PIX_NV12);
     isp_set_output(&cv->vi, ISP_PATH_SELF,  224, 224, PIX_RGB888);
     isp_enable(&cv->vi, ISP_DEHAZE | ISP_3DNR | ISP_SHARPEN);
@@ -765,7 +767,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
  2. Recipe Engine loads YAML, validates ingredients
                 │
                 ▼
- 3. UI prompts user to load dispensing subsystems (ASD/CID/SLD) with weight confirmation
+ 3. UI prompts user to load dispensing subsystems (FID/CID/SLD) with confirmation (CID slots assigned in order of use)
                 │
                 ▼
  4. RV1106 sends PREHEAT command to STM32 (target temperature)
@@ -773,7 +775,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
                 ▼
  5. For each stage:
     ┌───────────────────────────────────────────────────┐
-    │  a. Dispense ingredients (DISPENSE_ASD/CID/SLD)   │
+    │  a. Dispense ingredients (DISPENSE_FID/CID/SLD)   │
     │  b. Set temperature (RV1106 → STM32 SET_TEMP)     │
     │  c. Set stir pattern (RV1106 → STM32 SET_STIR)    │
     │  d. Monitor via CV pipeline (ISP → NPU, 2 Hz)     │
@@ -822,24 +824,36 @@ typedef struct {
 
 ### 7.2 Message Types
 
+This table is the single source of truth for bridge type codes. Code blocks: `0x0x` core commands, `0x1x` STM32 → RV1106 reports, `0x2x` LED ring and stirring arm, `0x3x` dispensing (payload detail owned by [[../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] §8), `0xFF` acknowledge. Faults are reported in STATUS `error_code` (codes in [[05-MCU-Functional-Specification|MCU Functional Specification]] §8); there is no separate FAULT message.
+
 | Message | Type Code | Direction | Payload |
 |---------|-----------|-----------|---------|
 | SET_TEMP | 0x01 | RV1106 → STM32 | target_temp (float), ramp_rate (float) |
-| SET_STIR | 0x02 | RV1106 → STM32 | pattern (uint8), speed_rpm (uint16) |
-| DISPENSE_ASD | 0x03 | RV1106 → STM32 | asd_id (uint8: 1-3), target_g (uint16) |
-| DISPENSE_CID | 0x06 | RV1106 → STM32 | cid_id (uint8: 1-2), mode (uint8), pos_mm (uint8) |
-| DISPENSE_SLD | 0x07 | RV1106 → STM32 | channel (uint8: OIL=1, WATER=2), target_g (uint16) |
+| SET_STIR | 0x02 | RV1106 → STM32 | pattern (uint8), speed_rpm (uint16), direction (uint8: 0=CW, 1=CCW) |
 | E_STOP | 0x04 | RV1106 → STM32 | reason_code (uint8) |
 | HEARTBEAT | 0x05 | RV1106 → STM32 | uptime_ms (uint32) |
-| SET_LED | 0x20 | RV1106 → STM32 | mode (uint8: OFF/CAPTURE/NIGHT), r, g, b (uint8), brightness_pct (uint8) |
-| TELEMETRY | 0x10 | STM32 → RV1106 | temp, motor_rpm, weight, state |
+| TELEMETRY | 0x10 | STM32 → RV1106 | temp, motor_rpm, weight, state (20 Hz, unsolicited) |
 | SENSOR_DATA | 0x11 | STM32 → RV1106 | adc_values[], ir_temp, load_cells[] |
-| STATUS | 0x12 | STM32 → RV1106 | safety_state, error_code, flags |
-| ACK | 0xFF | Bidirectional | ack_msg_id, result_code |
+| STATUS | 0x12 | STM32 → RV1106 | safety_state, error_code, flags (on change; carries fault codes) |
+| SET_LED | 0x20 | RV1106 → STM32 | mode (uint8: OFF/CAPTURE/NIGHT), r, g, b (uint8), brightness_pct (uint8) |
+| SET_SPEED | 0x21 | RV1106 → STM32 | speed_rpm (uint16), direction (uint8) — direct arm override |
+| ARM_STOP | 0x22 | RV1106 → STM32 | — (stop with decel ramp) |
+| ARM_HOME | 0x23 | RV1106 → STM32 | — |
+| ARM_STATUS | 0x24 | RV1106 → STM32 | — → status_byte, current_rpm, position |
+| SET_RAMP | 0x25 | RV1106 → STM32 | accel_limit (uint16, RPM/s) |
+| DISPENSE_FID | 0x30 | RV1106 → STM32 | box_id (uint8: 1–6), qty_quarter_tsp (uint8: 1–40) |
+| DISPENSE_CID | 0x31 | RV1106 → STM32 | slot_id (uint8: 1–5) |
+| DISPENSE_SLD | 0x32 | RV1106 → STM32 | channel (uint8: OIL=1, WATER=2), target_g (uint16) |
+| QUERY_WEIGHT | 0x35 | RV1106 → STM32 | source (uint8: SLD_OIL=1, SLD_WATER=2) → weight_g (int32) |
+| PREFLIGHT | 0x36 | RV1106 → STM32 | subsystem_mask (uint8) → status per subsystem |
+| TARE | 0x37 | RV1106 → STM32 | source (uint8: SLD_OIL=1, SLD_WATER=2) |
+| DISPENSER_HOME | 0x38 | RV1106 → STM32 | target (uint8: CID=1, FID=2, 0xFF=both) |
+| DISPENSER_STATUS | 0x39 | RV1106 → STM32 | — → cid_pos, fid_box, gate_open, rail_on, busy |
+| ACK / NAK | 0xFF | STM32 → RV1106 | ack_msg_id, result_code |
 
 ### 7.3 Protocol Details
 
-- **Link:** UART2 on RV1106 (header pins 8/10) ↔ USART on STM32, 1,000,000 baud, 8N1, 3.3 V. CAN 500 kbps remains the alternative for production.
+- **Link:** UART2 on RV1106 (header pins 8/10) ↔ USART2 on STM32 (PA2/PA3), 1,000,000 baud, 8N1, 3.3 V. This is also the production link: there is no CAN alternative, because the RV1106 has no CAN controller and its only full SPI drives the LCD. CAN on the STM32 serves the induction module only.
 - **Framing:** SOF 0x7E, byte-stuffing (0x7D escape), then MSG_ID, type, length, payload, CRC-16. Receiver discards until SOF and validates CRC before dispatch.
 - **Data-ready:** Not needed. STM32 pushes TELEMETRY at 20 Hz unsolicited; RV1106 reads in the bridge thread with a 100-byte kernel FIFO and `VMIN=1`.
 - **Timeout:** 500 ms for ACK; retry up to 3 times
@@ -913,3 +927,5 @@ The RV1106 has one core. The bridge thread runs at real-time priority so STM32 h
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-11-03 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to RV1106G3 (Luckfox Pico Zero). Replaced Docker/PostgreSQL/Fastify/Kivy/Python stack with a single C application: SQLite, LVGL on 4" SPI LCD, ISP+NPU vision at 720p, on-demand H.264 phone streaming, STM32 link moved from SPI to UART. Added memory budget and bus allocation. |
 | 2.1 | 2026-11-04 | Manas Pradhan | Confirmed: camera sensor is SC3336 (IMX219/IMX477 dropped, no RV1106 ISP tuning); WS2812B LED ring driven by STM32, SET_LED (0x20) added to bridge protocol. |
+| 2.2 | 2026-11-04 | Manas Pradhan | Recipe YAML example and cooking flow updated for servo carousels: ASD → FID (box, qty in ¼ tsp), CID slot whole-slot (mode removed); message table carries the 0x30–0x39 dispensing block |
+| 2.3 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 not compatible with the Pico Zero); §7.2 is now the single source of truth for bridge type codes (arm 0x21–0x25 and dispensing 0x30–0x39 blocks added, SET_STIR gains direction); CAN alternative for the bridge dropped |

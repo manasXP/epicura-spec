@@ -32,7 +32,7 @@
 - [ ] Order STM32G474 Nucleo dev board
 - [ ] Source a ommercial induction hob for teardown
 - [ ] Order 24V BLDC motor (30-50 kg-cm, integrated ESC)
-- [ ] Order SC3336 camera module
+- [ ] Order IMX415-98 camera module
 - [ ] Order MLX90614 IR thermometer
 - [ ] Order HX711 + load cells
 - [ ] Order a 4" ST7796S SPI touchscreen display

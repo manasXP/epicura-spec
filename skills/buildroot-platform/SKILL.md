@@ -88,7 +88,7 @@ epicura-rv1106/
    - `&uart2`: enable on the M1 mux (TX 8 / RX 10) → `/dev/ttyS2`, used by `epicurad` at 1 Mbps; leave `uart0` as the console
    - GPIO 32 (STM32 BOOT0, default low) and GPIO 38 (STM32 NRST, default high) as outputs via `gpio-hog` or sysfs export
    - `reserved-memory` / `cma`: 32 MB (VI/ISP 720p 16 MB + self-path/RGA 2 MB + VENC 8 MB + headroom)
-   - Camera: SC3336 on the MIPI CSI node; copy its IQ file from the SDK into `/oem/etc/iqfiles/`
+   - Camera: IMX415-98 on the MIPI CSI node; copy its IQ file from the SDK into `/oem/etc/iqfiles/`
 5. **Services** - remove `rkipc` and the `S99*` sample launchers from `/etc/init.d`; keep `wpa_supplicant`, `bluetoothd`, swupdate (daemon off; `epicurad` invokes it on `ota_check`); add `S90epicurad`
 6. **Partitions** - set the eMMC layout (table below) in the board config / `parameter.txt`; `/oem` and `/userdata` are separate images; `/data` is formatted on first boot
 7. **OTA** - swupdate with two boot and two rootfs slots; `sw-description` targets the inactive slot from the U-Boot `boot_slot` env; sign `.swu` with the release RSA-2048 key; U-Boot counts boots and falls back to the previous slot after 3 failures; `epicurad` confirms the slot once it starts cleanly

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.3
 status: Draft
 ---
 
@@ -37,13 +37,13 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.1.2 Tasks
 
 **Week 1: RV1106 Bring-up**
-- [ ] Acquire Luckfox Pico Zero + SC3336 camera module + 4" ST7796S SPI LCD (FT6336 touch)
+- [ ] Acquire Luckfox Pico Zero + IMX415-98 camera module + 4" ST7796S SPI LCD (FT6336 touch)
 - [ ] Build Buildroot image from the Luckfox SDK inside the `luckfoxtech/luckfox_pico:1.0` Docker image (kernel 5.10, busybox init, squashfs rootfs; packages: sqlite, libyaml, cjson, libmosquitto, libcurl, mbedtls, lvgl, swupdate, wpa_supplicant, bluez5, rockit, rknn)
 - [ ] Flash image to eMMC over USB-C, verify boot
 - [ ] Establish SSH access over Wi-Fi (no Ethernet on the Pico Zero); UART0 debug console as fallback
 - [ ] Test GPIO, I2C3, SPI0, UART2 from Linux userspace
 - [ ] Bring up the 4" LCD on fbtft (SPI0, 50 MHz, DMA) and FT6336 touch on I2C3 (evdev)
-- [ ] Verify SC3336 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
+- [ ] Verify IMX415-98 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
 
 **Week 2: STM32 Bring-up**
 - [ ] Acquire NUCLEO-G474RE development board
@@ -55,7 +55,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Test PWM output (servo signal generation)
 
 **Week 3: Inter-Processor Communication**
-- [ ] Wire UART between RV1106 (UART2: header pins 8 TX / 10 RX) and STM32 (USART2: PA2/PA3), 1,000,000 baud 8N1, 3.3 V; on the Nucleo, open the solder bridges so PA2/PA3 reach the CN10 header instead of the ST-Link VCP
+- [ ] Wire UART between RV1106 (UART2: header pins 8 TX / 10 RX) and STM32 (USART2: PA2/PA3), 1,000,000 baud 8N1, 3.3 V; on the NUCLEO-G474RE remove SB17/SB23 (ST-LINK VCP) and fit SB18/SB22 so PA2/PA3 reach Arduino D1/D0, or use morpho CN10 pins 35/37
 - [ ] Define message protocol (SOF 0x7E, byte stuffing, msg ID, type, payload, CRC-16)
 - [ ] Implement protocol on STM32 (C, interrupt-driven UART)
 - [ ] Implement protocol on RV1106 (C, `epicurad` bridge thread, termios at 1 Mbps)
@@ -227,10 +227,10 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.4.2 Tasks
 
 **Week 11: Camera Setup**
-- [ ] Mount SC3336 camera module above pot (overhead view)
+- [ ] Mount IMX415-98 camera module above pot (overhead view)
 - [ ] Install LED ring (WS2812B, 12-LED NeoPixel) around camera; wire data to STM32 PB14 via 74AHCT1G125 and implement SET_LED (0x20) over the bridge
 - [ ] Configure rockit VI/ISP on the RV1106 for 1280x720 @ 30fps capture (main path NV12) plus a 224x224 RGB888 self-path
-- [ ] ISP tuning check: load the SC3336 tuning file from the Luckfox SDK; verify AWB/AE, dehaze and 3DNR behaviour over a steaming pot
+- [ ] ISP tuning check: load the IMX415-98 tuning file from the Luckfox SDK; verify AWB/AE, dehaze and 3DNR behaviour over a steaming pot
 - [ ] Test image quality under LED illumination (consistent lighting)
 - [ ] Capture test images at various cooking stages
 
@@ -268,7 +268,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 ┌─────────────────────────────────────────────────────┐
 │              Vision Pipeline                        │
 │                                                     │
-│  SC3336 ──► ISP (hw) ──► NPU (RKNN) ──► Stage Label │
+│  IMX415 ──► ISP (hw) ──► NPU (RKNN) ──► Stage Label │
 │  (720p)     dehaze/3DNR  (MobileNetV2   (7 classes) │
 │                │         INT8, 2 Hz)      │         │
 │                ▼                          ▼         │
@@ -298,7 +298,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 #### 3.5.1 Objectives
 - Define recipe YAML format and implement state machine
-- Build ingredient dispensing subsystems (ASD, CID, SLD)
+- Build ingredient dispensing subsystems (FID, CID, SLD)
 - Validate end-to-end cooking of 3-5 Indian recipes
 
 #### 3.5.2 Tasks
@@ -315,7 +315,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
       detect: {method: cv, class: oil_shimmer}
       timeout_sec: 180
     - name: "Add Tempering"
-      actions: [dispense: {subsystem: "ASD", id: 1, weight_g: 5}]
+      actions: [dispense: {subsystem: "FID", box: 1, qty_quarter_tsp: 4}]
       ...
   ```
 - [ ] Implement state machine on the RV1106 (C, `epicurad` engine thread, libyaml):
@@ -326,39 +326,38 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Create recipe files for 5 target dishes
 
 **Week 16: Dispensing Mechanism**
-- [ ] Build ASD: 3 seasoning hoppers (3D printed PETG, 80 mL each) with SG90 servo gates
-- [ ] Build CID: 2 slide-out trays (400 mL each) with 12V linear actuators and limit switches
+- [ ] Build FID: 6-canister carousel (Ø170 mm ring, 4:3 index gear) with per-canister ¼ tsp measure wheels, dosing station (F2 blade coupling) and steam-gate flap (F3)
+- [ ] Build CID: 5-slot + cover carousel (Ø230 mm lift-off ring, thin-section bearing) on fixed base plate with rear aperture and chute, index servo (C1) via 4:3 gear
 - [ ] Build SLD: 2 liquid channels (peristaltic pumps + solenoid valves + silicone tubing)
 - [ ] Install 2× SLD dedicated load cells (2 kg each) + HX711 under oil and water reservoirs
-- [ ] Wire all dispensing actuators to STM32 (PWM + GPIO)
-- [ ] Calibrate P-ASD dispensing: pulse duration per spice, verify pressure drop via ADS1015
+- [ ] Assemble the Dispenser Servo Block: PCA9685 @ 0x41 on I2C1, OE to PB4, MP1584EN #2 set to 6.5 V with P-MOSFET rail switch on PCF8574 #2 P4, servo leads to J_DSB1-4
+- [ ] Calibrate FID dosing: weigh 10 doses per spice, store g per ¼ tsp; verify jiggle clears packed powder; verify CID ascending-order NACK and stall detection
 - [ ] Calibrate SLD dispensing per channel: start pump, monitor individual reservoir weight loss, stop at target
 - [ ] Test SLD low-level alert: verify alert fires when reservoir drops below threshold
 
 ```
 ┌──────────────────────────────────────────────────┐
-│           Dispensing Subsystem Layout             │
+│           Dispensing Subsystem Layout            │
 │                                                  │
-│   ┌─────────┐  ┌─────────┐  ┌─────────┐         │
-│   │  ASD-1  │  │  ASD-2  │  │  ASD-3  │         │
-│   │(turmeric│  │ (chili  │  │ (salt/  │         │
-│   │ powder) │  │ powder) │  │ masala) │         │
-│   └────┬────┘  └────┬────┘  └────┬────┘         │
-│        │SG90        │SG90        │SG90           │
-│        ▼            ▼            ▼               │
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─          │
+│   FID carousel (rear): 6 canisters, ¼ tsp wheels │
+│        ┌──────────────────────┐                  │
+│        │ Box4  Box3  Box2     │ F1 index servo   │
+│        │ Box5  Box6  Box1 ──► │ F2 dose servo    │
+│        └──────────┬───────────┘ F3 steam gate    │
+│                   ▼ chute                        │
+│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─            │
 │                                                  │
 │   SLD-OIL ═══╗           ╔═══ SLD-WATER          │
-│   [Pump]─[Sol]╚══►Pot◄══╝[Sol]─[Pump]           │
+│   [Pump]─[Sol]╚══►Pot◄══╝[Sol]─[Pump]            │
 │                                                  │
-│   ┌──────────────┐  ┌──────────────┐             │
-│   │    CID-1     │  │    CID-2     │             │
-│   │ (vegetables) │  │  (dal/rice)  │             │
-│   │ [LinActuator]│  │ [LinActuator]│             │
-│   └──────┬───────┘  └──────┬───────┘             │
-│          ▼                 ▼                     │
-│   ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─          │
-│                  Pot Below                       │
+│                   ▲ chute                        │
+│        ┌──────────┴───────────┐                  │
+│        │ Slot3  Slot2  Slot1  │ C1 index servo   │
+│        │ Slot4  Slot5  COVER  │ (whole slot)     │
+│        └──────────────────────┘                  │
+│   CID carousel (front): 5 slots + cover sector   │
+│                                                  │
+│   DSB: 4 servos ── PCA9685 (0x41) ── 6.5 V rail  │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -377,8 +376,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 |-------------|-----------------|
 | Recipe YAML format | 5 recipes defined, schema validated |
 | State machine | Executes recipes end-to-end, handles timeouts |
-| ASD/CID/SLD subsystems | All actuators functional, no jamming |
-| Pressure-verified dispensing (P-ASD) | ~±20% accuracy, pressure drop confirmed |
+| FID/CID/SLD subsystems | All four DSB servos + SLD pumps functional, no jamming, stall detection verified |
+| Volumetric dosing (FID) | ±10% per ¼ tsp dose across all 6 spices |
 | 3-5 cooked recipes | Edible output, correct stage transitions |
 
 ---
@@ -490,15 +489,15 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Category | Items | Estimated Cost |
 |----------|-------|----------------|
 | Compute | Luckfox Pico Zero (RV1106G3) + STM32 Nucleo dev board | $65-80 |
-| Actuation | 24V BLDC motor + ASD servos + CID actuators + SLD pumps/solenoids + induction hob | $200-300 |
-| Sensors | SC3336 camera + MLX90614 + reed switch + LED ring + level shifter | $30-50 |
+| Actuation | 24V BLDC motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + induction hob | $200-300 |
+| Sensors | IMX415-98 camera + MLX90614 + reed switch + LED ring + level shifter | $75-95 |
 | Mechanical | 3D printing (PETG filament) + stainless steel shaft + fasteners + brackets | $100-200 |
 | Display | 4" ST7796S SPI IPS touchscreen (FT6336 I2C touch) | $15-20 |
 | Power | Bench PSU + prototype PSU board + cables + connectors | $50-80 |
 | Tools | Soldering station + multimeter + oscilloscope + 3D printer access | $100-200 |
 | Consumables | Ingredients (20+ cook sessions) + thermal paper + misc | $50-100 |
 | Miscellaneous | PCBs (JLCPCB) + shipping + contingency | $200-400 |
-| **Total** | | **$790-1,420** |
+| **Total** | | **$835-1,465** |
 
 ---
 
@@ -534,14 +533,14 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Temperature control within ±10°C of target
 - [ ] Basic touchscreen UI: recipe select, cooking screen, pot preview
 - [ ] Safety interlocks functional (pot detect, overtemp shutoff)
-- [ ] Dispensing works for all 3 subsystems (ASD, CID, SLD)
+- [ ] Dispensing works for all 3 subsystems (FID, CID, SLD)
 
 ### 6.2 Should-Have
 - [ ] 5 recipes validated with consistent results
 - [ ] CV-guided cooking stage detection (> 80% accuracy)
 - [ ] Mobile app with basic functionality (browse, live view, start/stop)
 - [ ] Temperature accuracy ±5°C
-- [ ] Pressure-verified P-ASD dispensing (~±20% accuracy)
+- [ ] Volumetric FID dosing (±10% per ¼ tsp dose)
 
 ### 6.3 Nice-to-Have
 - [ ] 10+ recipes in library
@@ -556,7 +555,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Category | Estimated Cost |
 |----------|---------------|
-| Electronic Components (BOM) | $431 |
+| Electronic Components (BOM) | $433 |
 | Tools & Equipment | $100-200 |
 | 3D Printing & Mechanical | $100-200 |
 | Consumables (ingredients, filament) | $50-100 |
@@ -606,3 +605,5 @@ This document outlines the comprehensive plan for building a functional Epicura 
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed to Luckfox Pico Zero (RV1106G3): Buildroot bring-up, UART bridge, SC3336 + ISP tuning, RKNN NPU model, LVGL on 4" LCD, cloud-only API and RTSP live view; budgets recomputed |
+| 1.2 | 2026-11-04 | Manas Pradhan | Phase 5 dispensing tasks rewritten for servo carousels (FID 6 canisters / 3 servos, CID 5 slots / 1 servo, Dispenser Servo Block) |
+| 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 ($54): sensors line $75-95, total $835-1,465, BOM $473; Nucleo SB numbers |

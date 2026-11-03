@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.2
+version: 2.3
 status: Draft
 tags: [epicura, state-machine, software-architecture, recipe-engine]
 ---
@@ -82,7 +82,7 @@ stateDiagram-v2
 |-------|-----------|-------------------------------|----------------|
 | **IDLE** | Recipe browser, cook history, settings | Waiting for recipe selection | Sensors polling at 1 Hz, heartbeat to RV1106, safety idle checks |
 | **LOADING** | "Validating recipe..." spinner | Parse YAML, resolve ingredient list, check dispenser mapping | No change from IDLE |
-| **AWAITING_LOAD** | Checklist UI: "Load onions in CID-1 ✓", live weight readout per slot | Monitor load cell readings via the UART bridge, compare against recipe requirements | Report load cell weights on poll request |
+| **AWAITING_LOAD** | Checklist UI: "Load onions in CID Slot1 ✓", live weight readout per slot | Monitor load cell readings via the UART bridge, compare against recipe requirements | Report load cell weights on poll request |
 | **PREHEATING** | Progress bar (current temp → target), ETA countdown | Send `SET_TEMP(target, ramp_rate)` via bridge, poll telemetry at 2 Hz | PID ramp-up, CAN `SET_POWER` command to induction surface, report temp |
 | **DISPENSING** | "Dispensing oil (30 g)..." with live weight bar | Send `DISPENSE_SLD(channel, target_g)` or `DISPENSE_CID(tray)`, verify ACK, monitor weight convergence | Actuate pumps/servos/actuators, stream load cell delta, report completion ACK |
 | **COOKING** | Timer countdown, live temp graph, stir pattern indicator | Send `SET_STIR(pattern, speed)`, maintain temp setpoint, trigger CV capture at 2 Hz | PID hold temperature, PWM servo pattern execution, report telemetry |
@@ -111,7 +111,7 @@ sequenceDiagram
     RE->>RE: Load stage 3 from YAML
     RE->>UI: state=DISPENSING, msg="Dispensing cumin (5g)"
 
-    RE->>BR: DISPENSE_ASD(hopper=1, grams=5)
+    RE->>BR: DISPENSE_FID(box=1, qty_quarter_tsp=4)
     BR->>MC: UART frame [CMD=0x30, hopper=1, target=5g]
     MC->>MC: Open servo gate, monitor load cell
     MC-->>BR: UART frame [ACK, weight=4.8g]
@@ -193,7 +193,7 @@ Any active cooking state (PREHEATING, DISPENSING, COOKING, MONITORING) can trans
 |---------|--------|-----------|-------------|---------|
 | **AC Power Failure** | STM32 COMP1 (PA1) | `POWER_FAIL(state=1)` UART message or PWR_FAIL GPIO on J_STACK pin 16 goes LOW | Yes, if <5 min | 24V rail drops below ~16.5V. STM32 immediately disables all actuators. RV1106 saves state to SQLite. UPS keeps RV1106+STM32 alive. On power restore (`POWER_FAIL(state=0)` after 2s debounce), auto-resume if pause <5 min, else prompt user |
 | **Sensor Malfunction** | STM32 telemetry | IR temp reads out-of-range (< -10°C or > 400°C), load cell HX711 timeout (no DOUT response), INA219 I2C NAK | No — user prompt | Sensor data unreliable. RV1106 identifies which sensor failed from telemetry anomaly. Cooking cannot safely continue without correct readings. User prompted to check sensor connection and tap "Resume" |
-| **Actuator Malfunction** | STM32 telemetry / timeout | Servo stall detected (current spike with no position change), CID-1 stepper home switch not triggered after expected step count (missed steps), DRV8876 #2 nFAULT asserted (CID-2), peristaltic pump no flow (no weight delta after 5s of actuation), solenoid no pressure change (ADS1015 reading flat after valve open) | No — user prompt | Actuator failed to perform expected action. RV1106 logs fault details. User prompted to inspect actuator and tap "Resume" |
+| **Actuator Malfunction** | STM32 telemetry / timeout | Servo stall detected (current spike with no position change), DSB_STALL from the dispenser servo block (INA219 current window exceeded or move timeout while indexing a carousel or dosing), peristaltic pump no flow (no weight delta after 5s of actuation) | No — user prompt | Actuator failed to perform expected action. RV1106 logs fault details. User prompted to inspect actuator and tap "Resume" |
 | **Induction Cooktop Error** | STM32 CAN bus | CAN error frame received, induction module reports fault code (overcurrent, overtemp, IGBT failure), or CAN bus timeout (no heartbeat for >2s) | Depends on fault | Transient faults (e.g., CAN timeout, momentary overtemp): auto-retry once after 5s, then pause. Permanent faults (IGBT failure): pause and prompt user. CAN bus offline: pause immediately |
 | **User Pause** | UI touch event | User taps "Pause" button on cooking screen | No — user must tap "Resume" | Manual pause for lid check, ingredient addition, etc. |
 
@@ -303,7 +303,7 @@ RECOVERING → RESUMING:
 - [[01-Tech-Stack|Tech Stack]] — Buildroot, LVGL, SQLite, FreeRTOS stack
 - [[../../04-UserInterface/01-UI-UX-Design|UI/UX Design]] — Touchscreen wireframes and screen flows
 - [[../../05-Subsystems/01-Induction-Heating|Induction Heating]] — PID control and CAN bus protocol
-- [[../../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] — ASD/CID/SLD subsystem details
+- [[../../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] — FID/CID/SLD subsystem details
 
 ---
 
@@ -315,3 +315,4 @@ RECOVERING → RESUMING:
 | 2.0 | 2026-02-20 | Manas Pradhan | Expanded PAUSED state with multi-cause triggers (power failure, sensor/actuator malfunction, induction error); added RESUMING state for temperature recovery before returning to COOKING; PAUSED now reachable from PREHEATING, DISPENSING, MONITORING (not just COOKING); added pause triggers table, state persistence schema, and resume decision logic; ERROR → RESUMING replaces ERROR → COOKING |
 | 2.1 | 2026-02-27 | Manas Pradhan | Added RECOVERING state and boot recovery flow (§5.3) for resuming cooking after full power loss; IDLE → RECOVERING transition on boot when interrupted session found in DB; 30-min food safety cutoff enforced at boot time |
 | 2.2 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero): UI layer is LVGL, session/pause snapshots persist to SQLite (JSON1) instead of PostgreSQL, bridge frames are UART (not SPI), CV inference runs on the NPU via RKNN. State machine, transitions and pause/recovery logic unchanged |
+| 2.3 | 2026-11-04 | Manas Pradhan | Dispenser references updated for servo carousels (FID/CID on the Dispenser Servo Block; DSB_STALL replaces stepper/linear-actuator and pressure faults) |

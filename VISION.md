@@ -60,8 +60,8 @@ A compact countertop unit (50 x 40 x 30 cm, ~12-15 kg) with:
 - **Robotic stirring arm** — 24V BLDC motor, 360-degree continuous rotation, removable food-safe silicone paddle. Stirs, scrapes, and folds per recipe instructions.
 - **Three dispensing subsystems:**
   - **Liquids (SLD)** — 2 peristaltic pumps for oil and water, closed-loop weight verification via load cells
-  - **Spices (P-ASD)** — 6 sealed cartridges with pneumatic puff-dosing, measured in quarter-teaspoon increments
-  - **Solids (CID)** — 2 trays with motorized push-plates for vegetables, dal, rice, meat
+  - **Spices (FID)** — 6 sealed canisters on a servo carousel, each with a built-in measure wheel dosing in quarter-teaspoon increments
+  - **Solids (CID)** — 5-slot servo carousel for vegetables, dal, rice, meat; each slot drops whole into the pot
 - **Vision system** — Overhead camera with LED ring illumination, hardware ISP for steam and haze, running MobileNetV2 INT8 on the RV1106's NPU for cooking stage detection (raw, browning, boiling, simmering, done)
 - **4-inch touchscreen** — Capacitive, 480x320, showing recipe browser, cooking progress, and an on-demand pot preview
 - **Exhaust** — Dual 120mm fans with grease pre-filter and activated carbon cartridge, <45 dB
@@ -106,7 +106,7 @@ Recipes are not simple timers. Each recipe is a structured YAML document definin
 
 - Pot surface temperature setpoint
 - Which liquids to dispense and how much (ml)
-- Which spice cartridges to activate and dosage (multiples of 1/4 tsp)
+- Which spice canisters to activate and dosage (multiples of 1/4 tsp)
 - Which solid ingredient trays to empty
 - Heat profile (Low through High) and duration
 - Stirring profile (speed, direction, pattern)

@@ -31,7 +31,7 @@ Where it is genuinely strong: NPU inference, ISP image quality in steam, power, 
 | GPU | None. 2D RGA only (scale, rotate, blend) | VideoCore VII, OpenGL ES 3.1 | **Blocker** for Kivy |
 | Video | H.264/H.265 encoder up to 8 MP @ 15 fps; no decoder | Full codec | Streaming to app is free |
 | ISP | 5 MP @ 30 fps hardware ISP: 3A, HDR, 2D/3D NR, dehaze, LSC, sharpen | libcamera software ISP pipeline | Strong positive for steam |
-| Camera input | 2x 2-lane MIPI CSI (combinable to 4-lane), 1x DVP | 2x 4-lane CSI | OK; driver list is narrow (SC3336 is the official sensor) |
+| Camera input | 2x 2-lane MIPI CSI (combinable to 4-lane), 1x DVP | 2x 4-lane CSI | OK; driver list is narrow: Luckfox supports only the IMX415-98 IR-CUT (colour) and ISG1321 (mono) on the Pico Zero, and marks its SC3336 module as not compatible with the Zero; 22-pin FPC connector |
 | Display | Parallel RGB666/RGB565, serial RGB, MCU LCD; **max 1280x720**. No DSI, no HDMI. **Pico Zero header does not expose LCD pins** | 2x HDMI 2.0 or 2x 4-lane DSI | **Blocker** for 10.1" 1280x800 panel |
 | Wireless | 2.4 GHz Wi-Fi 6, BT 5.2 LE, on-board + external antenna | Dual-band 802.11ac, BT 5.0 | 2.4 GHz only |
 | Ethernet | 10/100 MAC + PHY on chip, not on the Zero board | Gigabit on CM5IO | Minor |

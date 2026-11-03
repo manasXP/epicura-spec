@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.3
 status: Draft
 ---
 
@@ -37,7 +37,7 @@ Epicura uses a dual-processor architecture with clearly separated responsibiliti
 | Accelerators | 1 TOPS INT8 NPU, 5 MP hardware ISP, RGA 2D engine, H.264/H.265 encoder (no decoder, no 3D GPU) |
 | RAM | 256 MB DDR3L (in-package) |
 | Storage | 8 GB eMMC (onboard), microSD (storage expansion only) |
-| Camera | MIPI CSI-2 FPC (SC3336 3 MP, 2-lane) |
+| Camera | MIPI CSI-2 FPC (IMX415-98 8 MP, 4-lane) |
 | Display | 4" 480x320 SPI LCD (ST7796S) + FT6336 I2C touch |
 | Connectivity | Wi-Fi 6 (2.4 GHz), Bluetooth 5.2 LE; no Ethernet |
 | GPIO | 40-pin RPi-style header: 28x GPIO, UART, SPI, I2C, PWM (3.3 V) |
@@ -48,7 +48,7 @@ Epicura uses a dual-processor architecture with clearly separated responsibiliti
 **Buildroot Linux (Luckfox SDK, kernel 5.10):**
 - Custom `br2-external` tree on the Luckfox SDK; no Yocto, no systemd, no container runtime
 - Minimal image: kernel + busybox init + `epicurad`; read-only squashfs rootfs
-- Device tree for MIPI CSI camera (SC3336), fbtft SPI LCD, I2C touch, UART2 bridge
+- Device tree for MIPI CSI camera (IMX415-98), fbtft SPI LCD, I2C touch, UART2 bridge
 - `/data` partition (~6 GB) for SQLite, images, logs and OTA staging
 - A/B boot + rootfs slots for OTA updates (swupdate)
 
@@ -141,7 +141,7 @@ All application functions run as threads of one native C process, `epicurad`, on
 
 | Component | Library | Purpose |
 |-----------|---------|---------|
-| Image Capture | `rockit` VI/ISP (hardware) | SC3336 → ISP main path 1280x720 NV12 @ 30 fps |
+| Image Capture | `rockit` VI/ISP (hardware) | IMX415-98 → ISP main path 1280x720 NV12 @ 30 fps |
 | Preprocessing | ISP self-path (hardware) | Dehaze, 3DNR, AWB, AE in ISP; scale to 224x224 RGB888 @ 2 fps, zero copy |
 | Inference | `rknn_api` on the 1 TOPS NPU | MobileNetV2 INT8 `.rknn` model execution, 5-10 ms |
 | Conversion | RKNN-Toolkit2 (off-device, PC) | TFLite/ONNX → `.rknn` with INT8 calibration set |
@@ -249,7 +249,7 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Feature | Implementation |
 |---------|----------------|
 | **Protocol** | SOF 0x7E, byte-stuffing (0x7D escape), then MSG_ID, TYPE, LENGTH, PAYLOAD (≤64), CRC-16/CCITT |
-| **Transport** | UART2 ↔ USART2, 1,000,000 baud, 8N1, 3.3 V (CAN 500 kbps as production alternative) |
+| **Transport** | UART2 ↔ USART2, 1,000,000 baud, 8N1, 3.3 V (production link as well; no CAN alternative) |
 | **Message Queue** | In-process command queue (pthread mutex + condvar) |
 | **Telemetry Buffer** | Lock-free ring buffer; 20 Hz unsolicited TELEMETRY; SQLite checkpoint every 10 s |
 | **Health Monitoring** | Heartbeat every 2 s, STM32 IWDG 5 s; alerts if STM32 unresponsive |
@@ -328,7 +328,7 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | USART | STM32 HAL UART + DMA | Bridge to RV1106 (USART2 PA2/PA3, 1 Mbps, SOF-framed) |
 | TIM15 + DMA | STM32 HAL TIM PWM DMA | WS2812B LED ring (PB14, 800 kHz, via 74AHCT1G125) |
 | FDCAN | STM32 HAL FDCAN | CAN bus to microwave induction surface (primary heater control) |
-| GPIO | STM32 HAL GPIO | Limit switches, ASD servos, CID actuators, SLD solenoids, buzzer |
+| GPIO | STM32 HAL GPIO | E-stop, safety relay, PCA9685 OE (dispenser servos), SLD solenoids, buzzer |
 | IWDG | STM32 HAL IWDG | Independent watchdog (safety) |
 
 ### 4.5 STM32 Development Tools
@@ -451,7 +451,7 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 | Phase | Duration | Key Activities |
 |-------|----------|----------------|
 | **Environment Setup** | 2 weeks | Luckfox SDK Buildroot `br2-external` for RV1106, STM32CubeIDE project, toolchain validation |
-| **Hardware Bring-up** | 4 weeks | RV1106 boot + SPI LCD + touch, STM32 peripherals (PWM, ADC, UART), SC3336 camera test |
+| **Hardware Bring-up** | 4 weeks | RV1106 boot + SPI LCD + touch, STM32 peripherals (PWM, ADC, UART), IMX415-98 camera test |
 | **Core Firmware** | 6 weeks | FreeRTOS tasks, PID controller, motor control, safety monitor, protocol |
 | **CV Integration** | 4 weeks | ISP/NPU pipeline, model training (collect cooking images), RKNN conversion on RV1106 |
 | **UI Development** | 4 weeks | LVGL screens (home, cooking, settings) at 480x320, pot preview, recipe browser |
@@ -501,3 +501,5 @@ The bridge is a real-time thread inside `epicurad` and handles all communication
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to RV1106G3 (Luckfox Pico Zero): device stack is Buildroot + single C11 process (`epicurad`) with LVGL, SQLite, libmosquitto/libcurl clients, rockit/rknn vision and swupdate; Docker/PostgreSQL/Kivy/Python removed from the device; bridge moved from SPI to UART 1 Mbps; on-demand RTSP live view replaces MJPEG. Cloud stack unchanged |
+| 1.2 | 2026-11-04 | Manas Pradhan | GPIO row updated for the Dispenser Servo Block (PCA9685 OE; stepper/linear-actuator and limit-switch lines removed) |
+| 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98; CAN alternative for the STM32 link removed |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -13,23 +13,23 @@ The vision system provides real-time food monitoring and cooking stage detection
 
 ## 2. Camera Selection
 
-### 2.1 Sensor Specification (SC3336)
+### 2.1 Sensor Specification (IMX415-98)
 
-| Parameter | SC3336 |
+| Parameter | IMX415-98 |
 |-----------|--------|
-| Resolution | 3 MP (2304 x 1296 native) |
+| Resolution | 8.29 MP (3840 x 2160 native) |
 | Operating Mode | 1280 x 720 @ 30 fps (ISP main path) |
 | Sensor Size | 1/2.8" |
-| Interface | MIPI CSI-2 (2-lane), FPC to Luckfox Pico Zero CSI connector |
+| Interface | MIPI CSI-2 (4-lane, 22-pin FPC), to the Luckfox Pico Zero CSI connector |
 | ISP Support | Luckfox SDK ships the RV1106 ISP tuning file (AWB, AE, LSC, dehaze, 3DNR profiles) |
-| Low-Light Performance | Good (SmartSens back-illuminated pixel, designed for IP cameras) |
-| Lens | Fixed M12 mount on module (wide-angle, ~100 deg FOV typical) |
-| Price (approx.) | $12 USD (module, FPC included) |
+| Low-Light Performance | Very good (Sony STARVIS back-illuminated 1.45 um pixels, switchable IR-CUT filter) |
+| Lens | 3.95 mm F2.0 M12, 98 deg diagonal (84 deg H x 44 deg V), distortion < 1%, manual focus |
+| Price (approx.) | $54 USD (Luckfox IMX415-98 IR-CUT, 22-pin FPC included) |
 | Availability | Luckfox / Waveshare store, widely available |
 
 ### 2.2 Selection Rationale
 
-The SC3336 is the Luckfox-supported sensor for the RV1106: its ISP tuning file ships in the SDK, so dehaze, noise reduction, lens shading and white balance work out of the box. Raspberry Pi sensors (IMX219, IMX477) have no RV1106 ISP tuning file and are dropped. The sensor is run at 1280 x 720 rather than its native 3 MP: 720p halves the CMA buffer memory and encoder load on a 256 MB system, and is more than sufficient for a 224 x 224 classifier and for a phone preview.
+The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero: the Pico Zero factory image and CSI tutorial target it, and its ISP tuning file ships with the SDK, so dehaze, noise reduction, lens shading and white balance work out of the box. Luckfox's SC3336 module (used on the other Pico boards) is listed as not compatible with the Pico Zero, and the Raspberry Pi sensors (IMX219, IMX477) have no RV1106 ISP tuning file; all three are dropped. The sensor is run at 1280 x 720 rather than its native 8 MP: 720p halves the CMA buffer memory and encoder load on a 256 MB system, and is more than sufficient for a 224 x 224 classifier and for a phone preview.
 
 ## 3. Mounting and Steam Protection
 
@@ -77,7 +77,7 @@ The SC3336 is the Luckfox-supported sensor for the RV1106: its ISP tuning file s
 | Glass Lens Cover | Borosilicate glass disc, anti-fog hydrophilic coating | Primary barrier, prevents condensation buildup |
 | Air Curtain | Small 5V fan (25mm) blowing across lens surface | Diverts rising steam, keeps lens clear |
 | Hydrophobic Coating | RainX or nano-coating on glass cover (reapply monthly) | Beads water, reduces fogging |
-| ISP Dehazing | Hardware dehaze + 3D noise reduction in the RV1106 ISP (SC3336 tuning profile), zero CPU cost | Compensates for mild haze when physical measures insufficient |
+| ISP Dehazing | Hardware dehaze + 3D noise reduction in the RV1106 ISP (IMX415-98 tuning profile), zero CPU cost | Compensates for mild haze when physical measures insufficient |
 | Periodic Wipe Reminder | UI notification after N cook cycles | Prompts user to clean lens cover |
 
 ## 4. LED Illumination
@@ -135,7 +135,7 @@ Every stage before inference is a hardware block. The CPU touches only the 8-cla
 ```
 ┌──────────────┐    ┌───────────────┐    ┌────────────────┐
 │ Camera       │    │ ISP (hardware)│    │ ISP self-path  │
-│ (SC3336)     │──► │ 3A, 3DNR,     │──► │ (hardware)     │
+│ (IMX415-98)  │──► │ 3A, 3DNR,     │──► │ (hardware)     │
 │ MIPI CSI-2   │    │ dehaze, LSC,  │    │ scale to       │
 │ 1280x720     │    │ sharpen; main │    │ 224x224 RGB888 │
 │ @ 30 fps     │    │ path 720p NV12│    │ @ 2 fps        │
@@ -170,12 +170,12 @@ Every stage before inference is a hardware block. The CPU touches only the 8-cla
 
 | Stage | Input | Output | Library | Notes |
 |-------|-------|--------|---------|-------|
-| Capture | CSI-2 raw Bayer (SC3336) | 1280x720 NV12 frame (ISP main path) | rockit VI/ISP (hardware) | 30 fps sensor rate; dehaze, 2D/3D NR, LSC, sharpening, AWB, AE all in the ISP |
+| Capture | CSI-2 raw Bayer (IMX415-98) | 1280x720 NV12 frame (ISP main path) | rockit VI/ISP (hardware) | 30 fps sensor rate; dehaze, 2D/3D NR, LSC, sharpening, AWB, AE all in the ISP |
 | Scale | ISP main path | 224x224 RGB888 tensor (ISP self-path) | ISP self-path (hardware) | Sampled at 2 fps straight into a DMA buffer; no CPU resize or normalisation |
 | Inference | 224x224 RGB888 (INT8 pass-through) | 8-class probability vector | rknn_api on the 1 TOPS NPU | INT8 .rknn model, 5-10 ms |
 | Post-Process | Probability vector | Stage ID + confidence | C (cv thread of epicurad) | Confidence threshold >0.6, 3-frame majority vote |
 
-There is no histogram equalisation / CLAHE stage: steam haze and contrast are handled by the ISP dehaze block, tuned per the SC3336 profile.
+There is no histogram equalisation / CLAHE stage: steam haze and contrast are handled by the ISP dehaze block, tuned per the IMX415-98 profile.
 
 ### 5.3 Inference Timing Budget
 
@@ -421,7 +421,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 | 1. Physical Barrier | Borosilicate glass lens cover | Replace if cracked | Blocks direct steam contact |
 | 2. Anti-Fog Coating | Hydrophilic coating on glass (Cat Crap or similar) | Reapply monthly | Prevents condensation droplets |
 | 3. Air Curtain | 25mm 5V fan blowing across lens | Clean fan quarterly | Diverts rising steam column |
-| 4. ISP Dehaze | Hardware dehaze block in the RV1106 ISP, always on (strength from SC3336 tuning) | None | Recovers detail in slightly foggy frames at zero CPU cost |
+| 4. ISP Dehaze | Hardware dehaze block in the RV1106 ISP, always on (strength from IMX415-98 tuning) | None | Recovers detail in slightly foggy frames at zero CPU cost |
 | 5. Capture Timing | Brief air puff (compressed air nozzle) before capture | Refill air canister | Clears lens immediately before frame |
 
 ## 12. Calibration
@@ -464,7 +464,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 
 ### 13.2 Prototype Validation Checklist
 
-- [ ] SC3336 enumerates on the Pico Zero MIPI CSI port and the SDK ISP tuning file loads
+- [ ] IMX415-98 enumerates on the Pico Zero MIPI CSI port and the SDK ISP tuning file loads
 - [ ] ISP main path delivers clear 1280x720 NV12 frames at 30 fps from the mounted position
 - [ ] ISP self-path delivers 224x224 RGB888 frames at 2 fps into a DMA buffer (zero copy)
 - [ ] LED ring responds to SET_LED (OFF/CAPTURE/NIGHT) from the RV1106 and provides uniform illumination (no hot spots on liquid surface)
@@ -501,3 +501,4 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed to RV1106 (Luckfox Pico Zero): camera is SC3336 at 1280x720 @ 30 fps (IMX219/IMX477 dropped, no ISP tuning); pipeline is hardware ISP (dehaze/3DNR/AWB) → ISP self-path 224x224 → NPU via RKNN (5-10 ms, INT8 from RKNN-Toolkit2); OpenCV/CLAHE/libcamera removed; MJPEG server replaced by on-demand H.264 RTSP; LED ring driven by STM32 via SET_LED; calibration uses ISP AWB/AE; validation checklist updated. Stage classes, transitions and training pipeline unchanged |
+| 1.2 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); sensor table and rationale updated |

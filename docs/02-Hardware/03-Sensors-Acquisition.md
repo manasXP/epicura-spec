@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -11,7 +11,7 @@ status: Draft
 
 | Sensor | Type | Interface | Range | Accuracy | Sampling Rate | Connected To |
 |--------|------|-----------|-------|----------|---------------|--------------|
-| Camera (SC3336) | CMOS image sensor, 3 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
+| Camera (IMX415-98) | CMOS image sensor, 8 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
 | IR Thermometer (MLX90614) | Non-contact thermopile | I2C (0x5A) | -70 to +380C | +/-0.5C | 10 Hz | STM32 I2C1 |
 | Pot Detection | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 GPIO |
 
@@ -21,20 +21,20 @@ status: Draft
 
 ### 2.1 Module Selection
 
-| Parameter | SC3336 (Luckfox module) |
+| Parameter | IMX415-98 (Luckfox module) |
 |-----------|-------------------------|
-| Resolution | 3 MP (2304x1296 native), run at 1280x720 |
+| Resolution | 8.29 MP (3840×2160 native), run at 1280x720 |
 | Sensor Size | 1/2.8" |
-| Pixel Size | 2.0 um |
-| Max Video | 1296p @ 30fps; Epicura uses 720p @ 30fps |
-| Interface | MIPI CSI-2 (4-lane FPC to the Pico Zero CSI connector) |
-| Lens | Fixed-focus M12, approx. 80 deg diagonal with the stock lens (to be confirmed) |
-| Low-Light Performance | Good (2.0 um pixels, ISP 2D/3D noise reduction) |
+| Pixel Size | 1.45 um (Sony STARVIS, back-illuminated) |
+| Max Video | 2160p @ 15fps on 4 lanes; Epicura uses 720p @ 30fps |
+| Interface | MIPI CSI-2, 4-lane, 22-pin FPC (supplied) to the Pico Zero CSI connector |
+| Lens | 3.95 mm F2.0 M12, 98 deg diagonal / 84 deg horizontal / 44 deg vertical, distortion < 1%, manual focus, switchable IR-CUT (held in the visible-light position) |
+| Low-Light Performance | Very good (STARVIS pixels, ISP 2D/3D noise reduction) |
 | ISP Support | RV1106 ISP tuning file shipped in the Luckfox SDK |
-| Estimated Cost | $12 (module incl. FPC) |
+| Estimated Cost | $54 (Luckfox IMX415-98 IR-CUT module incl. 22-pin FPC) |
 | Recommendation | **Fixed choice** (IMX219/IMX477 dropped: no RV1106 ISP tuning file) |
 
-**Selection Rationale:** The SC3336 is the Luckfox-supported sensor with an RV1106 ISP tuning file in the SDK, so it is the fixed choice; IMX219 and IMX477 are dropped because the RV1106 ISP has no tuning file for them. Its fixed-focus lens and 3 MP resolution are sufficient for food color/texture classification. Running at 1280x720 rather than 1080p halves ISP/VI buffer memory and encoder load, and is more than sufficient for the 224x224 stage classifier and the phone preview. Dehaze, noise reduction, lens shading, sharpening, AWB and AE all run in the ISP; no CPU image processing is needed.
+**Selection Rationale:** The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero (its CSI tutorial and factory image target this module), so it is the fixed choice. Luckfox's SC3336 module, used on the other Pico boards, is listed by Luckfox as not compatible with the Pico Zero; IMX219 and IMX477 are dropped because the RV1106 ISP has no tuning file for them. Its 98 deg lens and 8 MP resolution are more than sufficient for food color/texture classification. Running at 1280x720 rather than 1080p halves ISP/VI buffer memory and encoder load, and is more than sufficient for the 224x224 stage classifier and the phone preview. Dehaze, noise reduction, lens shading, sharpening, AWB and AE all run in the ISP; no CPU image processing is needed.
 
 ### 2.2 Camera Mounting
 
@@ -47,7 +47,7 @@ status: Draft
 │                                                     │
 │         ┌──────────────┐                            │
 │         │   Camera      │                           │
-│         │   (SC3336)    │                           │
+│         │   (IMX415-98) │                           │
 │         │   ┌──────┐    │                           │
 │         │   │ Lens │    │   ◄── LED Ring            │
 │         │   └──┬───┘    │       (surrounding lens)  │
@@ -67,7 +67,7 @@ status: Draft
 
 ### 2.3 Field of View
 
-The SC3336 is a 1/2.8" sensor with a fixed-focus M12 lens on the Luckfox module, giving approximately 80 degrees diagonal with the stock lens (to be confirmed on the physical module). At 25 cm above a 22 cm pot, an 80 degree diagonal in a 16:9 720p frame corresponds to roughly 36 cm of horizontal and 20 cm of vertical coverage, so the vertical axis is the limiting one: mount toward the top of the 20-30 cm range, or fit a wider M12 lens, if the measured FOV does not cover the full pot rim with margin. The 720p mode may also crop the native 2304x1296 frame, which narrows the effective FOV further. Measure on hardware before fixing the gantry height.
+The IMX415-98 lens is specified by Luckfox at 98 deg diagonal, 84 deg horizontal and 44 deg vertical (3.95 mm, F2.0, distortion < 1%). In a 16:9 720p frame the vertical axis is the limiting one: at 25 cm above the pot the coverage is about 45 x 20 cm, which does not clear a 22 cm pot rim, while at 30 cm it is about 54 x 24 cm. The nominal mounting height is therefore **30 cm** above the pot rim, giving ~1 cm margin on the short axis and ample width for the LED ring and ladle. The 720p output is produced by the ISP scaling the full sensor frame, so the full FOV is retained; if the Rockchip driver only offers a cropped 720p sensor mode, use the 1080p (2x2 binned) mode and scale in the ISP instead. Confirm the measured coverage on the assembled gantry before fixing its height.
 
 ### 2.4 Lighting System
 
@@ -337,8 +337,8 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 
 ### 7.1 Camera Test Procedures
 
-- [ ] Mount camera at 25cm height, verify full pot is in frame
-- [ ] Measure the actual FOV of the SC3336 stock lens at 25cm (horizontal and vertical, 720p mode); confirm pot rim margin and fix gantry height
+- [ ] Mount camera at 30cm height, verify full pot is in frame
+- [ ] Verify IMX415-98 coverage at 30cm in the 720p ISP output (expected ~54 x 24 cm from the 84/44 deg H/V spec); confirm the ISP scales the full frame rather than cropping; confirm pot rim margin and fix gantry height
 - [ ] Verify 1280x720 @ 30fps on the ISP main path and 224x224 self-path frames reaching the NPU at 2 Hz
 - [ ] Capture image of white card, verify white balance (R/G/B within +/-10%)
 - [ ] Capture image of X-Rite ColorChecker, verify color accuracy (deltaE < 5)
@@ -384,3 +384,4 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 3 MP at 1280x720 on the Luckfox Pico Zero (RV1106G3) 4-lane CSI with hardware ISP; IMX219/IMX477 dropped; FOV section rewritten (stock-lens FOV to be confirmed); LED ring now STM32-driven via level shifter; sensor fusion runs on the RV1106 NPU; camera test checklist updated |
+| 1.2 | 2026-11-04 | Manas Pradhan | Camera changed to Luckfox IMX415-98 IR-CUT (8 MP, 98/84/44 deg FOV): SC3336 is not compatible with the Pico Zero; FOV section rewritten with datasheet figures, nominal height 30 cm |

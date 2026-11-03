@@ -1,7 +1,7 @@
 ---
 created: 2026-02-14
 modified: 2026-11-04
-version: 1.1
+version: 1.3
 status: Draft
 tags: [epicura, project-overview, kitchen-robot]
 ---
@@ -25,7 +25,7 @@ This project encompasses the following major subsystems:
 - [[01-UI-UX-Design|UI/UX Design]] - Touchscreen interface and companion mobile app
 - [[01-Induction-Heating|Induction Heating]] - 1,800W microwave induction surface with CAN bus control and PID
 - [[02-Robotic-Arm|Robotic Arm]] - Single-axis servo arm and stir patterns
-- [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Three-subsystem dispensing (ASD/CID/SLD)
+- [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Three-subsystem dispensing (FID/CID/SLD)
 - [[04-Vision-System|Vision System]] - HD camera, edge AI, and cooking stage detection
 - [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] - Exhaust fan, grease/carbon filtration
 - [[01-Safety-Compliance|Safety & Compliance]] - Electrical safety and food contact regulations
@@ -35,7 +35,7 @@ This project encompasses the following major subsystems:
 ### 3.1 Autonomous Cooking
 - Fully hands-off operation after ingredient loading and recipe selection
 - State machine recipe execution: detect cooking stage via CV, adjust heat/stir, dispense ingredients
-- Automatic ingredient dispensing via three subsystems: ASD (seasonings, servo-gated), CID (coarse items, linear actuator), SLD (liquids, peristaltic pump)
+- Automatic ingredient dispensing via three subsystems: FID (fine ingredients, 6-canister servo carousel with ¼ tsp dosing), CID (coarse items, 5-slot servo carousel), SLD (liquids, peristaltic pump)
 - Supports one-pot recipes: curries, dal, rice, biryani, stir-fries, pasta, soups
 
 ### 3.2 Recipe Intelligence
@@ -51,7 +51,7 @@ This project encompasses the following major subsystems:
 - Dynamic power management to stay within 2kW household limit
 
 ### 3.4 Vision System
-- Overhead SC3336 camera (3 MP, 1280x720 @ 30 fps) mounted inside enclosure lid
+- Overhead IMX415-98 camera (8 MP, 98 deg lens, 1280x720 @ 30 fps) mounted inside enclosure lid
 - Food color and texture analysis using INT8 edge AI models on the RV1106G3 NPU (RKNN), with hardware ISP dehaze and noise reduction
 - Real-time cooking stage detection: raw, browning, simmering, thickening, done
 - Anomaly detection for burning, boiling over, or ingredient issues
@@ -109,7 +109,7 @@ This project encompasses the following major subsystems:
 │  └──────────┬─────────────┬─────────────┘  └──────┬──────────┬───────────┘  │
 │             │             │                       │          │              │
 │     ┌───────▼──────┐ ┌───▼──────────┐    ┌───────▼────┐ ┌───▼──────────┐.   │
-│     │ 4" Touch     │ │ SC3336 Cam   │    │ Induction  │ │ Servo Arm    │    │
+│     │ 4" Touch     │ │ IMX415-98 Cam│    │ Induction  │ │ Servo Arm    │    │
 │     │ Display      │ │ (720p)       │    │ Heater     │ │ (Stirring)   │    │
 │     │ (LVGL UI)    │ │              │    │ (1,800W)   │ │              │    │
 │     └──────────────┘ └──────────────┘    └────────────┘ └──────────────┘    │
@@ -134,7 +134,7 @@ This project encompasses the following major subsystems:
 └──────────┘    └──────┬───────┘    └───────┬───────┘    └──────┬───────┘
                        │                    │                   │
                        │            ┌───────▼───────┐           │
-                       │            │  SC3336 Cam   │           │
+                       │            │  IMX415-98 Cam│           │
                        │            │  IR Thermo    │           │
                        │            └───────────────┘           │
                        │                                        │
@@ -157,10 +157,10 @@ This project encompasses the following major subsystems:
 | Max Power Draw | < 2,000W (compatible with 15A household outlets) |
 | Induction Heater | 1,800W peak, variable power |
 | Display | 4" 480x320 capacitive touchscreen (SPI, ST7796S + FT6336) |
-| Camera | SC3336 3 MP, 1280x720 @ 30 fps, overhead mounted |
+| Camera | IMX415-98 8 MP, 1280x720 @ 30 fps, overhead mounted |
 | Connectivity | Wi-Fi 6 (2.4 GHz), Bluetooth 5.2 LE |
 | Pot Capacity | 3-5 liters (removable, non-stick, dishwasher-safe) |
-| Ingredient Dispensing | ASD (3 seasoning hoppers) + CID (2 coarse trays) + SLD (2 liquid channels) |
+| Ingredient Dispensing | FID (6-canister carousel, 3 servos) + CID (5-slot carousel, 1 servo) + SLD (2 liquid channels) |
 | Operating Temperature | 5°C - 45°C ambient |
 
 ## 8. Project Status
@@ -205,3 +205,5 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 | 1.0 | 2026-02-14 | Manas Pradhan | Initial document creation |
 | 1.0 | 2026-02-15 | Manas Pradhan | Added revision history and metadata |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to Luckfox Pico Zero (RV1106G3): Buildroot, LVGL on 4" SPI LCD, SC3336 camera with ISP + NPU vision, UART/CAN bridge |
+| 1.2 | 2026-11-04 | Manas Pradhan | Dispensing summary updated for servo carousels (FID/CID on one Dispenser Servo Block) |
+| 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT (8 MP, 98 deg lens) |

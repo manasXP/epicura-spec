@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 5.1
+version: 5.3
 status: Draft
 ---
 
@@ -47,14 +47,14 @@ The primary cooking element is a commercial microwave induction surface — a se
 
 | Parameter | Value |
 |-----------|-------|
-| Module | SC3336 3 MP camera module (Luckfox, ISP tuning file in SDK) |
-| Resolution | 1280x720 at 30fps (720p; sensor native 2304x1296) |
+| Module | IMX415-98 8 MP camera module (Luckfox, ISP tuning file in SDK) |
+| Resolution | 1280x720 at 30fps (720p; sensor native 3840×2160) |
 | Interface | MIPI CSI-2 (4-lane FPC) to the RV1106 hardware ISP |
 | Sensor Size | 1/2.8" |
-| Field of View | Approximately 80 deg diagonal with the stock M12 lens (to be confirmed on the physical module) |
+| Field of View | 98 deg diagonal, 84 deg horizontal, 44 deg vertical (3.95 mm F2.0 lens, distortion < 1%) |
 | White Balance | ISP auto white balance with LED ring compensation |
 | Illumination | WS2812B LED ring (12-16 LEDs, STM32-driven) or white LED ring with diffuser |
-| Mounting | Overhead gantry, 20-30cm above pot center |
+| Mounting | Overhead gantry, ~30cm above pot rim (44 deg vertical FOV covers ~24cm at 30cm) |
 | Purpose | Food color/texture analysis, stage detection via CV |
 
 ### 2.2 IR Thermometer
@@ -150,14 +150,12 @@ An off-the-shelf 12V UPS powers the 5V rail (RV1106 + STM32) independently of th
 | RV1106 + camera + 4" LCD | 1.5 | 3 |
 | STM32 + sensors | 2 | 3 |
 | BLDC stirring motor | 12 | 48 |
-| P-ASD pump + solenoids | 1 | 10 |
-| CID-1 stepper driver (24V) | 0 | 72 |
-| CID-2 linear actuator (12V) | 0 | 2.5 |
+| Dispenser servos (FID 3 + CID 1, 6.5V, one at a time) | 0.5 | 20 |
 | SLD pumps (x2) + solenoids (x2) | 0 | 16 |
 | LED ring | 2 | 5 |
 | Exhaust fan | 1 | 3 |
 | PSU losses | 10 | 30 |
-| **Total** | **631** | **1,905** |
+| **Total** | **630** | **1,841** |
 
 ## 5. Performance Requirements
 
@@ -169,7 +167,7 @@ An off-the-shelf 12V UPS powers the 5V rail (RV1106 + STM32) independently of th
 | UI Response Time | <200ms | Touch-to-visual feedback on display |
 | System Boot Time | <30s | Power-on to recipe selection screen |
 | Temperature Accuracy | +/-5C | IR sensor to actual food surface |
-| Dispensing Accuracy | ~±20% (P-ASD), ±5% (SLD) | P-ASD by pressure-and-time (ADS1015 feedback), SLD by dedicated per-reservoir load cells (2× 2 kg) |
+| Dispensing Accuracy | ±10% per ¼ tsp dose (FID), ±5% (SLD) | FID by volumetric measure wheel (open loop), CID whole slot, SLD by dedicated per-reservoir load cells (2× 2 kg) |
 | Camera Latency | <100ms | Capture to frame available in memory |
 | Recipe Step Transition | <2s | From stage detection to actuator response |
 | WiFi Connection | <10s | Auto-reconnect to saved network |
@@ -180,9 +178,8 @@ An off-the-shelf 12V UPS powers the 5V rail (RV1106 + STM32) independently of th
 | Interface | Protocol | Speed | Endpoints | Purpose |
 |-----------|----------|-------|-----------|---------|
 | RV1106 <-> STM32 | UART (primary) | 1,000,000 baud | RV1106 UART2 (header 8/10) <-> STM32 USART2 (PA2/PA3) | Commands, telemetry, heartbeat, STM32 firmware update |
-| RV1106 <-> STM32 | CAN (alternative) | 500 kbps | External CAN controller on RV1106 <-> STM32 FDCAN | Higher reliability option (production) |
-| RV1106 <-> Camera | MIPI CSI-2 | 4-lane | Pico Zero CSI FPC <-> SC3336 | 720p frames into the hardware ISP for CV |
-| RV1106 <-> Display | SPI | 50 MHz | RV1106 SPI0 <-> 4" ST7796S 480x320 | UI rendering (fbtft, LVGL) |
+| RV1106 <-> Camera | MIPI CSI-2 | 4-lane | Pico Zero CSI FPC <-> IMX415-98 | 720p frames into the hardware ISP for CV |
+| RV1106 <-> Display | SPI | 50 MHz | RV1106 SPI0 <-> 4" ST7796S 480x320 (FT6336U touch module, 14-pin) | UI rendering (fbtft, LVGL) |
 | RV1106 <-> Touch | I2C | 400 kHz | RV1106 I2C3 <-> FT6336 | Touch input events |
 | STM32 <-> IR Sensor | I2C | 100 kHz | STM32 I2C1 <-> MLX90614 | Temperature readings |
 | STM32 <-> SLD Load Cells | SPI-like GPIO | 10 Hz | STM32 GPIO <-> 2× HX711 | SLD reservoir weight measurements |
@@ -214,3 +211,5 @@ An off-the-shelf 12V UPS powers the 5V rail (RV1106 + STM32) independently of th
 | 5.0 | 2026-03-09 | Manas Pradhan | Updated power specifications for 3-source 5V architecture (USB-C + Li-Ion battery + UPS), added USB-C and battery power entries |
 | 4.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo with 24V BLDC motor in communication interfaces and power budget; servo PWM row → BLDC PWM+EN+DIR row |
 | 5.1 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 to Luckfox Pico Zero (RV1106G3): SC3336 camera at 720p, 8 GB eMMC / 256 MB RAM, 4" ST7796S SPI LCD + FT6336 touch, UART 1 Mbps bridge on USART2, Wi-Fi 6 / BT 5.2; power budget and UPS runtime updated |
+| 5.2 | 2026-11-04 | Manas Pradhan | Power budget and dispensing accuracy updated for servo-carousel FID/CID (Dispenser Servo Block replaces P-ASD pneumatics and CID stepper/linear actuator) |
+| 5.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT with specified FOV; CAN alternative for the STM32 link removed; display module part named |

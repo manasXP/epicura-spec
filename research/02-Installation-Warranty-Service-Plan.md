@@ -38,7 +38,7 @@ flowchart LR
 | **5. BLE Pairing** | App discovers unit via Bluetooth; tap to pair; unit displays 6-digit confirmation code | 1 min | On-screen + in-app pairing instructions |
 | **6. WiFi Setup** | App provisions home WiFi credentials to unit over BLE; unit connects and syncs recipes | 2 min | Supports WPA2/WPA3; fallback to offline mode if no WiFi |
 | **7. Account Setup** | Create Epicura account or sign in; set language, dietary preferences, spice tolerance | 3 min | Google/Apple SSO supported |
-| **8. Load Consumables** | Insert seasoning cartridges into P-ASD slots, fill oil/water reservoirs in SLD | 5 min | Animated on-screen guide with slot labels |
+| **8. Load Consumables** | Insert seasoning canisters into the FID carousel, fill oil/water reservoirs in SLD | 5 min | Animated on-screen guide with slot labels |
 | **9. First Cook (Demo)** | Guided demo recipe (e.g., "Simple Dal Tadka") walks user through loading ingredients and starting cook | 20-25 min | Step-by-step touchscreen prompts with camera preview |
 | **10. Registration** | Unit auto-registers for warranty upon first successful WiFi sync | Automatic | Confirmation email + in-app warranty card |
 
@@ -143,7 +143,7 @@ Support agents can (with customer permission) remotely view device diagnostics d
 
 | Approach | Details |
 |---|---|
-| **Modular design** | Key assemblies (servo arm, induction module, display, camera, P-ASD manifold) are field-replaceable in <30 min |
+| **Modular design** | Key assemblies (servo arm, induction module, display, camera, FID dosing station) are field-replaceable in <30 min |
 | **Spare parts inventory** | Top 10 failure-prone parts stocked at regional hubs (Mumbai, Delhi, Bangalore) |
 | **Parts pricing** | Published spare parts price list on website; customers can order directly |
 | **Right to repair** | Service manual and wiring diagrams available to authorized partners; open-source STM32 firmware for community repairs |

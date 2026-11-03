@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.1
+version: 2.2
 status: Draft
 ---
 
@@ -203,12 +203,14 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
-| SET_PATTERN | 0x20 | pattern_id (1 byte), speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Set stirring pattern, speed, and direction |
+| SET_STIR | 0x02 | pattern_id (1 byte), speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Set stirring pattern, speed, and direction (was SET_PATTERN 0x20; 0x20 is now SET_LED) |
 | SET_SPEED | 0x21 | speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Direct speed and direction override |
-| STOP | 0x22 | none | ACK | Immediately stop arm (with decel ramp) |
-| HOME | 0x23 | none | ACK | Return to home position |
-| STATUS | 0x24 | none | status_byte, current_rpm, position | Query arm status |
+| ARM_STOP | 0x22 | none | ACK | Immediately stop arm (with decel ramp) |
+| ARM_HOME | 0x23 | none | ACK | Return to home position |
+| ARM_STATUS | 0x24 | none | status_byte, current_rpm, position | Query arm status (distinct from STATUS 0x12) |
 | SET_RAMP | 0x25 | accel_limit (2 bytes, RPM/s) | ACK/NAK | Configure acceleration limit |
+
+Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]], the single source of truth for the bridge protocol.
 
 ### 8.3 FreeRTOS Task Configuration
 
@@ -325,3 +327,4 @@ TIM1->CCR1 = 0;                                   // Initial: stopped (0% duty)
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo with 24V BLDC motor (integrated ESC); updated motor selection, PWM config (10 kHz), control interface (PWM+EN+DIR), command protocol (added direction param), stall detection (INA219-based), and testing procedures |
 | 2.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); motor control and command protocol unchanged |
+| 2.2 | 2026-11-04 | Manas Pradhan | Bridge codes aligned to the software doc: SET_PATTERN 0x20 → SET_STIR 0x02; STOP/HOME/STATUS renamed ARM_STOP/ARM_HOME/ARM_STATUS |

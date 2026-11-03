@@ -64,7 +64,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 | FR-MCU-010 | Drive BLDC stirring motor at 10 kHz PWM via TIM1_CH1 (PA8) + PA4 (EN) + PA5 (DIR) | Must | 0–100% duty cycle speed, digital enable/direction |
 | FR-MCU-011 | Support stir patterns: circular, figure-8, scrape, fold (via duty cycle + DIR toggle) | Must | Pattern selected by RV1106 command (0x02), direction param added |
 | FR-MCU-012 | Stall detection via INA219 24V current spike or FG dropout (future) | Should | Alert RV1106 if motor draws >3 A for >500 ms |
-| FR-MCU-013 | Drive P-ASD: pump PWM via TIM2_CH1 (PA0), 6× solenoid via PCF8574 I2C GPIO expander (I2C1, addr 0x20, outputs P0-P5) | Must | Pump: 25 kHz PWM speed control; Solenoids: digital on/off via I2C write to PCF8574 → MOSFET gates |
+| FR-MCU-013 | Drive the Dispenser Servo Block: 4 servos (C1, F1, F2, F3) via PCA9685 (I2C1, addr 0x41, CH0-CH3), OE on PB4, 6.5 V rail enable via PCF8574 #2 P4 | Must | 50 Hz PWM, 500–2500 µs; ramped moves ≤ 3°/tick; one servo moving at a time; rail off when idle |
 | FR-MCU-014 | Motor control task at 50 Hz (20 ms period) | Must | Highest priority FreeRTOS task |
 
 ### 2.4 Sensor Polling
@@ -81,26 +81,28 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 
 | ID | Requirement | Priority | Acceptance Criteria |
 |----|-------------|----------|---------------------|
-| FR-MCU-030 | P-ASD: Pressurize accumulator, open solenoid valve, puff-dose spice, verify pressure drop via ADS1015 | Must | Accuracy ~±20%, clog retry (3 attempts), post-dispense purge |
-| FR-MCU-031a | CID-1: Drive NEMA 23 stepper via TIM1_CH3 (PA10 PUL+), PB4 (DIR+), PCF8574 P7 (ENA+) | Must | Step counting for travel, home limit switch (PB6) detection |
-| FR-MCU-031b | CID-2: Drive linear actuator via DRV8876 #2 (PB5 EN, PC2 PH) | Must | Home + full-extend limit switch detection |
+| FR-MCU-030 | FID: Index canister (F1), open steam gate (F3), N dose strokes of the measure wheel (F2, ¼ tsp each) with pre-dose jiggle, close gate | Must | Volumetric accuracy ±10% per dose; 1–40 doses per command; ACK carries doses_done + estimated mass |
+| FR-MCU-031 | CID: Index slot over the base-plate aperture (C1), dwell 2 s, wiggle ±5° ×3; enforce ascending slot order | Must | NACK when slot_id ≤ current position; carousel returns to cover position on DISPENSER_HOME (0x38) and at recipe end |
+| FR-MCU-031a | DSB fault handling: INA219 current window, move timeout (3 s), PCA9685 NACK → retry once (back off 10°) then DSB_STALL (0x12), rail off, OE high | Must | Stall reported within 1 s; servos limp after fault |
+| FR-MCU-031b | Report carousel state on DISPENSER_STATUS (0x39): cid_pos, fid_box, gate_open, rail_on, busy | Must | Response within 100 ms |
 | FR-MCU-032 | SLD: Drive peristaltic pumps + solenoids, closed-loop weight | Must | Accuracy ±5%, stop at target×0.95 |
 | FR-MCU-033 | Tare load cells on command (0x37) | Must | Zero offset stored in SRAM |
 | FR-MCU-034 | Report weight on query (0x35) | Must | Response within 100 ms |
 
-#### 2.5.1 P-ASD Dispensing & Clog Recovery Sequence
+#### 2.5.1 DSB Dispense Sequences
 
-**Normal dispense:**
-1. Pre-purge: 100 ms pulse at 0.3 bar (loosen packed powder)
-2. Record pre-dispense accumulator pressure via ADS1015
-3. Main dispense: open solenoid for calibrated duration (100–400 ms)
-4. Verify pressure drop ≥ threshold (confirms powder ejected)
-5. Post-dispense purge: 200 ms at 1.2 bar (clear orifice)
+**FID dose (DISPENSE_FID box_id, qty):**
+1. Rail on (PCF8574 #2 P4), OE low; index F1 to box_id (ramped, 4:3 gear-up → 60° per box)
+2. Open steam gate: F3 → 70°
+3. Per dose: F2 jiggle ±15° ×3, F2 → 180° (discharge), F2 → 0° (refill); ≈ 0.8 s per dose
+4. Close gate: F3 → 0°; rail off; ACK with doses_done and estimated mass (doses × calibrated g/dose)
 
-**Clog recovery (no pressure drop after main pulse):**
-1. **Retry 1:** Increase pressure to 1.2 bar, repeat pulse
-2. **Retry 2:** Rapid 50 ms on/off oscillating pulses (5 cycles)
-3. **Failure:** Send CLOG ERROR (0x12) to RV1106
+**CID dispense (DISPENSE_CID slot_id):**
+1. NACK if slot_id ≤ current position (every bin passing the aperture empties)
+2. Rail on; index C1 to slot_id (ramped) — contents free-fall through the chute
+3. Dwell 2 s, wiggle ±5° ×3; rail off; ACK with new position
+
+**Fault (any move):** INA219 24 V current above window for 300 ms, move timeout 3 s, or PCA9685 NACK → retry once (back off 10°, re-approach) → on second failure send DSB_STALL (0x12), rail off, OE high.
 
 #### 2.5.2 SLD Closed-Loop Dispensing
 
@@ -109,7 +111,7 @@ The STM32G474RE is the real-time motor/sensor controller and safety guardian for
 3. Monitor weight loss on that channel's load cell @ 10 Hz
 4. Stop pump when `weight_dispensed ≥ target × 0.95`
 5. Close solenoid, report final weight to RV1106
-6. If reservoir weight < low-level threshold, send SLD_LOW_LEVEL alert (0x14) to RV1106
+6. If reservoir weight < low-level threshold, send STATUS (0x12) with error_code SLD_LOW_LEVEL to RV1106
 
 ### 2.6 RV1106 Communication
 
@@ -154,7 +156,7 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 
 | Pin | Function | Peripheral | Target |
 |-----|----------|------------|--------|
-| **PA0** | TIM2_CH1 | PWM 25 kHz | P-ASD diaphragm pump (via IRLML6344) |
+| **PA0** | — | Available | Freed (P-ASD pump removed; dispensers now on PCA9685) |
 | **PA1** | — | Available | Freed (was P-ASD solenoid V1, now via PCF8574) |
 | **PA2** | USART2_TX | UART 1 Mbps | Bridge to RV1106 (→ Luckfox Pico Zero header pin 10, UART2 RX); also ST system-bootloader UART |
 | **PA3** | USART2_RX | UART 1 Mbps | Bridge from RV1106 (← Luckfox Pico Zero header pin 8, UART2 TX); also ST system-bootloader UART |
@@ -164,7 +166,7 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 | **PA7** | — | Available | Freed (SLD solenoid 1 moved to PCF8574 #2 P0) |
 | **PA8** | TIM1_CH1 | PWM 10 kHz | BLDC stirring motor (speed) |
 | **PA9** | — | Available | Freed (SLD solenoid 2 moved to PCF8574 #2 P1) |
-| **PA10** | TIM1_CH3 | PWM 200 Hz–10 kHz | CID-1 stepper PUL+ (via 100R to J_CID) |
+| **PA10** | — | Available | Freed (CID-1 stepper removed) |
 | **PA11** | USB_DM | USB 2.0 FS | USB D- (native USB, DFU+CDC) |
 | **PA13** | SWDIO | Debug | SWD programming |
 | **PA14** | SWCLK | Debug | SWD programming |
@@ -172,8 +174,8 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 | **PB1** | GPIO input | Digital | Pot detection (from CAN module status, optional hardwire) |
 | **PB2** | EXTI | Interrupt | E-stop button (NC, active-low) |
 | **PB3** | — | Available | Freed (was IRQ to application processor; UART bridge needs no data-ready line) |
-| **PB4** | GPIO output | Digital | CID-1 stepper DIR+ (via 100R to J_CID) |
-| **PB5** | GPIO output | Digital | CID linear actuator 2 EN (DRV8876) |
+| **PB4** | GPIO output | Digital | PCA9685 OE (active-low) — DSB servo outputs off when high |
+| **PB5** | — | Available | Freed (CID-2 linear actuator removed) |
 | **PA15** | I2C1_SCL | I2C @ 100 kHz | MLX90614 + INA219 (shared bus) |
 | **PB7** | I2C1_SDA | I2C @ 100 kHz | MLX90614 + INA219 (shared bus) |
 | **PB8** | FDCAN1_RX | CAN | Induction module RX (via SN65HVD230) |
@@ -185,14 +187,14 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 | **PB15** | — | Available | Freed (was SPI2_MOSI; bridge moved to USART2) |
 | **PC0** | ADC | Analog | USB VBUS detect (100k/100k divider; moved from PA3, which is now USART2_RX) |
 | **PC1** | — | Available | Freed (pot load cells removed) |
-| **PC2** | GPIO output | Digital | CID linear actuator 2 PH (DRV8876) |
+| **PC2** | — | Available | Freed (CID-2 linear actuator removed) |
 | **PC3** | GPIO output | PWM (software) | SLD pump 1 PWM (TB6612) |
 | **PC4** | GPIO output | Digital | SLD pump 1 DIR (TB6612) |
 | **PC5** | GPIO output | PWM (software) | SLD pump 2 PWM (TB6612) |
 | **PC6** | GPIO output | Digital | SLD pump 2 DIR (TB6612) |
 | **PC7** | — | Available | Freed (was P-ASD solenoid V3, now via PCF8574) |
 | **PD2** | — | Available | Freed (was P-ASD solenoid V4, now via PCF8574) |
-| **PB11** | — | Reserved | Freed (was CID-1 full-extend limit, now step counting) |
+| **PB11** | — | Available | Freed (was CID-1 full-extend limit) |
 | **PC7** | TIM8_CH2 | PWM | Piezo buzzer (via MOSFET) |
 | **PC8** | — | Available | Freed (status LED moved to PCF8574 #2 P2) |
 
@@ -200,10 +202,9 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 
 | Address | Device | Data |
 |---------|--------|------|
-| 0x20 | PCF8574 #1 | P-ASD solenoid V1-V6 (P0-P5), CID-2 extend limit (P6), CID-1 stepper ENA+ (P7) |
-| 0x21 | PCF8574 #2 | SLD solenoid 1 (P0), SLD solenoid 2 (P1), status LED (P2), LED ring enable (P3), P4-P7 reserved |
-| 0x40 | INA219 | 24 V rail voltage + current |
-| 0x48 | ADS1015 | P-ASD accumulator pressure (via MPXV5100GP) |
+| 0x21 | PCF8574 #2 | SLD solenoid 1 (P0), SLD solenoid 2 (P1), status LED (P2), LED ring enable (P3), DSB 6.5 V rail enable (P4), P5-P7 reserved |
+| 0x40 | INA219 | 24 V rail voltage + current (also DSB stall-detection window) |
+| 0x41 | PCA9685 | Dispenser Servo Block PWM: CH0 C1 CID index, CH1 F1 FID index, CH2 F2 FID dose, CH3 F3 FID steam gate |
 | 0x5A | MLX90614 | Object + ambient temperature |
 
 ### 3.3 CAN Bus (FDCAN1)
@@ -282,7 +283,7 @@ CRITICAL ──[condition cleared within timeout]──→ WARNING
 
 See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame definition.
 
-- Link: USART2 (PA2 TX / PA3 RX) ↔ Luckfox Pico Zero UART2 (header pins 10 / 8), 1,000,000 baud, 8N1, 3.3 V. CAN 500 kbps remains the production alternative.
+- Link: USART2 (PA2 TX / PA3 RX) ↔ Luckfox Pico Zero UART2 (header pins 10 / 8), 1,000,000 baud, 8N1, 3.3 V. UART is also the production link (no CAN alternative).
 - Framing: SOF 0x7E, byte-stuffing with 0x7D escape, then msg_id, msg_type, payload_len, payload (≤ 64 bytes), CRC-16/CCITT. Message body and type codes are unchanged from the earlier SPI design.
 - RX: DMA circular buffer + idle-line interrupt; parser discards bytes until SOF and validates CRC before dispatch
 - On valid command: parse, execute, queue ACK/response
@@ -291,7 +292,7 @@ See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame 
 - Heartbeat RV1106 → STM32 every 2 s; IWDG 5 s. ACK timeout 500 ms, 3 retries. E_STOP (0x04) needs no ACK
 - SET_LED (0x20) is handled by the comms task and forwarded to the LED ring driver (§2.8)
 - Firmware update: USART2 is also the ST system-bootloader UART; the RV1106 drives BOOT0 / NRST and streams the `.bin` over the same wires
-- Nucleo-G474RE prototype caveat: PA2/PA3 are routed to the ST-Link VCP by default; open the solder bridges and route to the CN10 header pins, or use the custom Controller PCB
+- NUCLEO-G474RE prototype caveat: PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3); verify against the MB1367-G474RE-C04 schematic before soldering, or use the custom Controller PCB
 
 ### 5.2 CAN Bus Protocol (STM32 ↔ Induction Module)
 
@@ -360,7 +361,7 @@ See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame 
 | 0x05 | RV1106_HEARTBEAT_LOSS | Critical | Safe state (hold temp at 0, stop servo) |
 | 0x10 | SERVO_STALL | Warning | Stop servo, alert RV1106 |
 | 0x11 | SLD_LOAD_CELL_DRIFT | Warning | Alert RV1106, flag SLD dispense unreliable |
-| 0x12 | PASD_CLOG | Warning | Pneumatic retry sequence (pressure increase + oscillating pulses), then alert RV1106 |
+| 0x12 | DSB_STALL | Warning | Dispenser servo stall/timeout: retry once (back off, re-approach), then rail off, OE high, alert RV1106 |
 | 0x13 | SLD_DISPENSE_ERROR | Warning | Stop pump, alert RV1106 with actual vs target |
 | 0x20 | CAN_TX_TIMEOUT | Info | Retry 3×, then CAN_FAULT |
 | 0x21 | I2C_NACK | Info | Retry 3×, use last-known value |
@@ -390,7 +391,7 @@ See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame 
 | CAN round-trip | <10 ms | TX → RX status |
 | Sensor poll cycle | <50 ms (all sensors) | Cycle start → data ready |
 | Temperature accuracy | ±5 °C (IR to food surface) | Calibrated against thermocouple |
-| Dispensing accuracy (ASD) | ~±20% | Pressure-drop verification vs calibrated pulse |
+| Dispensing accuracy (FID) | ±10% per ¼ tsp dose | Volumetric measure wheel, weighed over 10 doses |
 | Dispensing accuracy (SLD) | ±5% | Load cell vs target weight |
 | FreeRTOS CPU utilization | <70% | Idle task runtime measurement |
 | Flash usage | <256 KB | Linker map |
@@ -423,7 +424,7 @@ See [[04-MPU-Functional-Specification#5.1 UART Bridge Protocol]] for full frame 
 - No dynamic memory allocation after boot (all FreeRTOS objects static)
 - No floating-point in ISRs (FPU context save overhead)
 - CAN bus requires 120 Ω termination at both ends
-- I2C bus: 5 devices (MLX90614 + INA219 + ADS1015 + PCF8574 #1 + PCF8574 #2), total bus capacitance must stay under 400 pF
+- I2C bus: 4 devices (MLX90614 + INA219 + PCA9685 + PCF8574 #2), total bus capacitance must stay under 400 pF
 
 ### 9.4 Cross-References
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 ---
 
@@ -35,7 +35,7 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 #### 1.1.5 Subsystems
 9. **[[01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface (CAN bus), PID temperature control, and power management
 10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis servo arm, stirring patterns, and STM32 motor control
-11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing: ASD (seasonings), CID (coarse), SLD (liquids)
+11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing: FID (fine, servo carousel), CID (coarse, servo carousel), SLD (liquids)
 12. **[[04-Vision-System|Vision System]]** - HD camera, edge AI inference, and cooking stage detection
 13. **[[05-Exhaust-Fume-Management|Exhaust & Fume Management]]** - Exhaust fan, grease/carbon filtration, and fume extraction
 
@@ -56,8 +56,8 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 #### 1.1.9 Components (BOM)
 18. **[[01-Compute-Module-Components|Compute Module Components]]** - Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD
 19. **[[02-Actuation-Components|Actuation Components]]** - Servo motors, induction driver, solenoids
-20. **[[03-Sensor-Components|Sensor Components]]** - SC3336 camera, IR thermometer, LED ring
-21. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis (~$431 prototype)
+20. **[[03-Sensor-Components|Sensor Components]]** - IMX415-98 camera, IR thermometer, LED ring
+21. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis (~$433 prototype)
 
 #### 1.1.10 PCB Design
 22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - STM32 controller + power/driver electronics on single 4-layer board (160x90mm)
@@ -115,7 +115,7 @@ docs/
 │   ├── 01-Compute-Module-Components.md          Compute & control BOM
 │   ├── 02-Actuation-Components.md               Motors & actuators BOM
 │   ├── 03-Sensor-Components.md                  Sensors & cameras BOM
-│   └── 04-Total-Component-Cost.md               Full cost analysis (~$431)
+│   └── 04-Total-Component-Cost.md               Full cost analysis (~$433)
 ├── 09-PCB/
 │   ├── 01-Unified-PCB-Design.md              STM32 + power + drivers unified board
 ├── 10-Backend/
@@ -186,7 +186,7 @@ Start with:
 - **AI Vision Monitoring** - Overhead camera with hardware ISP + NPU edge AI (RKNN) for food color/texture analysis and cooking stage detection
 - **Induction PID Control** - 1,800W induction cooktop with CAN coil temp + IR temperature feedback
 - **Robotic Stirring Arm** - Single-axis servo arm (STM32-driven) with multiple stir patterns and auto-scraping
-- **Three-Subsystem Dispensing** - ASD (3 servo-gated seasoning hoppers), CID (2 linear actuator coarse trays), SLD (2 peristaltic pump liquid channels with dedicated per-reservoir load cells + low-level alerts)
+- **Three-Subsystem Dispensing** - FID (6-canister servo carousel, ¼ tsp dosing, 3 servos), CID (5-slot servo carousel, 1 servo), SLD (2 peristaltic pump liquid channels with dedicated per-reservoir load cells + low-level alerts); FID + CID share one Dispenser Servo Block
 - **Touchscreen + Companion Apps** - 4" LVGL touchscreen on device, native mobile apps (iOS + Android) for remote control and live camera feed
 - **100+ Indian Recipes** - Curated recipe database covering curries, dal, rice, biryani, and more with regional variations
 - **Cloud + Offline Operation** - Cloud-updatable recipe library with full local SQLite for offline cooking
@@ -209,8 +209,8 @@ Start with:
 - **Induction Heater** - 1,800W induction cooktop with CAN coil temp + IR temperature feedback
 - **Display** - 4" 480x320 capacitive touchscreen (LVGL interface, SPI)
 - **Robotic Arm** - Single-axis servo arm for stirring and ingredient dispensing
-- **CAN + IR Sensors** - Overhead SC3336 camera + IR thermometer + load cells
-- **Ingredient Dispensing** - ASD (seasoning servos) + CID (linear actuator sliders) + SLD (peristaltic pumps + solenoids)
+- **CAN + IR Sensors** - Overhead IMX415-98 camera + IR thermometer + load cells
+- **Ingredient Dispensing** - FID + CID servo carousels (PCA9685 Dispenser Servo Block) + SLD (peristaltic pumps + solenoids)
 
 ### 6.2 Software Subsystems
 - **RV1106 (Buildroot Linux)** - Single C application `epicurad`: recipe engine, ISP + NPU vision pipeline, LVGL UI, cloud sync (REST/MQTT client), SQLite
@@ -231,7 +231,7 @@ Start with:
 │             │                               │                       │
 │  ┌──────────▼───────────┐        ┌──────────▼───────────┐           │
 │  │  4" Touchscreen      │        │  Induction Heater    │           │
-│  │  SC3336 Camera       │        │  Servo Arm           │           │
+│  │  IMX415-98 Camera    │        │  Servo Arm           │           │
 │  │  WiFi/BT             │        │  Load Cells          │           │
 │  │                      │        │  CAN + IR Sensors    │           │
 │  └──────────────────────┘        └──────────────────────┘           │
@@ -249,4 +249,5 @@ Start with:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
-| 1.1 | 2026-11-04 | Manas Pradhan | Index descriptions and overview updated for the Luckfox Pico Zero (RV1106G3) application processor, LVGL 4" LCD, SC3336 camera and SQLite; BOM figure ~$431 |
+| 1.1 | 2026-11-04 | Manas Pradhan | Index descriptions and overview updated for the Luckfox Pico Zero (RV1106G3) application processor, LVGL 4" LCD, SC3336 camera and SQLite; BOM figure ~$433 |
+| 1.2 | 2026-11-04 | Manas Pradhan | Dispensing descriptions updated for servo carousels (FID/CID) |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 ---
 
@@ -207,23 +207,23 @@ One row per segment per recipe. A recipe can have up to 5 cooking segments, exec
 
 ### 3.6 `segment_dispensing`
 
-One row per dispensing action within a cooking segment. A segment may dispense from multiple subsystems (e.g., add oil via SLD and spices via ASD in the same segment).
+One row per dispensing action within a cooking segment. A segment may dispense from multiple subsystems (e.g., add oil via SLD and spices via FID in the same segment).
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Dispensing action ID |
 | `segment_id` | `uuid` | FK → `cooking_segments.id` ON DELETE CASCADE, NOT NULL | Parent segment |
-| `subsystem` | `varchar(5)` | NOT NULL, CHECK IN (`SLD`, `ASD`, `CID`) | Dispensing subsystem |
+| `subsystem` | `varchar(5)` | NOT NULL, CHECK IN (`SLD`, `FID`, `CID`) | Dispensing subsystem |
 | `sld_type` | `varchar(10)` | CHECK IN (`oil`, `water`) | SLD only: liquid type |
 | `sld_qty_ml` | `real` | CHECK > 0 | SLD only: quantity in ml |
-| `asd_box_id` | `smallint` | CHECK 1-6 | ASD only: box number (Box1–Box6) |
-| `asd_qty_quarter_tsp` | `smallint` | CHECK > 0 | ASD only: quantity in multiples of ¼ tsp |
-| `cid_slot_id` | `smallint` | CHECK 1-5 | CID only: slot number (Slot1–Slot5) |
+| `fid_box_id` | `smallint` | CHECK 1-6 | FID only: canister number (Box1–Box6) |
+| `fid_qty_quarter_tsp` | `smallint` | CHECK 1-40 | FID only: quantity in multiples of ¼ tsp (one measure-wheel dose stroke each) |
+| `cid_slot_id` | `smallint` | CHECK 1-5 | CID only: slot number (Slot1–Slot5); slots are dispensed in ascending order across a recipe |
 
 **Constraints:**
-- CHECK: when `subsystem = 'SLD'` then `sld_type` and `sld_qty_ml` must be NOT NULL; `asd_*` and `cid_*` must be NULL
-- CHECK: when `subsystem = 'ASD'` then `asd_box_id` and `asd_qty_quarter_tsp` must be NOT NULL; `sld_*` and `cid_*` must be NULL
-- CHECK: when `subsystem = 'CID'` then `cid_slot_id` must be NOT NULL; `sld_*` and `asd_*` must be NULL
+- CHECK: when `subsystem = 'SLD'` then `sld_type` and `sld_qty_ml` must be NOT NULL; `fid_*` and `cid_*` must be NULL
+- CHECK: when `subsystem = 'FID'` then `fid_box_id` and `fid_qty_quarter_tsp` must be NOT NULL; `sld_*` and `cid_*` must be NULL
+- CHECK: when `subsystem = 'CID'` then `cid_slot_id` must be NOT NULL; `sld_*` and `fid_*` must be NULL
 
 ### 3.7 `recipe_ingredients`
 
@@ -234,10 +234,10 @@ Human-readable ingredient list for the recipe (displayed in UI/app). This is dis
 | `id` | `uuid` | PK, default `gen_random_uuid()` | Row ID |
 | `recipe_id` | `uuid` | FK → `recipes.id` ON DELETE CASCADE, NOT NULL | Parent recipe |
 | `name` | `varchar(100)` | NOT NULL | Ingredient display name (e.g., "turmeric", "mustard oil") |
-| `subsystem` | `varchar(5)` | NOT NULL, CHECK IN (`SLD`, `ASD`, `CID`) | Which dispensing subsystem |
-| `channel` | `varchar(10)` | NOT NULL | SLD: `oil`/`water`, ASD: `box1`–`box6`, CID: `slot1`–`slot5` |
+| `subsystem` | `varchar(5)` | NOT NULL, CHECK IN (`SLD`, `FID`, `CID`) | Which dispensing subsystem |
+| `channel` | `varchar(10)` | NOT NULL | SLD: `oil`/`water`, FID: `box1`–`box6`, CID: `slot1`–`slot5` |
 | `total_qty` | `real` | NOT NULL, CHECK > 0 | Total quantity across all segments |
-| `unit` | `varchar(10)` | NOT NULL | `ml` for SLD, `quarter_tsp` for ASD, `slot` for CID |
+| `unit` | `varchar(10)` | NOT NULL | `ml` for SLD, `quarter_tsp` for FID, `slot` for CID |
 
 ### 3.8 `cooking_sessions`
 
@@ -481,3 +481,4 @@ Migration files are stored in `packages/db/migrations/` and version-controlled. 
 | 1.1 | 2026-02-17 | Manas Pradhan | Added nutrition columns (calories, protein_g, carbs_g, fats_g) to recipes; updated cuisine/tag values |
 | 1.2 | 2026-02-27 | Manas Pradhan | Normalized recipe schema: replaced recipe_data JSONB with cooking_segments, segment_dispensing, and recipe_ingredients tables; changed cuisine to cuisines text[] |
 | 1.3 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: PostgreSQL is cloud-only; device holds a SQLite mirror with type mapping plus `session_checkpoint` and `sync_outbox`; renamed `firmware_version_cm5` → `firmware_version_rv1106` and firmware target `cm5` → `rv1106` |
+| 1.4 | 2026-11-04 | Manas Pradhan | Seasoning subsystem renamed ASD → FID (Fine Ingredients Dispenser, servo carousel): `subsystem` CHECK values, `asd_box_id` → `fid_box_id`, `asd_qty_quarter_tsp` → `fid_qty_quarter_tsp` (CHECK 1-40); CID ascending-slot-order note |

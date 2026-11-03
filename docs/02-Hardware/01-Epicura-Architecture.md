@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 5.3
+version: 6.1
 status: Draft
 ---
 
@@ -61,14 +61,14 @@ This document provides the comprehensive hardware architecture, wiring diagrams,
           │        │         │    └───────────────►│             │          │
           │        ▼         ▼                      ▼             ▼            │
           │   ┌────────┐ ┌──────────┐      ┌──────────────┐ ┌──────────────┐   │
-          │   │SC3336  │ │4" ST7796S│      │Microwave     │ │  Sensors     │   │
+          │   │IMX415  │ │4" ST7796S│      │Microwave     │ │  Sensors     │   │
           │   │3 MP    │ │480x320   │      │Induction     │ │  MLX90614    │   │
           │   │Camera  │ │(SPI+I2C) │      │Surface (CAN) │ │  HX711       │   │
           │   └────────┘ └──────────┘      └──────────────┘ │              │   │
           │                                                 └──────────────┘   │
           │   ┌────────┐ ┌──────────┐      ┌──────────────┐ ┌──────────────┐   │
-          │   │WiFi 6  │ │eMMC 8 GB │      │24V BLDC      │ │ASD SG90 x3   │   │
-          │   │2.4 GHz │ │+ microSD │      │Stirring Motor│ │CID Step+LAct │   │
+          │   │WiFi 6  │ │eMMC 8 GB │      │24V BLDC      │ │DSB Servos x4 │   │
+          │   │2.4 GHz │ │+ microSD │      │Stirring Motor│ │FID 3 + CID 1 │   │
           │   │BLE 5.2 │ │Storage   │      │(integrated)  │ │SLD Pumps x2  │   │
           │   └────────┘ └──────────┘      └──────────────┘ └──────────────┘   │
           │                                                                    │
@@ -87,11 +87,11 @@ This document provides the comprehensive hardware architecture, wiring diagrams,
 |-----------|-------------|-----------|--------------|---------|
 | Compute Module | Luckfox Pico Zero (RV1106G3) | 40-pin header / CSI / USB-C | Unified PCB (40-pin header) | AI/vision (NPU), recipe engine, LVGL UI, networking |
 | Motor Controller | STM32G474RE (LQFP-64) | - | Unified PCB | Real-time control: PID, servos, sensors, safety |
-| Camera Module | SC3336 (3 MP) | MIPI CSI-2 (4-lane FPC) | Pico Zero CSI connector | Overhead food monitoring, CV inference |
+| Camera Module | IMX415-98 IR-CUT (8 MP) | MIPI CSI-2 (4-lane FPC) | Pico Zero CSI connector | Overhead food monitoring, CV inference |
 | IR Thermometer | MLX90614ESF-BAA | I2C | STM32 I2C1 | Non-contact food surface temperature |
 | BLDC Stirring Motor | 24V BLDC (integrated ESC) | PWM (10kHz) + EN + DIR | STM32 PA8 + PA4 + PA5 | Stirring arm rotation |
-| CID-1 Stepper Motor | NEMA 23 + external driver (24V) | PWM (PUL) + GPIO (DIR) + I2C (ENA) | STM32 PA10/PB4, PCF8574 P7 → J_CID | Coarse ingredient push-plate slider (stepper) |
-| CID-2 Linear Actuator | 12V DC via DRV8876 #2 | GPIO (EN/PH) | STM32 PB5/PC2 | Coarse ingredient push-plate slider (DC motor) |
+| Dispenser Servos (DSB) | DS3218-class 270° digital servo (x4) | 50 Hz PWM via PCA9685 | PCA9685 CH0-CH3 → J_DSB1-4 | CID carousel index (C1); FID carousel index, dose, steam gate (F1-F3) |
+| PCA9685 Servo Driver (DSB) | PCA9685PW | I2C | STM32 I2C1 (PA15/PB7) addr 0x41, OE on PB4 | Single PWM control block for FID + CID servos |
 | SLD Peristaltic Pumps | 12V DC (x2) via TB6612 | GPIO (PWM/DIR) | STM32 PC3-PC6 | Oil and water dispensing |
 | SLD Solenoid Valves | 12V NC (x2) | I2C (GPIO expander) | PCF8574 #2 P0/P1 (0x21) via MOSFET | Liquid drip prevention |
 | Exhaust Fans | 2× 120mm 12V DC brushless | PWM (25kHz) | STM32 PA6, PB10 via MOSFET | Fume extraction, independent control |
@@ -137,7 +137,7 @@ The Pico Zero is a complete single-board module: no carrier board is needed. It 
 ┌───────────────────────────────────────────────────────────────┐
 │              Luckfox Pico Zero (RV1106G3)                     │
 │                                                               │
-│  MIPI CSI (FPC) ──► SC3336 camera module (4-lane)             │
+│  MIPI CSI (FPC) ──► IMX415 camera module (4-lane)             │
 │  SPI0 ──────────► 4" ST7796S LCD (fbtft, 50 MHz, DMA)         │
 │  I2C3 ──────────► FT6336 touch controller                     │
 │  UART2 ─────────► STM32 USART2 bridge (1 Mbps)                │
@@ -171,7 +171,7 @@ The Pico Zero is a complete single-board module: no carrier board is needed. It 
 | GPIO 32 | STM32 BOOT0 | Output | Driven high to enter the ST system bootloader for firmware update |
 | GPIO 38 | STM32 NRST | Output | Reset pulse during firmware update |
 | 35 / 37 (UART0, M0) | Debug console TX / RX | - | Luckfox default |
-| CSI (FPC) | Camera data lanes | Input | 4-lane MIPI, SC3336 |
+| CSI (FPC) | Camera data lanes | Input | 4-lane MIPI, IMX415-98 |
 | Spare | UART3, UART4, I2C1, I2C2, PWM | - | Available |
 
 ---
@@ -222,22 +222,15 @@ STM32G474RE (LQFP-64)
 │  │  PA5  (GPIO)      ──► BLDC Motor DIR (CW/CCW)             │
 │  └─────────────────────────────────────┘                     │
 │                                                              │
-│  ┌─── P-ASD Subsystem (Pneumatic Seasoning Dispenser) ──┐    │
-│  │  PA0  (TIM2_CH1)  ──► P-ASD Diaphragm Pump PWM            │
-│  │  Solenoids V1-V6: PCF8574 I2C GPIO expander               │
-│  │    (I2C1 addr 0x20, on Unified PCB, outputs P0-P5)        │
-│  │  I2C1 (PA15/PB7)  ──► ADS1015 Pressure Sensor (0x48)       │
-│  │                   ──► PCF8574 Solenoid Expander (0x20)    │
-│  └─────────────────────────────────┘                         │
-│                                                              │
-│  ┌─── CID Subsystem (Coarse Ingredients Dispenser) ──┐       │
-│  │  CID-1: NEMA 23 Stepper + External Driver (24V)           │
-│  │  PA10 (TIM1_CH3)   ──► CID-1 Stepper PUL+ (via 100R)     │
-│  │  PB4  (GPIO)       ──► CID-1 Stepper DIR+ (via 100R)     │
-│  │  PCF8574 P7        ──► CID-1 Stepper ENA+ (via 100R)     │
-│  │  CID-2: DC Linear Actuator (DRV8876 #2)                   │
-│  │  PB5  (GPIO)       ──► CID-2 Linear Actuator EN (DRV8876) │
-│  │  PC2  (GPIO)       ──► CID-2 Linear Actuator PH/DIR       │
+│  ┌─── Dispenser Servo Block (FID + CID servos) ───┐          │
+│  │  I2C1 (PA15/PB7)  ──► PCA9685 PWM driver (addr 0x41)      │
+│  │    CH0 ──► C1 CID carousel index servo                    │
+│  │    CH1 ──► F1 FID carousel index servo                    │
+│  │    CH2 ──► F2 FID dose servo (¼ tsp measure wheel)        │
+│  │    CH3 ──► F3 FID steam-gate servo                        │
+│  │  PB4  (GPIO)      ──► PCA9685 OE (active-low; high = off) │
+│  │  PCF8574 #2 P4    ──► DSB 6.5 V rail enable (P-MOSFET)    │
+│  │  Rail: MP1584EN #2, 6.5 V / 3 A, one servo at a time      │
 │  └─────────────────────────────────┘                         │
 │                                                              │
 │  ┌─── SLD Subsystem (Standard Liquid Dispenser) ──┐          │
@@ -302,10 +295,10 @@ STM32G474RE (LQFP-64)
 
 ## 6. Camera Interface
 
-### 6.1 MIPI CSI Wiring (Pico Zero to SC3336 Camera Module)
+### 6.1 MIPI CSI Wiring (Pico Zero to IMX415-98 Camera Module)
 
 ```
-Luckfox Pico Zero                    SC3336 Camera Module
+Luckfox Pico Zero                    IMX415-98 Camera Module
 (MIPI CSI FPC Connector)             (FPC supplied with module)
 ┌──────────────────┐                ┌──────────────────┐
 │                  │   FPC cable    │                  │
@@ -323,9 +316,9 @@ Luckfox Pico Zero                    SC3336 Camera Module
 │                  │                │                  │
 └──────────────────┘                └──────────────────┘
 
-Cable: FPC supplied with the Luckfox SC3336 module, <20cm length
-Signal: 4-lane MIPI CSI-2; SC3336 configured for 1280x720 @ 30 fps
-ISP: RV1106 hardware ISP (SC3336 tuning file from the Luckfox SDK)
+Cable: FPC supplied with the Luckfox IMX415-98 module, <20cm length
+Signal: 4-lane MIPI CSI-2; IMX415-98 configured for 1280x720 @ 30 fps
+ISP: RV1106 hardware ISP (IMX415-98 tuning file from the Luckfox SDK)
 ```
 
 ### 6.2 LED Ring Illumination
@@ -448,12 +441,13 @@ SPI Configuration:
 | Resolution | 480 x 320 pixels (HVGA) |
 | Panel Type | IPS TFT LCD |
 | Controller | ST7796S (4-wire SPI) |
+| Module | 4.0" 480x320 IPS SPI module with ST7796S + FT6336U (e.g. the lcdwiki "4.0inch Capacitive SPI Module ST7796" or equivalent): glass 60.88 x 94.57 mm, active area 83.52 x 55.68 mm (landscape), module 108.0 x 60.88 x 14.8 mm incl. 14-pin header (also 0.5 mm FPC) |
 | Interface | SPI0 at 50 MHz (fbtft driver with DMA) |
 | Touch | Capacitive (I2C, FT6336 controller) |
 | Backlight | LED, PWM dimmable via RV1106 PWM10 |
 | Viewing Angle | 170 degrees (IPS) |
 | Brightness | 300-400 cd/m2 (adequate for kitchen ambient) |
-| Supply | 3.3V logic and backlight (from the Unified PCB 3.3V rail) |
+| Supply | 5 V module supply (3.3 V tolerated), 3.3 V logic; backlight 8 white LEDs, ~103 mA (0.5 W), PWM dimmed |
 
 ---
 
@@ -482,9 +476,11 @@ UART Configuration:
   Bootloader: USART2 is an ST system-bootloader UART; the BOOT0/NRST
               lines let the RV1106 flash STM32 firmware over this link
   Cable:      5-wire JST-SH, <30cm length
-  Nucleo:     On the Nucleo-G474RE, PA2/PA3 go to the ST-Link VCP by
-              default; open the solder bridges and route to the CN10
-              header pins, or use the custom controller PCB
+  Nucleo:     NUCLEO-G474RE (MB1367): PA2/PA3 reach the ST-LINK VCP via
+              SB17/SB23 (ON by default, UM2505 rev 4). Remove SB17+SB23 and
+              fit SB18+SB22 for Arduino D1/D0 (CN9), or use morpho CN10
+              pins 35 (PA2) / 37 (PA3). Check the MB1367-G474RE-C04
+              schematic before soldering, or use the custom controller PCB
 ```
 
 ### 9.2 CAN Bus Wiring (Microwave Surface)
@@ -513,20 +509,23 @@ CAN Configuration:
   Nodes:       Microwave surface (required), STM32 on Unified PCB (required)
 ```
 
-### 9.3 Message Protocol (UART or CAN)
+### 9.3 Message Protocol (UART)
+
+Type codes are owned by [[../03-Software/02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]]; this table mirrors it. Blocks: `0x0x` core, `0x1x` STM32 → RV1106 reports, `0x2x` LED ring + arm, `0x3x` dispensing (see [[../05-Subsystems/03-Ingredient-Dispensing|Ingredient Dispensing]] §7.3), `0xFF` ACK/NAK.
 
 | Message ID | Name | Direction | Payload | Description |
 |------------|------|-----------|---------|-------------|
-| 0x01 | SET_TEMP | RV1106 -> STM32 | Target temp (C), ramp rate | Set induction PID setpoint |
-| 0x02 | SET_STIR | RV1106 -> STM32 | Speed (RPM), pattern ID | Set stirring motor parameters |
-| 0x03 | DISPENSE | RV1106 -> STM32 | Subsystem (ASD/CID/SLD), ID, grams/mode | Dispense via ASD servo, CID actuator, or SLD pump |
-| 0x04 | E_STOP | Bidirectional | - | Emergency shutdown command |
-| 0x10 | STATUS | STM32 -> RV1106 | Bit flags: pot, arm, gates, heat | Current system status word |
-| 0x11 | TELEMETRY | STM32 -> RV1106 | IR temp, CAN coil temp, weight, duty% | Periodic sensor data (20Hz, unsolicited) |
-| 0x12 | HEARTBEAT | RV1106 -> STM32 | Sequence number, uptime | Watchdog keepalive (every 2 s; STM32 IWDG 5 s) |
-| 0x13 | ACK/NACK | STM32 -> RV1106 | Original msg ID, status code | Command acknowledgment |
-| 0x20 | SET_LED | RV1106 -> STM32 | mode (uint8: OFF/CAPTURE/NIGHT), r, g, b (uint8), brightness_pct (uint8) | LED ring control (ring is driven by STM32 PB14) |
-| 0xFF | FAULT | STM32 -> RV1106 | Fault code, sensor data | Critical fault notification |
+| 0x01 | SET_TEMP | RV1106 -> STM32 | target_temp (C), ramp_rate | Set induction PID setpoint |
+| 0x02 | SET_STIR | RV1106 -> STM32 | pattern, speed_rpm, direction | Set stirring pattern, speed and direction |
+| 0x04 | E_STOP | RV1106 -> STM32 | reason_code | Emergency shutdown command (no ACK) |
+| 0x05 | HEARTBEAT | RV1106 -> STM32 | uptime_ms | Watchdog keepalive (every 2 s; STM32 IWDG 5 s) |
+| 0x10 | TELEMETRY | STM32 -> RV1106 | IR temp, coil temp (via induction CAN), motor rpm, weight, state | Periodic sensor data (20 Hz, unsolicited) |
+| 0x11 | SENSOR_DATA | STM32 -> RV1106 | adc_values[], ir_temp, load_cells[] | Raw sensor snapshot on request |
+| 0x12 | STATUS | STM32 -> RV1106 | safety_state, error_code, flags | Safety state and fault codes (on change) |
+| 0x20 | SET_LED | RV1106 -> STM32 | mode (OFF/CAPTURE/NIGHT), r, g, b, brightness_pct | LED ring control (ring is driven by STM32 PB14) |
+| 0x21–0x25 | SET_SPEED, ARM_STOP, ARM_HOME, ARM_STATUS, SET_RAMP | RV1106 -> STM32 | see [[../05-Subsystems/02-Robotic-Arm|Robotic Arm]] §8.2 | Stirring arm block |
+| 0x30–0x39 | DISPENSE_FID/CID/SLD, QUERY_WEIGHT, PREFLIGHT, TARE, DISPENSER_HOME/STATUS | RV1106 -> STM32 | see Ingredient Dispensing §7.3 | Dispensing block |
+| 0xFF | ACK/NAK | STM32 -> RV1106 | ack_msg_id, result_code | Command acknowledgment |
 
 ### 9.4 Protocol Format (UART)
 
@@ -626,12 +625,10 @@ STM32 controls the module via CAN bus (FDCAN1).
 | Rail | Subsystem | Typical (W) | Peak (W) | Notes |
 |------|-----------|-------------|----------|-------|
 | AC direct | Microwave induction surface | 600 | 1,800 | Self-contained module, own AC inlet |
-| 5V (from Unified PCB) | Luckfox Pico Zero (RV1106G3) | 1 | 2 | 5V via 40-pin header; includes eMMC, Wi-Fi/BT, SC3336 camera, NPU/ISP load |
+| 5V (from Unified PCB) | Luckfox Pico Zero (RV1106G3) | 1 | 2 | 5V via 40-pin header; includes eMMC, Wi-Fi/BT, IMX415-98 camera, NPU/ISP load |
 | 5V → 3.3V (on Unified PCB) | 4" SPI LCD + backlight | 0.5 | 0.8 | ST7796S panel + LED backlight, PWM dimmed |
 | 24V direct | BLDC stirring motor | 12 | 48 | 24V direct to integrated ESC, ~0.5A typical, ~2A peak |
-| 24V → 5V buck | ASD SG90 servos (x3) | 0.5 | 3 | 4.8-6V via same buck |
-| 24V direct | CID-1 stepper driver | 0 | 72 | 24V, ~3A peak to external driver, only during dispense |
-| 24V → 12V | CID-2 linear actuator | 0 | 2.5 | 12V, only during dispense |
+| 24V → 6.5V buck (MP1584EN #2) | Dispenser servos DSB (x4, one moving at a time) | 0.5 | 20 | 6.5V rail switched on only during a dispense; ~2.5A stall |
 | 24V → 12V | SLD peristaltic pumps (x2) | 0 | 6 | 12V, only during dispense |
 | 24V → 12V | SLD solenoid valves (x2) | 0 | 10 | 5W each when energized |
 | 24V → 5V buck | LED ring (WS2812B) | 2 | 5 | 16 LEDs at partial brightness |
@@ -686,56 +683,32 @@ System Safety:
 
 ---
 
-## 12. Ingredient Dispensing System (ASD / CID / SLD)
+## 12. Ingredient Dispensing System (FID / CID / SLD)
 
-The dispensing system comprises three subsystems. See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
+The dispensing system comprises three subsystems. FID and CID share one electrical control block, the Dispenser Servo Block (DSB). See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 
-### 12.1 P-ASD — Pneumatic Seasoning Dispenser Wiring
-
-```
-  12V Rail (from on-board MP1584EN #1)
-  │
-  ├──► Diaphragm Pump ◄── PA0 (TIM2_CH1), IRLML6344 MOSFET
-  │
-  ├──► Solenoid V1-V6 (6×) ◄── PCF8574 P0-P5 (I2C1, addr 0x20)
-  │      PCF8574 on Unified PCB, gates drive IRLML6344 MOSFETs
-  │
-  I2C1 (PA15/PB7):
-    ├── ADS1015 (0x48) — Accumulator pressure sensor
-    ├── PCF8574 #1 (0x20) — P-ASD solenoid + CID GPIO expander
-    └── PCF8574 #2 (0x21) — SLD solenoids + status LED + LED ring power
-
-  Note: P-ASD uses pneumatic puff-dosing (no servo gates or vibration motors)
-```
-
-### 12.2 CID — Actuator Wiring
+### 12.1 DSB — FID + CID Servo Wiring
 
 ```
-  CID-1: NEMA 23 Stepper Motor (via external driver, 24V)
-  │
-  │  24V Input Rail ──► J_CID Pin 12 (24V_STEP) ──► External Driver VCC
-  │  GND ────────────► J_CID Pin 13 (GND_PWR) ──► External Driver GND
-  │
-  │  PA10 (TIM1_CH3) ── 100R ──► J_CID Pin 1 (PUL+) ──► Driver PUL+
-  │  PB4  (GPIO)      ── 100R ──► J_CID Pin 3 (DIR+) ──► Driver DIR+
-  │  PCF8574 P7       ── 100R ──► J_CID Pin 5 (ENA+) ──► Driver ENA+
-  │  J_CID Pins 2,4,6 (GND) ──► Driver PUL-, DIR-, ENA-
-  │
-  │  Home switch: PB6 (EXTI) via J_CID Pin 9
-  │  Full-extend: step counting (no switch)
+  24V Rail ──► MP1584EN #2 (6.5 V, 3 A) ──► P-MOSFET high-side switch ──► 6.5 V DSB rail
+                                               ▲                            (1000 µF bulk, 3 A PTC)
+                                   PCF8574 #2 P4 (rail enable, I2C1 0x21)
 
-  CID-2: DC Linear Actuator (via DRV8876 #2 on Unified PCB)
-  │
-  12V Rail (from on-board MP1584EN #1)
-  │
-  └──► CID-2 Linear Actuator (via DRV8876 #2)
-         EN/PWM ◄── PB5  (GPIO)
-         PH/DIR ◄── PC2  (GPIO)
-         Home switch: PD2 (EXTI) via J_CID Pin 10
-         Full-extend: PCF8574 P6 via J_CID Pin 11
+  I2C1 (PA15/PB7) ──► PCA9685 (addr 0x41, on Unified PCB)
+                        ├── CH0 ──► J_DSB1 ──► C1  CID carousel index servo (4:3 gear-up)
+                        ├── CH1 ──► J_DSB2 ──► F1  FID carousel index servo (4:3 gear-up)
+                        ├── CH2 ──► J_DSB3 ──► F2  FID dose servo (canister ¼ tsp measure wheel)
+                        └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo
+  PB4 (GPIO) ──► PCA9685 OE (active-low; held high in boot-safe state and on E-stop)
+
+  I2C1 devices: PCF8574 #2 (0x21), INA219 (0x40), PCA9685 (0x41), MLX90614 (0x5A)
+
+  Note: replaces the P-ASD pneumatics (pump, 6 solenoids, ADS1015, PCF8574 #1) and the
+  CID stepper / linear actuator (external driver, DRV8876 #2, J_CID). Freed STM32 pins:
+  PA0, PA10, PB5, PB6, PB11, PC2, PD2. Stall detection via INA219 24 V current window.
 ```
 
-### 12.3 SLD — Liquid Dispensing Wiring
+### 12.2 SLD — Liquid Dispensing Wiring
 
 ```
   12V Rail (from on-board MP1584EN #1)
@@ -761,16 +734,16 @@ The dispensing system comprises three subsystems. See [[03-Ingredient-Dispensing
     Low-level alert when reservoir weight < configurable threshold
 ```
 
-### 12.4 Dispensing Summary
+### 12.3 Dispensing Summary
 
 | Subsystem | Actuators | Metering | Min Dispense |
 |-----------|-----------|----------|-------------|
-| P-ASD (seasonings) | 1× diaphragm pump + 6× solenoid valve (PCF8574 I2C) | Pressure-and-time-based (~±20%) | ~1 g |
-| CID (coarse) | CID-1: NEMA 23 stepper + ext. driver; CID-2: linear actuator (DRV8876 #2) | Position-based / user pre-measured | Full tray |
+| FID (fine / seasonings) | 3× servo on DSB (F1 index, F2 dose, F3 steam gate), 6 canisters with ¼ tsp measure wheels | Volumetric per dose stroke (±10%) | ¼ tsp (~0.5 g) |
+| CID (coarse) | 1× servo on DSB (C1 index), 5-slot carousel + cover sector | Whole slot / user pre-measured | One slot (~200 mL) |
 | SLD (liquids) | 2× peristaltic pump (TB6612) + 2× solenoid + 2× 2 kg load cell | Closed-loop via dedicated per-reservoir load cells + low-level alerts | ~5 g |
 | Exhaust | 2× 120mm fans (independent PWM control) | Temperature/fume-based control | — |
 
-**Unified PCB On-Board Routing:** All STM32 control signals connect directly to their corresponding driver ICs (DRV8876 #2, TB6612, ISO1050DUB, PCF8574 x2, MOSFETs) on the same board. CID-1 stepper signals (PUL+/DIR+/ENA+) route to J_CID via 100R series resistors for the external driver. No inter-board stacking connector is required. The Unified PCB connects to the Luckfox Pico Zero via the 40-pin GPIO header for UART communication and 5V power.
+**Unified PCB On-Board Routing:** All STM32 control signals connect directly to their corresponding driver ICs (PCA9685, TB6612, ISO1050DUB, PCF8574 #2, MOSFETs) on the same board. The four DSB servo leads plug into J_DSB1-4 (3-pin JR headers on the switched 6.5 V rail). No inter-board stacking connector is required. The Unified PCB connects to the Luckfox Pico Zero via the 40-pin GPIO header for UART communication and 5V power.
 
 ---
 
@@ -904,17 +877,16 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | **MCU** | STM32G474RE Nucleo Board (proto) | 1 | $20 | $20 |
 | | STM32G474RE IC (production) | 1 | $8 | $8 |
 | **Display** | 4" ST7796S SPI LCD with FT6336 touch | 1 | $15 | $15 |
-| **Camera** | SC3336 3 MP camera module (incl. FPC) | 1 | $12 | $12 |
+| **Camera** | Luckfox IMX415-98 IR-CUT 8 MP camera module (incl. 22-pin FPC) | 1 | $54 | $54 |
 | **Sensors** | MLX90614ESF-BAA (IR thermo) | 1 | $12 | $12 |
 | | HX711 breakout board | 1 | $3 | $3 |
 | | 5kg load cells | 4 | $4 | $16 |
 | | Reed switch (pot detect — backup/optional) | 1 | $1 | $1 |
 | **Actuators** | 24V BLDC motor w/ integrated ESC | 1 | $25 | $25 |
-| | SG90 micro servos (ASD gates) | 3 | $3 | $9 |
-| | ERM vibration motors (ASD anti-clog) | 3 | $2 | $6 |
-| | NEMA 23 stepper motor (CID-1) | 1 | $15 | $15 |
-| | External stepper driver (CID-1) | 1 | $10 | $10 |
-| | 12V DC linear actuator (CID-2) | 1 | $8 | $8 |
+| | DS3218-class 270° servos (DSB: FID x3 + CID x1) | 4 | $10 | $40 |
+| | PCA9685 servo driver (DSB) | 1 | $1.50 | $1.50 |
+| | FID canisters w/ ¼ tsp measure wheels | 6 | $3 | $18 |
+| | FID + CID carousel rings, base plate, chutes, gears, bearings | 1 set | $26 | $26 |
 | | 12V peristaltic pumps (SLD) | 2 | $10 | $20 |
 | | 12V NC solenoid valves (SLD) | 2 | $4 | $8 |
 | | 120mm 12V DC brushless fans (exhaust) | 2 | $5 | $10 |
@@ -934,7 +906,7 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | | Pot (off-shelf induction-compatible) | 1 | $25 | $25 |
 | | Gantry hardware (rods, brackets) | Lot | - | $30 |
 
-**Estimated Prototype BOM Total: $580 - $680 USD**
+**Estimated Prototype BOM Total: $620 - $720 USD**
 
 *Note: Production BOM would be lower per unit at volume. Prototype uses Nucleo dev board that would be replaced with bare STM32G474RE on the Unified PCB. The Luckfox Pico Zero is used as-is (off-the-shelf module, no carrier board) in both prototype and production.*
 
@@ -954,7 +926,7 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 - [ ] Luckfox Pico Zero boots Buildroot Linux from eMMC; A/B rootfs fallback verified
 - [ ] UART communication to STM32 at 1 Mbps (loopback test, then bidirectional with framing + CRC)
 - [ ] STM32 firmware load over USART2 via BOOT0/NRST from the RV1106
-- [ ] Camera captures 1280x720 @ 30fps frames via MIPI CSI (SC3336, ISP tuning loaded)
+- [ ] Camera captures 1280x720 @ 30fps frames via MIPI CSI (IMX415-98, ISP tuning loaded)
 - [ ] NPU runs the INT8 stage classifier in <20 ms
 - [ ] Display renders LVGL UI via SPI0 (fbtft, full-frame refresh ~50 ms)
 - [ ] Touch input (FT6336, I2C3) registers on all screen areas
@@ -977,9 +949,9 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 - [ ] Main arm (24V BLDC motor) rotates full 360 degrees smoothly
 - [ ] Stirring speed controllable from 10-60 RPM
 - [ ] Arm torque sufficient to stir thick curry/dal
-- [ ] Each ASD gate servo (SG90) opens/closes reliably
-- [ ] ASD gate servos hold closed position under seasoning weight
-- [ ] No servo jitter at idle (proper PWM signal quality)
+- [ ] Each DSB servo (x4) reaches commanded angle within ±2° via PCA9685
+- [ ] DSB rail switches off after each dispense (no idle jitter or buzz)
+- [ ] PCA9685 OE high on E-stop leaves all four servos limp
 
 ### 17.5 Sensors
 - [ ] Camera: white balance calibrated, image sharp across full pot FOV
@@ -989,14 +961,13 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 - [ ] Load cells: track water evaporation over 30-minute simmer
 - [ ] Pot detection: reliably detects pot on/off
 
-### 17.6 Dispensing (ASD / CID / SLD)
-- [ ] ASD: Each hopper dispenses 5g powder within ±10%
-- [ ] ASD: Vibration motors (3x) activate before dispense (200ms pulse)
-- [ ] ASD: Anti-clog retry mechanism clears blockages within 2 attempts
-- [ ] CID-1: Stepper motor (NEMA 23 via external driver) pushes full tray contents into pot
-- [ ] CID-1: Stepper returns to home position (PB6 limit switch)
-- [ ] CID-2: Linear actuator (DRV8876 #2) pushes full tray contents into pot
-- [ ] CID-2: Actuator returns to home position reliably
+### 17.6 Dispensing (FID / CID / SLD)
+- [ ] FID: Each canister doses ¼ tsp (1.23 mL) within ±10% per stroke
+- [ ] FID: Jiggle routine clears a hand-packed canister without a stall
+- [ ] FID: Steam gate closes by spring with servo unpowered
+- [ ] CID: Each slot empties into the pot on index; cover sector closes aperture at home
+- [ ] CID: Out-of-order slot command is NACKed, carousel does not move
+- [ ] DSB: Stall detection (INA219 window) fires when a carousel is blocked by hand
 - [ ] SLD: Each pump (TB6612) dispenses 50g liquid within ±5%
 - [ ] SLD: Solenoid valves seal (no drips when idle)
 - [ ] Both exhaust fans: PWM control from 0-100%, no audible whine
@@ -1064,3 +1035,5 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | 5.0 | 2026-03-09 | Manas Pradhan | Added USB-C programming port (native USB on PA11/PA12) and Li-Ion battery charger (TP4056+MT3608) to block diagram, component list, and STM32 pin allocation; buzzer moved from PA11 to PB11; 3-source 5V Schottky-OR power architecture |
 | 4.0 | 2026-03-06 | Manas Pradhan | Merged Controller PCB and Driver PCB into single Unified PCB; removed J_STACK inter-board connector references — all signals now route directly on-board; updated CAN, dispensing, power, safety, and BOM sections; 2-board stack (CM5IO + Unified PCB) replaces prior 3-board stack |
 | 5.3 | 2026-11-04 | Manas Pradhan | Application processor changed from Raspberry Pi CM5 + CM5IO to Luckfox Pico Zero (RV1106G3): STM32 bridge moved from SPI2 to USART2 (PA2/PA3, 1 Mbps UART framing), SC3336 camera at 720p on 4-lane CSI, 4" ST7796S SPI LCD + FT6336 touch replaces 10.1" DSI display, WS2812B ring driven by STM32 PB14 via 74AHCT1G125, on-board Wi-Fi 6 / BT 5.2, 8 GB eMMC A/B layout; VBUS detect moved PA3 → PC0; power budget, BOM and validation checklist updated |
+| 6.0 | 2026-11-04 | Manas Pradhan | Dispensers redesigned: P-ASD pneumatics and CID stepper/linear actuator replaced by servo carousels (FID 3 servos, CID 1 servo) on one Dispenser Servo Block (PCA9685 @ 0x41, switched 6.5 V rail from MP1584EN #2, OE on PB4); removed PCF8574 #1, ADS1015, DRV8876 #2, J_CID; freed PA0, PA10, PB5, PB6, PB11, PC2, PD2; component list, pin allocation, power budget, wiring, BOM and checklist updated |
+| 6.1 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT ($54); 4" display module part and dimensions; Nucleo SB17/SB23 → SB18/SB22 note; message codes aligned to the software doc §7.2; CAN alternative for the bridge removed; BOM $620-720 |

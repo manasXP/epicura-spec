@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.1
+version: 2.2
 status: Draft
 ---
 
@@ -18,7 +18,7 @@ This document details the sensing subsystem components for the Epicura kitchen r
 │                    Sensor Subsystem                             │
 │                                                                 │
 │  ┌──────────────┐ MIPI CSI ┌──────────────┐                   │
-│  │  SC3336      │─────────►│  RV1106      │                   │
+│  │  IMX415-98   │─────────►│  RV1106      │                   │
 │  │  Camera      │          │  (Luckfox    │                   │
 │  └──────────────┘          │  Pico Zero)  │                   │
 │                            └──────────────┘                   │
@@ -47,7 +47,7 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
-| Camera Module SC3336 | Luckfox SC3336 3MP (MIPI CSI, FPC included) | 1 | $12.00 | $12.00 | Luckfox / Waveshare | 3MP, run at 1280x720 @ 30fps into the RV1106 ISP; fixed focus; ISP tuning file shipped in the Luckfox SDK |
+| Camera Module IMX415-98 | Luckfox IMX415-98 IR-CUT 8 MP (MIPI CSI 4-lane, 22-pin FPC included) | 1 | $54.00 | $54.00 | Luckfox / Waveshare | 8 MP 3840x2160, 98 deg F2.0 lens, IR-CUT; run at 1280x720 @ 30fps into the RV1106 ISP; ISP tuning file shipped with the Pico Zero image |
 
 ### 3.2 Thermal & Weight Sensors
 
@@ -76,13 +76,13 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 | Item | Cost |
 |------|------|
-| SC3336 Camera | $12.00 |
+| IMX415-98 Camera | $54.00 |
 | MLX90614 IR Thermometer | $12.00 |
 | Reed Switch | $1.00 |
 | LED Ring (WS2812B) | $5.00 |
 | 74AHCT1G125 Level Shifter | $0.30 |
 | Passive Components | $0.70 |
-| **Category Subtotal** | **$31.00** |
+| **Category Subtotal** | **$73.00** |
 
 ---
 
@@ -90,7 +90,7 @@ This document details the sensing subsystem components for the Epicura kitchen r
 
 ### 5.1 Camera Selection
 
-- **SC3336 (3 MP)** is the Luckfox-supported sensor for the RV1106; the SDK ships its ISP tuning file. IMX219 and IMX477 are dropped because no RV1106 ISP tuning file exists for them.
+- **IMX415-98 IR-CUT (8 MP)** is the colour camera Luckfox supports on the Pico Zero; the SDK ships its ISP tuning file. Luckfox's SC3336 module is listed as not compatible with the Pico Zero, and IMX219 and IMX477 are dropped because no RV1106 ISP tuning file exists for them.
 - Runs at 1280x720 @ 30 fps (not 1080p). ISP main path 1280x720 NV12 for the on-demand phone stream and LCD preview; ISP self-path 224x224 RGB888 sampled at 2 fps straight into the NPU.
 - Dehaze, 2D/3D noise reduction, LSC, sharpening, AWB and AE run in the ISP, so steam over the pot is handled in hardware.
 - Fixed focus simplifies mounting. 3 MP is more than sufficient for food stage classification (model input is 224x224 pixels).
@@ -125,3 +125,4 @@ This document details the sensing subsystem components for the Epicura kitchen r
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Removed NTC thermistors (coil temp via CAN, ambient not needed); subtotal $64.90 → $62.70 |
 | 2.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 for the RV1106 ISP (IMX219/IMX477 dropped); LED ring now driven by STM32 PB14 via 74AHCT1G125 (+$0.30); subtotal $43.70 → $31.00 |
+| 2.2 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT ($54): SC3336 not compatible with the Pico Zero; subtotal $31.00 → $73.00 |
