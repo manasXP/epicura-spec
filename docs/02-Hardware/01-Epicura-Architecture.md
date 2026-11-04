@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 8.0
+version: 8.2
 status: Draft
 ---
 
@@ -92,7 +92,7 @@ This document provides the comprehensive hardware architecture, wiring diagrams,
 | Camera Module | IMX415-98 IR-CUT (8 MP) | MIPI CSI-2 (4-lane FPC) | Pico Zero CSI connector | Overhead food monitoring, CV inference |
 | Stirring Motor | 24V integrated BLDC servo with CAN (CyberGear/RobStride-class, model TBD) | CAN 2.0B 1 Mbps (regular port) + switched 24V | STM32 FDCAN2 (PB12/PB13) via SN65HVD230 → J_CAN_STIR; 24V via Q_STIR → J_STIR_PWR | Stirring arm rotation with encoder feedback |
 | Stir-Motor CAN Transceiver | SN65HVD230DR | FDCAN2 | Unified PCB, non-isolated | Regular CAN port to the stirring motor |
-| Dispenser Servos (DSB) | DS3218-class 270° digital servo (x4) | 50 Hz PWM via PCA9685 | PCA9685 CH0-CH3 → J_DSB1-4 | CID carousel index (C1); FID carousel index, dose, steam gate (F1-F3) |
+| Dispenser Servos (DSB) | DS3218 270° (C1), MG996R (F1, F2), MG90S (F3) | 50 Hz PWM via PCA9685 | PCA9685 CH0-CH3 → J_DSB1-4; J_DSB4 V+ via D_DSB4 (1N4007) | CID carousel index (C1); FID carousel index, dose, steam gate (F1-F3) |
 | PCA9685 Servo Driver (DSB) | PCA9685PW | I2C | STM32 I2C1 (PB6/PB7) addr 0x41, OE on PB4 | Single PWM control block for FID + CID servos |
 | SLD Peristaltic Pumps | 12V DC (x2) via TB6612 | GPIO (PWM/DIR) | STM32 PC3-PC6 | Oil and water dispensing |
 | SLD Solenoid Valves | 12V NC (x2) | I2C (GPIO expander) | PCF8574 #2 P0/P1 (0x21) via MOSFET | Liquid drip prevention |
@@ -237,10 +237,10 @@ STM32G0B1RE (LQFP-64)
 │                                                              │
 │  ┌─── Dispenser Servo Block (FID + CID servos) ───┐          │
 │  │  I2C1 (PB6/PB7)   ──► PCA9685 PWM driver (addr 0x41)      │
-│  │    CH0 ──► C1 CID carousel index servo                    │
-│  │    CH1 ──► F1 FID carousel index servo                    │
-│  │    CH2 ──► F2 FID dose servo (¼ tsp measure wheel)        │
-│  │    CH3 ──► F3 FID steam-gate servo                        │
+│  │    CH0 ──► C1 CID carousel index servo (DS3218 270°)      │
+│  │    CH1 ──► F1 FID carousel index servo (MG996R)           │
+│  │    CH2 ──► F2 FID dose servo, ¼ tsp wheel (MG996R)        │
+│  │    CH3 ──► F3 FID steam-gate servo (MG90S, 1N4007 drop)   │
 │  │  PB4  (GPIO)      ──► PCA9685 OE (active-low; high = off) │
 │  │  PCF8574 #2 P4    ──► DSB 6.5 V rail enable (P-MOSFET)    │
 │  │  Rail: MP1584EN #2, 6.5 V / 3 A, one servo at a time      │
@@ -634,7 +634,7 @@ the STM32 can force it off on the same bus.
 | 5V → 3.3V (on Unified PCB) | 4" SPI LCD + backlight | 0.5 | 0.8 | ST7796S panel + LED backlight, PWM dimmed |
 | 24V via Q_STIR | CAN servo stirring motor | 12 | 48 | 24V_STIR switched rail, ~0.5A typical, ~2A peak |
 | 24V → 12V | TP5100 battery charger | 4 | 5 | 0.5 A into the 2S pack while charging |
-| 24V → 6.5V buck (MP1584EN #2) | Dispenser servos DSB (x4, one moving at a time) | 0.5 | 20 | 6.5V rail switched on only during a dispense; ~2.5A stall |
+| 24V → 6.5V buck (MP1584EN #2) | Dispenser servos DSB (x4, one moving at a time) | 0.5 | 20 | 6.5V rail switched on only during a dispense; ≤ 2.5A stall (DS3218 2.2A, MG996R ~2.5A) |
 | 24V → 12V | SLD peristaltic pumps (x2) | 0 | 6 | 12V, only during dispense |
 | 24V → 12V | SLD solenoid valves (x2) | 0 | 10 | 5W each when energized |
 | 24V → 5V buck | LED ring (WS2812B) | 2 | 5 | 16 LEDs at partial brightness |
@@ -702,10 +702,10 @@ The dispensing system comprises three subsystems. FID and CID share one electric
                                    PCF8574 #2 P4 (rail enable, I2C1 0x21)
 
   I2C1 (PB6/PB7) ──► PCA9685 (addr 0x41, on Unified PCB)
-                        ├── CH0 ──► J_DSB1 ──► C1  CID carousel index servo (4:3 gear-up)
-                        ├── CH1 ──► J_DSB2 ──► F1  FID carousel index servo (4:3 gear-up)
-                        ├── CH2 ──► J_DSB3 ──► F2  FID dose servo (canister ¼ tsp measure wheel)
-                        └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo
+                        ├── CH0 ──► J_DSB1 ──► C1  CID carousel index servo, DS3218 270° (4:3 gear-up)
+                        ├── CH1 ──► J_DSB2 ──► F1  FID carousel index servo, MG996R (5:3 gear-up)
+                        ├── CH2 ──► J_DSB3 ──► F2  FID dose servo, MG996R (canister ¼ tsp measure wheel)
+                        └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo, MG90S (J_DSB4 V+ via D_DSB4 1N4007 ≈ 5.8 V)
   PB4 (GPIO) ──► PCA9685 OE (active-low; held high in boot-safe state and on E-stop)
 
   I2C1 devices: PCF8574 #2 (0x21), INA219 (0x40), PCA9685 (0x41)
@@ -892,7 +892,9 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | | Reed switch (pot detect — backup/optional) | 1 | $1 | $1 |
 | **Battery** | 2S1P 18650 Li-ion pack, 2,600 mAh, PCM + NTC | 1 | $12 | $12 |
 | **Actuators** | 24V CAN servo stirring motor (CyberGear/RobStride-class) | 1 | $45 | $45 |
-| | DS3218-class 270° servos (DSB: FID x3 + CID x1) | 4 | $10 | $40 |
+| | DS3218 270° servo (DSB: C1 CID index) | 1 | $10 | $10 |
+| | MG996R servos (DSB: F1 FID index, F2 dose) | 2 | $4 | $8 |
+| | MG90S micro servo (DSB: F3 steam gate) + 1N4007 | 1 | $2.50 | $2.50 |
 | | PCA9685 servo driver (DSB) | 1 | $1.50 | $1.50 |
 | | FID canisters w/ ¼ tsp measure wheels | 6 | $3 | $18 |
 | | FID + CID carousel rings, base plate, chutes, gears, bearings | 1 set | $26 | $26 |
@@ -1053,5 +1055,6 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | 6.0 | 2026-11-04 | Manas Pradhan | Dispensers redesigned: P-ASD pneumatics and CID stepper/linear actuator replaced by servo carousels (FID 3 servos, CID 1 servo) on one Dispenser Servo Block (PCA9685 @ 0x41, switched 6.5 V rail from MP1584EN #2, OE on PB4); removed PCF8574 #1, ADS1015, DRV8876 #2, J_CID; freed PA0, PA10, PB5, PB6, PB11, PC2, PD2; component list, pin allocation, power budget, wiring, BOM and checklist updated |
 | 6.1 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT ($54); 4" display module part and dimensions; Nucleo SB17/SB23 → SB18/SB22 note; message codes aligned to the software doc §7.2; CAN alternative for the bridge removed; BOM $620-720 |
 | 8.0 | 2026-11-04 | Manas Pradhan | Single Unified PCB hosts the Luckfox Pico Zero in a slot (J_AP, replaces the J_CM5 header; display re-emerges on J_LCD), the STM32 and the CID/FID/SLD drivers; two CAN ports: isolated J_CAN_HEAT (FDCAN1 + RV1106 MCP2518FD) to the cooking surface and regular J_CAN_STIR (FDCAN2 PB12/PB13, SN65HVD230, 1 Mbps) to a 24 V CAN servo stirring motor with switched 24 V (Q_STIR, J_STIR_PWR) — PWM/EN/DIR on PA8/PA4/PA5 retired; MLX90614 IR thermometer dropped (module runs its own temperature loop, HEAT_SET_TEMP 0x100 / HEAT_SET_POWER 0x103, surface_temp in HEAT_STATUS); external 12 V UPS and single-cell micro-UPS replaced by a 2S Li-ion pack (J_BAT, TP5100 charger, VSYS diode-OR feeding the 5 V buck); §7 rewritten for the motor CAN port, block diagram, component list, pin allocation, power, induction, BOM, checklist and safety sections updated |
+| 8.2 | 2026-11-04 | Manas Pradhan | DSB servos sized per axis: DS3218 270° on C1 only, MG996R on F1 and F2, MG90S on F3 with D_DSB4 (1N4007) dropping the J_DSB4 V+ to ≈ 5.8 V; F1 gear-up 5:3; component list, block diagram, §12.1 wiring, power budget note and BOM (servos $40 → $20.50) updated |
 | 8.1 | 2026-11-04 | Manas Pradhan | MCU changed from STM32G474RE to STM32G0B1RET6 (Cortex-M0+ @ 64 MHz, 2x FDCAN; no control loop left on the MCU so no FPU needed; ~$4.50 cheaper per unit, Nucleo $11): §5.1 rewritten; pin moves for the G0 alternate-function map — I2C1_SCL PA15 → PB6, VBUS detect PC0 → PA0, battery sense PC1 → PA4, buzzer PC7/TIM8_CH2 → PA8/TIM1_CH1, FDCAN AF9 → AF3, BOOT0 on PA14 (nBOOT_SEL); NUCLEO-G0B1RE (MB1360) note; power budget and BOM ($620-720) updated |
 | 7.0 | 2026-11-04 | Manas Pradhan | Isolated CAN bus now has three nodes: RV1106 (MCP2518FD on SPI0 CS1 + ISO1050DUB #2 on the Unified PCB, SocketCAN), STM32 (FDCAN1 + ISO1050DUB #1) and the induction surface MCU; it carries host commands and telemetry (UART2/USART2 demoted to a service link for flashing/debug); temperature PID moves to the RV1106, which commands HEAT_SET_POWER directly while the STM32 keeps the off-switch and relay; §9 rewritten, block diagram, component list, header pins, STM32 pin blocks, induction section, BOM and checklist updated |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 7.1
+version: 7.3
 status: Draft
 ---
 
@@ -11,7 +11,7 @@ status: Draft
 
 The ingredient dispensing system is divided into three purpose-built subsystems, each optimized for a different ingredient class. Together they surround the cooking pot and are orchestrated by the STM32 controller under commands from the RV1106 recipe engine, received over the isolated CAN bus the two processors share with the induction surface.
 
-The FID and CID share one mechanical concept (a servo-indexed carousel) and one electrical control block (the **Dispenser Servo Block, DSB**): four identical hobby-class servos driven from a single PCA9685 PWM driver on I2C1, powered from one switched 6.5 V rail. The SLD keeps its own pump/valve/load-cell hardware.
+The FID and CID share one mechanical concept (a servo-indexed carousel) and one electrical control block (the **Dispenser Servo Block, DSB**): four hobby-class servos sized per axis (DS3218, 2× MG996R, MG90S) driven from a single PCA9685 PWM driver on I2C1, powered from one switched 6.5 V rail. The SLD keeps its own pump/valve/load-cell hardware.
 
 | Subsystem | Full Name | Purpose | Actuators | Metering |
 |-----------|-----------|---------|-----------|----------|
@@ -33,7 +33,7 @@ Box and slot numbering matches the recipe contract already used by the cloud sch
 │                  ┌───────────────┐                     │
 │               ┌──┤ Box 4 │ Box 3 ├──┐                  │
 │               │ Box 5 ──┼── Box 2  │   F1 index servo  │
-│               └──┤ Box 6 │ Box 1 ├──┘   (4:3 gear-up)  │
+│               └──┤ Box 6 │ Box 1 ├──┘   (5:3 gear-up)  │
 │                  └───────┬───────┘                     │
 │                 dosing station (F2 dose, F3 gate)      │
 │                          ▼ chute                       │
@@ -96,7 +96,7 @@ Both carousels sit above pot-rim height; the station/aperture edge of each ring 
 **CID (servo carousel over fixed base plate):**
 
 ```
-   F1/C1 servo ──► 4:3 gear-up ──► ring gear on carousel hub
+   C1 servo ──► 4:3 gear-up (F1: 5:3) ──► ring gear on carousel hub
                                         │
        ┌────────────────────────────────▼───────────────────┐
        │   Slot 1   │   Slot 2   │  ...  │   COVER sector   │  lift-off ring,
@@ -155,31 +155,29 @@ Rotating a bin over the aperture drops its contents; the COVER sector closes the
 
 ## 3. Common Carousel Design (FID and CID)
 
-### 3.1 Servo
+### 3.1 Servos
 
-All four DSB servos are the same part, so the firmware uses one angle table and one driver.
+The four DSB servos are sized per axis. All are standard 50 Hz PWM hobby servos (500–2500 µs) on the same PCA9685 and the same switched 6.5 V rail, so one driver serves them; the firmware keeps a per-channel angle table (travel and gear ratio differ).
 
-| Parameter | Value |
-|-----------|-------|
-| Type | DS3218-class digital servo, metal gear, 270° travel |
-| Torque | 20 kg·cm at 6.8 V (≈ 18 kg·cm at 6.5 V) |
-| Speed | ~0.16 s / 60° (no load) |
-| Signal | 50 Hz PWM, 500–2500 µs pulse (0–270°) |
-| Supply | 6.5 V DSB rail (MP1584EN #2 buck, 3 A) |
-| Current | ~0.1 A holding, ~1.5 A moving, ~2.5 A stall |
-| Position feedback | None external (internal potentiometer, absolute); open loop at the STM32 |
-| Cost | ~$10 each |
+| Axis | Servo | Travel | Stall torque | Speed (no load) | Supply | Stall current | Why |
+|------|-------|--------|--------------|-----------------|--------|---------------|-----|
+| C1 CID index | DS3218 (DSSERVO), metal gear, 270° variant | 270° | 18 kg·cm at 5 V, 21.5 kg·cm at 6.8 V (≈ 21 kg·cm at 6.5 V) | 0.16 s / 60° | 6.5 V rail direct (rated 4.8–6.8 V) | 2.2 A at 6.8 V | Drags up to 1 kg of bin contents across the fixed base plate (≈ 3–5 kg·cm at the ring plus breakaway); needs 300° carousel travel |
+| F1 FID index | MG996R-class, metal gear | 180° | ≈ 11 kg·cm at 6 V | 0.17 s / 60° | 6.5 V rail direct (rated 4.8–7.2 V) | ≈ 2.5 A | Canisters ride on a bearing (< 1 kg·cm); 180° reaches 300° carousel through a 5:3 gear-up |
+| F2 FID dose | MG996R-class, metal gear | 180° | ≈ 11 kg·cm at 6 V | 0.17 s / 60° | 6.5 V rail direct | ≈ 2.5 A | Turns the measure wheel in compacted powder and shears arches on the jiggle; full 180° swing used |
+| F3 FID steam gate | MG90S-class, metal gear micro | 180° | ≈ 2.2 kg·cm at 6 V | 0.10 s / 60° | 6.5 V rail through D_DSB4 (1N4007 in series on the J_DSB4 V+ pin, ≈ 5.8 V; rated 4.8–6.0 V) | ≈ 0.7 A | Spring-assisted flap, 70° swing, negligible load |
+
+Common to all four: no external position feedback (internal potentiometer, absolute), open loop at the STM32; moving current 0.5–1.5 A, idle a few mA. Datasheet for C1: [[../../research/dsservo-DS3218-datasheet.pdf|DSSERVO DS3218]]. Cost ≈ $10 (DS3218) + 2 × $4 (MG996R) + $2.50 (MG90S) ≈ $20.50 per unit.
 
 ### 3.2 Index Drive (C1, F1)
 
-| Parameter | Value |
-|-----------|-------|
-| Coupling | 4:3 spur gear-up (servo 32T → carousel ring gear 24T), POM or printed |
-| Travel | Servo 0–225° → carousel 0–300° (six 60° positions) |
-| Carousel torque | ≈ 13 kg·cm at 6.5 V (ample; ring runs on a thin-section ball bearing) |
-| Resolution | 4.9 µs PWM step ≈ 0.66° servo ≈ 0.9° carousel |
-| Homing | None required: gear mesh is assembled at marked teeth, servo position is absolute |
-| Position table | pos 0 = 0°, pos 1 = 45°, pos 2 = 90°, pos 3 = 135°, pos 4 = 180°, pos 5 = 225° (servo angles) |
+| Parameter | C1 (CID, DS3218 270°) | F1 (FID, MG996R 180°) |
+|-----------|------------------------|------------------------|
+| Coupling | 4:3 spur gear-up (servo 32T → ring gear 24T), POM or printed | 5:3 spur gear-up (servo 40T → ring gear 24T), POM or printed |
+| Travel | Servo 0–225° → carousel 0–300° (six 60° positions) | Servo 0–180° → carousel 0–300° (six 60° positions) |
+| Carousel torque | ≈ 14 kg·cm at 6.5 V (ring on a thin-section ball bearing; load is the bin contents sliding on the base plate, ≈ 3–5 kg·cm) | ≈ 6 kg·cm at 6.5 V (canisters ride with the ring on a bearing; load < 1 kg·cm) |
+| Resolution | 4.9 µs PWM step ≈ 0.66° servo ≈ 0.9° carousel | 4.9 µs PWM step ≈ 0.44° servo ≈ 0.7° carousel |
+| Homing | None required: gear mesh is assembled at marked teeth, servo position is absolute | Same |
+| Position table (servo angles) | pos 0 = 0°, 1 = 45°, 2 = 90°, 3 = 135°, 4 = 180°, 5 = 225° | pos 0 = 0°, 1 = 36°, 2 = 72°, 3 = 108°, 4 = 144°, 5 = 180° |
 
 Moves are ramp-limited in firmware (≤ 3° servo per 20 ms tick, ≈ 1.5 s for a 60° carousel step) so that loaded bins do not slosh and the rail current stays under 2 A.
 
@@ -222,7 +220,7 @@ Mass per dose = 1.23 mL × bulk density. The recipe engine stores quantities in 
 
 | Element | Servo | Motion | Purpose |
 |---------|-------|--------|---------|
-| Carousel index | F1 | 0–225° (6 positions via 4:3 gear-up) | Brings the selected canister over the station |
+| Carousel index | F1 | 0–180° (6 positions via 5:3 gear-up) | Brings the selected canister over the station |
 | Dose | F2 | 0° ↔ 180° swing per dose | Rotates the canister's measure wheel: pocket fills under the outlet at 0°, discharges into the chute at 180° |
 | Steam gate | F3 | 0° (closed) ↔ 70° (open) | Spring-assisted flap at the chute mouth; open only while dosing so pot steam does not reach the powder path |
 
@@ -379,10 +377,10 @@ The FID and CID are one electrical block on the Unified PCB:
                                                ▲                            │  1000 µF bulk + 3 A PTC
                                    PCF8574 #2 P4 (rail enable)              │
                                                                             ▼
-  I2C1 (PB6/PB7)  ──► PCA9685 (addr 0x41) ──┬── CH0 ──► J_DSB1 ──► C1  CID index servo
-                                            ├── CH1 ──► J_DSB2 ──► F1  FID index servo
-  PB4 (GPIO) ──► PCA9685 OE (active-low)    ├── CH2 ──► J_DSB3 ──► F2  FID dose servo
-                                            └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo
+  I2C1 (PB6/PB7)  ──► PCA9685 (addr 0x41) ──┬── CH0 ──► J_DSB1 ──► C1  CID index servo   (DS3218 270°)
+                                            ├── CH1 ──► J_DSB2 ──► F1  FID index servo   (MG996R)
+  PB4 (GPIO) ──► PCA9685 OE (active-low)    ├── CH2 ──► J_DSB3 ──► F2  FID dose servo    (MG996R)
+                                            └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo (MG90S, V+ via D_DSB4 1N4007 ≈ 5.8 V)
                                                  CH4–CH15 spare
 ```
 
@@ -391,14 +389,14 @@ The FID and CID are one electrical block on the Unified PCB:
 | PWM driver | PCA9685PW (TSSOP-28), I2C1 addr 0x41 | 16 channels, 12-bit, 50 Hz; CH0–CH3 used |
 | Output enable | PB4 → OE (active-low) | High in boot-safe state and on E-stop |
 | Rail | MP1584EN #2 set to 6.5 V (previously retained for future use) | Switched by PCF8574 #2 P4 via AO3401-class P-MOSFET; 3 A PTC; 1000 µF bulk |
-| Connectors | J_DSB1–4, 3-pin JR (signal / 6.5 V / GND), 2.54 mm, keyed | Standard servo leads, 300 mm extensions |
+| Connectors | J_DSB1–4, 3-pin JR (signal / V+ / GND), 2.54 mm, keyed | Standard servo leads, 300 mm extensions; J_DSB1–3 V+ = 6.5 V rail, J_DSB4 V+ through D_DSB4 (1N4007 series, ≈ 5.8 V) for the 6 V-rated MG90S |
 | Fault detection | INA219 24 V rail current window during moves + move timeout + PCA9685 I2C NACK | Raises `DSB_STALL` (0x12) |
 
 ### 7.2 GPIO and PWM Assignments
 
 | Subsystem | Actuator | STM32 Pin | Interface | Notes |
 |-----------|----------|-----------|-----------|-------|
-| **FID/CID** | Servos C1, F1, F2, F3 | PCA9685 CH0–CH3 (I2C1, addr 0x41) | 50 Hz PWM, 500–2500 µs | One part number, one angle table |
+| **FID/CID** | Servos C1, F1, F2, F3 | PCA9685 CH0–CH3 (I2C1, addr 0x41) | 50 Hz PWM, 500–2500 µs | DS3218 / MG996R / MG996R / MG90S; per-channel angle table |
 | **FID/CID** | PCA9685 OE | PB4 (GPIO) | Digital output, active-low | High = all servo outputs off |
 | **FID/CID** | DSB 6.5 V rail enable | PCF8574 #2 P4 (I2C1, addr 0x21) | Digital output via P-MOSFET | On only during a dispense |
 | **SLD** | Pump Motor SLD-OIL (PWM) | PC3 (GPIO) | PWM (motor speed) | TB6612 PWMA via MOSFET |
@@ -636,3 +634,4 @@ For quick cleaning of SLD channels between recipes:
 | 7.0 | 2026-11-04 | Manas Pradhan | P-ASD (pneumatic) replaced by FID: 6-canister servo carousel with per-canister ¼ tsp measure wheels, 3 servos (index, dose, steam gate); CID replaced by a 5-slot + cover servo carousel, 1 servo; FID and CID merged into one Dispenser Servo Block (4× DS3218-class servos on PCA9685 @ 0x41, switched 6.5 V rail from MP1584EN #2, OE on PB4); removed pump, accumulator, 6 solenoids, ADS1015, PCF8574 #1, NEMA 23 + driver, linear actuator, DRV8876 #2, J_CID; new commands DISPENSE_FID/CID, DISPENSER_HOME, DISPENSER_STATUS; box/slot numbering aligned with recipe schema |
 | 7.1 | 2026-11-04 | Manas Pradhan | Command protocol mapped onto the shared CAN bus (IDs 0x230–0x239, seq byte, ACK 0x3FF) |
 | 7.2 | 2026-11-04 | Manas Pradhan | I2C1 device list and PCF8574 #2 allocation updated (IR thermometer removed; stir-motor 24 V enable and charger status pins); recipe example uses module surface temperature |
+| 7.3 | 2026-11-04 | Manas Pradhan | DSB servos sized per axis instead of 4× DS3218: C1 keeps the DS3218 270° (bin contents slide on the base plate, ≈ 3–5 kg·cm), F1 and F2 become MG996R, F3 becomes MG90S fed through D_DSB4 (1N4007, ≈ 5.8 V) on the 6.5 V rail; F1 gear-up changed 4:3 → 5:3 so the 180° servo still reaches 300° carousel travel; per-channel angle tables; DS3218 figures from the DSSERVO datasheet (21.5 kg·cm / 2.2 A at 6.8 V); servo BOM ≈ $20.50 |
