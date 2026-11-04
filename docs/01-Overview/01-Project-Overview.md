@@ -1,7 +1,7 @@
 ---
 created: 2026-02-14
 modified: 2026-11-04
-version: 1.7
+version: 1.8
 status: Draft
 tags: [epicura, project-overview, kitchen-robot]
 ---
@@ -23,7 +23,7 @@ This project encompasses the following major subsystems:
 - [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
 - [[01-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and tools
 - [[01-UI-UX-Design|UI/UX Design]] - Touchscreen interface and companion mobile app
-- [[01-Electric-Heating|Electric Heating]] - 1,300W (assumed) electric heating unit of the rice-cooker class with CAN bus control (unit-internal temperature loop)
+- [[01-Electric-Heating|Electric Heating]] - 1,300W (assumed) electric heating unit of the rice-cooker class with CAN bus control (unit-internal temperature loop); reference unit Philips OneChef NX5300/00, whose body is the Cooking Surface and whose 6 L non-stick inner pot is Epicura's pot
 - [[02-Robotic-Arm|Robotic Arm]] - Single-axis servo arm and stir patterns
 - [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Three-subsystem dispensing (FID/CID/SLD)
 - [[04-Vision-System|Vision System]] - HD camera, edge AI, and cooking stage detection
@@ -45,9 +45,9 @@ This project encompasses the following major subsystems:
 - Full offline fallback with local SQLite recipe database for uninterrupted cooking
 
 ### 3.3 Precision Control
-- Temperature-controlled electric heating (the heating unit's own loop on its spring-loaded centre sensor; the RV1106 sends setpoints over the shared isolated CAN bus) with dynamic temperature range (60-250°C)
+- Temperature-controlled electric heating (the heating unit's own loop on its spring-loaded centre sensor; the RV1106 sends setpoints over the shared isolated CAN bus) with dynamic temperature range (60-200°C)
 - Pot-bottom and element temperature reported by the heating unit over CAN (no thermometer of Epicura's own)
-- Sear at 200-250°C, simmer at 60-100°C with ±5°C accuracy
+- Sear at 180-200°C, simmer at 60-100°C with ±5°C accuracy
 - Dynamic power management to stay within 2kW household limit
 
 ### 3.4 Vision System
@@ -165,7 +165,7 @@ This project encompasses the following major subsystems:
 | Display | 4" 480x320 capacitive touchscreen (SPI, ST7796S + FT6336) |
 | Camera | IMX415-98 8 MP, 1280x720 @ 30 fps, on the Dispensing Unit underside looking straight down |
 | Connectivity | Wi-Fi 6 (2.4 GHz), Bluetooth 5.2 LE |
-| Pot Capacity | 3-5 liters (removable, non-stick, dishwasher-safe) |
+| Pot Capacity | 6 L nominal, ~4.8 L usable (OneChef non-stick inner pot; removable, dishwasher-safe) |
 | Ingredient Dispensing | FID (6-canister carousel, 3 servos) + CID (5-slot carousel, 1 servo) + SLD (2 liquid channels) |
 | Operating Temperature | 5°C - 45°C ambient |
 
@@ -217,3 +217,4 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 | 1.5 | 2026-11-04 | Manas Pradhan | IR thermometer removed (module-internal temperature control); 2S Li-ion backup on the Unified PCB; CAN servo stirring motor |
 | 1.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 on the Cooking Surface Controller, dispensers + battery + brain in the lift-off Dispensing Unit (Unified PCB v4.0), Stirring Unit on one harness, magnetic pogo dock with charge + CAN; system diagram, data flow and physical specifications updated; height ≈ 35 cm (TBC) |
 | 1.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit of the rice-cooker class (1,300 W assumed, own PID, CAN port; same CAN contract): summary, features, system diagram and physical specifications updated; temperature source wording corrected (pot-bottom + element temperature over CAN) |
+| 1.8 | 2026-11-04 | Manas Pradhan | Reference unit Philips OneChef NX5300/00 named (donor body = Cooking Surface, 6 L non-stick pot ~4.8 L usable); temperature range 60-200°C, sear 180-200°C |

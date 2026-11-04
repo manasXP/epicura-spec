@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 8.4
+version: 8.5
 status: Draft
 ---
 
@@ -15,7 +15,7 @@ Epicura is physically **three units** with two boards:
 
 | Unit | Short | Mains? | Contents |
 |------|-------|--------|----------|
-| **Cooking Surface** | CS | Yes (IEC C14 inlet, fuse, EMI filter) | Commercial electric heating unit (rice-cooker class, own AC + CAN), Mean Well LRS-75-24, **Cooking Surface Controller PCB (CSC, STM32G0B1RE)**, safety relay, E-stop button (front), 2× exhaust fans + filter cartridge (rear), two rear pillars that carry the stirring unit and the dock block |
+| **Cooking Surface** | CS | Yes (IEC C14 inlet, fuse, EMI filter) | Donor Philips OneChef NX5300/00 body (heating plate, controller with own AC + CAN, 6 L non-stick inner pot, glass lid; air-fryer lid removed — the DU seats in its place), Mean Well LRS-75-24, **Cooking Surface Controller PCB (CSC, STM32G0B1RE)**, safety relay, E-stop button (front), 2× exhaust fans + filter cartridge (rear), two rear pillars that carry the stirring unit and the dock block |
 | **Stirring Unit** | SU | No — fed 24 V by the CS | Gantry bridge between the rear pillars over the pot: 24 V CAN servo stir motor, vertical shaft, paddle, fume hood. One port **J_SU** at the pillar; harness inside the right pillar to the CSC |
 | **Dispensing Unit** | DU | No — **battery is the primary supply** | **Unified PCB v4.0** (Pico Zero in J_AP, 2S Li-ion pack, dispenser drivers, RV1106 CAN node), 4" LCD on the front face (tilted 15–30°), IMX415-98 camera + white LED ring on the underside looking straight down into the pot, FID carousel (rear) + CID carousel (front), SLD oil + water reservoirs (sides) with pumps, solenoids, load cells and nozzles through the underside, buzzer. Dock pads on the underside over the left pillar |
 
@@ -101,7 +101,7 @@ Only one cable exists between units (CS → SU, inside the right pillar). The DU
 | Piezo Buzzer | 5V active | PWM | RV1106 PWM via 2N7002 → J_BUZZER (Unified PCB) | Audio alerts |
 | USB-C Receptacle | Mid-mount 16-pin (J_USB on the CSC) | USB 2.0 FS | STM32 PA11/PA12 (native USB) | DFU programming, CDC serial debug (bench only) |
 | Li-Ion Battery | 2S1P 18650 pack, 7.4V, 2,600 mAh, with PCM + NTC (JST-XH 3-pin, J_BAT) | Analog | TP5100 charger (1.0 A) + VSYS diode-OR on the Unified PCB; monitored by INA219 #2 | **Primary supply of the DU**: ≈ 3 W lifted-unit load → > 5 h; docked, the DU draws from DOCK_24V and the pack does not discharge |
-| Electric Heating Unit | Commercial rice-cooker-class unit w/ CAN and internal temperature control, 1,300 W (assumed, unit TBD) | CAN 2.0B (500kbps) | Isolated CAN port J_CAN_HEAT on the CSC (STM32 FDCAN1); RV1106 joins the same bus over the dock | Self-contained resistive heating plate with internal relay/triac power stage, spring-loaded centre sensor, PID and safety; setpoints from the RV1106, forced off by the STM32 |
+| Electric Heating Unit | Philips OneChef NX5300/00-class unit (donor body + 6 L non-stick pot) w/ OEM CAN control board and internal temperature control, 1,300 W (assumed; base plate of the 2,280 W nameplate) | CAN 2.0B (500kbps) | Isolated CAN port J_CAN_HEAT on the CSC (STM32 FDCAN1); RV1106 joins the same bus over the dock | Self-contained resistive heating plate with internal relay/triac power stage, spring-loaded centre sensor, PID and safety; setpoints from the RV1106, forced off by the STM32 |
 | 4" Touchscreen | 4" 480x320 IPS, ST7796S + FT6336 | SPI (LCD) + I2C (touch) | RV1106 SPI0 + I2C3; DU front face, tilted 15–30° | User interface display |
 | PSU Module | Mean Well LRS-75-24 | AC-DC 24V | AC mains input, in the CS | 24V DC to the CSC (J_24V_IN); derives 12 V / 5 V / 3.3 V for the CS, 24V_STIR for the SU and DOCK_24V for the DU |
 | Safety Relay | Omron G5V-2 or equiv. (12 V coil) | GPIO (via MOSFET) | STM32 PB0 → Q_RLY → J_SAFE pin 1 on the CSC | Heater mains disconnect |
@@ -739,7 +739,9 @@ the STM32 can force it off on the same bus.
 
 ### 12.1 Heating Unit Integration
 
-The electric heating unit is a self-contained commercial unit of the premium rice-cooker class with its own AC power inlet, relay/triac mains power stage, resistive heating plate, spring-loaded centre temperature sensor (pressed by the pot) with closed-loop control, and onboard safety circuits. It replaced the induction surface on 2026-11-04 as a drop-in CAN node (same HEAT_* message set); see [[../05-Subsystems/01-Electric-Heating|Electric Heating]]. It sits in the Cooking Surface with the CSC. Epicura interfaces with the unit exclusively via the isolated CAN port **J_CAN_HEAT on the CSC** — no high-voltage wiring touches the CSC or the Unified PCB, and no temperature sensor is needed in Epicura.
+The electric heating unit is a self-contained commercial unit of the premium rice-cooker class with its own AC power inlet, relay/triac mains power stage, resistive heating plate, spring-loaded centre temperature sensor (pressed by the pot) with closed-loop control, and onboard safety circuits. It replaced the induction surface on 2026-11-04 as a drop-in CAN node (same HEAT_* message set); see [[../05-Subsystems/01-Electric-Heating|Electric Heating]]. It sits in the Cooking Surface with the CSC.
+
+The reference unit is the **Philips OneChef NX5300/00** (Electric Heating §2.3): its body becomes the Cooking Surface (modified for the stirrer gantry and the dock pillars), its air-fryer lid is dropped and the Dispensing Unit docks in its place, and its 6 L non-stick inner pot (~4.8 L usable) is Epicura's pot. Its 2,280 W nameplate covers the base plate **and** the air-fryer lid heater together; the base plate alone is expected at 1,000–1,300 W, so 1,300 W stays the planning figure. The plate's temperature range is 80–200 °C (Epicura requests 60–200 °C): sear and tadka stages are ≤ 200 °C and the STM32 limits on `surface_temp` are re-based to > 220 °C CRITICAL / > 230 °C E_STOP (`element_temp` > 250 °C WARNING unchanged). The OEM unit ships with a control board exposing HEAT_* on CAN (confirmed 2026-11-04); the retail touch-panel board is not used. Epicura interfaces with the unit exclusively via the isolated CAN port **J_CAN_HEAT on the CSC** — no high-voltage wiring touches the CSC or the Unified PCB, and no temperature sensor is needed in Epicura.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -1003,7 +1005,7 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | | 6V NC solenoid valves (SLD) | 2 | $4 | $8 |
 | | 120mm 12V DC brushless fans (exhaust) | 2 | $5 | $10 |
 | | 5V piezo buzzer (active) | 1 | $2 | $2 |
-| **Heater** | Electric heating unit (rice-cooker class, CAN) | 1 | $45 | $45 |
+| **Heater** | Donor cooker: Philips OneChef NX5300/00 or equivalent — heating unit, controller, 6 L non-stick pot, glass lid, base body | 1 | $230 | $230 |
 | **Power** | Mean Well LRS-75-24 (24V/3.2A) | 1 | $20 | $20 |
 | | IEC C14 inlet + EMI filter | 1 | $8 | $8 |
 | | Safety relay (Omron G5V-2) | 1 | $5 | $5 |
@@ -1020,10 +1022,9 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | | Cooking Surface Controller PCB (4-layer, 5 pcs) | 1 | $25 | $25 |
 | | Wiring, connectors, FFC cables | Lot | - | $25 |
 | **Enclosure** | 3D-printed enclosure (prototype) | 1 | $80 | $80 |
-| | Pot (rice-cooker inner pot, aluminium non-stick, or any flat-bottomed pot) | 1 | $25 | $25 |
 | | Gantry hardware (rods, brackets) | Lot | - | $30 |
 
-**Estimated Prototype BOM Total: $635 - $745 USD** (three-unit split: net ≈ +$32 for the CSC PCB, dock pair, NAU7802 ×2, TCA9543A, INA219 #2, white LED ring and J_SU, less the HX711 ×2, WS2812B ring and 74AHCT1G125; electric heating unit −$15 against the induction surface)
+**Estimated Prototype BOM Total: $795 - $905 USD** (donor cooker $230 replaces the $45 heating unit and the $25 pot line: +$160, was $635 - $745; production: OEM heating unit + pot, bulk, ≈ $60; three-unit split: net ≈ +$32 for the CSC PCB, dock pair, NAU7802 ×2, TCA9543A, INA219 #2, white LED ring and J_SU, less the HX711 ×2, WS2812B ring and 74AHCT1G125; electric heating unit −$15 against the induction surface)
 
 *Note: Production BOM would be lower per unit at volume. Prototype uses Nucleo dev board that would be replaced with bare STM32G0B1RET6 on the Cooking Surface Controller. The Luckfox Pico Zero is used as-is (off-the-shelf module, no carrier board) in both prototype and production.*
 
@@ -1062,6 +1063,8 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 - [ ] Unit heats water from 20C to 100C within 10 minutes (1.5L, 1,300 W assumed)
 - [ ] Setpoint step 25 → 100C at the centre sensor rises in < 180 s (plate-limited ramp ~2-4 C/s)
 - [ ] Unit holds a HEAT_SET_TEMP setpoint within +/-5C (its own PID); RV1106 keep-alive at 2 Hz never drops out while the LCD refreshes
+- [ ] OEM unit: its CAN control board answers HEAT_* on the isolated bus
+- [ ] Sear stage reaches 200C at the centre sensor with the 6 L pot; injected surface_temp > 220C raises CRITICAL and > 230C triggers E_STOP
 - [ ] All four power profiles (sear/boil/simmer/warm) verified
 - [ ] Unit-internal pot detection (spring-loaded centre sensor) prevents heating without pot
 - [ ] Safety relay (CSC Q_RLY, J_SAFE 1) disconnects AC to the unit on E-stop or fault
@@ -1120,7 +1123,7 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 ### 19.2 Thermal Safety
 
 - **Unit Thermal:** The heating unit has an internal over-temperature cut-off and thermal fuse. It reports element temperature via CAN status. The plate stores heat after power-off; the UI shows a hot-surface warning while surface_temp is above 60C.
-- **Surface Over-Temperature:** The unit's centre sensor reports the pot-bottom temperature (surface_temp) in HEAT_STATUS. If >270C (beyond any recipe requirement), the STM32 sends the CAN off command and opens the safety relay, independently of the unit's internal cut-off.
+- **Surface Over-Temperature:** The unit's centre sensor reports the pot-bottom temperature (surface_temp) in HEAT_STATUS. If >230C (unit ceiling 200C; >220C raises CRITICAL first), the STM32 sends the CAN off command and opens the safety relay, independently of the unit's internal cut-off.
 - **Enclosure Thermal:** Exhaust fans on the CSC provide ventilation of the CS. The unit reports its element temperature via CAN for enclosure monitoring.
 
 ### 19.3 Mechanical Safety
@@ -1174,4 +1177,5 @@ The Luckfox Pico Zero includes onboard WiFi and Bluetooth. No external modules a
 | 8.1 | 2026-11-04 | Manas Pradhan | MCU changed from STM32G474RE to STM32G0B1RET6 (Cortex-M0+ @ 64 MHz, 2x FDCAN; no control loop left on the MCU so no FPU needed; ~$4.50 cheaper per unit, Nucleo $11): §5.1 rewritten; pin moves for the G0 alternate-function map — I2C1_SCL PA15 → PB6, VBUS detect PC0 → PA0, battery sense PC1 → PA4, buzzer PC7/TIM8_CH2 → PA8/TIM1_CH1, FDCAN AF9 → AF3, BOOT0 on PA14 (nBOOT_SEL); NUCLEO-G0B1RE (MB1360) note; power budget and BOM ($620-720) updated |
 | 7.0 | 2026-11-04 | Manas Pradhan | Isolated CAN bus now has three nodes: RV1106 (MCP2518FD on SPI0 CS1 + ISO1050DUB #2 on the Unified PCB, SocketCAN), STM32 (FDCAN1 + ISO1050DUB #1) and the induction surface MCU; it carries host commands and telemetry (UART2/USART2 demoted to a service link for flashing/debug); temperature PID moves to the RV1106, which commands HEAT_SET_POWER directly while the STM32 keeps the off-switch and relay; §9 rewritten, block diagram, component list, header pins, STM32 pin blocks, induction section, BOM and checklist updated |
 | 8.4 | 2026-11-04 | Manas Pradhan | Heater changed from the commercial induction surface to a commercial electric heating unit of the premium rice-cooker class (resistive plate, spring-loaded centre sensor, own relay/triac power stage, own PID, CAN port); drop-in CAN node — HEAT_* messages, J_CAN_HEAT, dock, CSC, Unified PCB, `epicurad` and STM32 firmware unchanged. Power 1,800 W → 1,300 W (assumed, unit TBD), pot detection by the centre sensor (no ferromagnetic pot), `coil_temp` → `element_temp`; unit table, block diagrams, component list, §10, §12, EMI (§16.1 — no induction field, ferrite sheet dropped), thermal, power budget (system ~470 W / ~1,350 W peak), BOM (heater $60 → $45, total $635-745), checklist and safety updated |
+| 8.5 | 2026-11-04 | Manas Pradhan | Reference unit fixed: Philips OneChef NX5300/00 — donor body is the Cooking Surface, 6 L non-stick pot, DU seats in the air-fryer lid position; §12 notes the 2,280 W nameplate (base plate 1,000–1,300 W, planning 1,300 W), 200 °C ceiling, STM32 surface_temp limits 220 °C CRITICAL / 230 °C E_STOP (were 270) and the Case A / Case B CAN-board risk; BOM heater $45 → $230 donor cooker, $25 pot line removed, total $635-745 → $795-905; checklist items added |
 | 8.3 | 2026-11-04 | Manas Pradhan | Three-unit physical architecture: Cooking Surface (CS: induction module, LRS-75-24, new Cooking Surface Controller PCB with the STM32G0B1RE, relay, E-stop, fans), Stirring Unit (SU: 24 V CAN servo on J_SU, the only inter-unit cable) and Dispensing Unit (DU: Unified PCB v4.0 with the Pico Zero, 2S pack as primary supply, dispensers, camera + white LED ring on the underside). New §8 dock (J_DOCK, 8-pin magnetic pogo: DOCK_24V via Q_DOCK, isolated CAN pins 3–6, DOCK_SENSE_A/B) and undock behaviour; STM32 pin box rewritten for the CSC (PB3 DOCK_SENSE_B, PB4 Q_STIR, PB5 Q_DOCK, no I2C/dispensing); UART service link and BOOT0/NRST replaced by the CAN bootloader (0x7E0/0x7E8) + USB DFU; dispensing moved to the RV1106 over I2C3/PWM (PCA9685, PCF8574 #2, TB6612 on 6 V, NAU7802 ×2 via TCA9543A replace the HX711, INA219 #2 on the pack); WS2812B + 74AHCT1G125 replaced by a white PWM ring; 6.5 V DSB rail → 6.0 V, pumps/solenoids re-specified 6 V, D_DSB4 dropped, TP5100 at 1.0 A; CAN map: SET_LED, dispensing block and LOADCELLS removed, SET_EXHAUST/GET_EXHAUST/EXHAUST_AUTO and FW_UPDATE added, DU_UNDOCKED fault; block diagram, component list, header table, power (split per unit), induction, routing, ground, BOM ($650-760), checklist and safety updated; sections 8–20 renumbered 9–21 |

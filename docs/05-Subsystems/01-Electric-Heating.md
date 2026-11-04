@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 6.0
+version: 6.1
 status: Draft
 ---
 
@@ -13,8 +13,8 @@ The electric heating system is the primary thermal element of Epicura. Epicura u
 
 This replaced the commercial induction surface on 2026-11-04. Because the heating unit sits on the same CAN bus with the same HEAT_* message set, the change is confined to the heater itself and to the thermal figures in this document: neither the Cooking Surface Controller nor the Unified PCB changes, and neither `epicurad` nor the STM32 firmware gains or loses a function.
 
-> [!note] Rated power is assumed
-> Premium rice-cooker heating units are rated between 1,000 W and 1,400 W. This document uses **1,300 W** until the unit is selected; every wattage derived from it is marked as such.
+> [!note] Reference unit and assumed rated power
+> The heating unit is specified against the **Philips OneChef NX5300/00** (§2.3): its body becomes the Cooking Surface, modified to carry the stirring gantry, and its air-fryer lid is replaced by the Dispensing Unit. Its 2,280 W nameplate covers the base plate **and** the air-fryer lid heater together; the base plate alone is expected at 1,000–1,300 W (Philips' lid-less all-in-one cookers are rated ~1,090 W). This document keeps **1,300 W** as the planning figure (upper bound) until the OEM unit is characterised; every wattage derived from it is marked as such.
 
 ### 1.1 Advantages of a Commercial Heating Unit
 
@@ -62,7 +62,25 @@ Unit selection requirements:
 - Power mode: accepts a 0–100 % power level (time-proportional on the plate) for stages that specify power rather than temperature (sear, boil)
 - Command watchdog: drops to zero power if no HEAT_SET_TEMP / HEAT_SET_POWER refresh arrives for 1 s, so a stalled application processor cannot leave the heater on
 - Pot detection: `pot_detected` in HEAT_STATUS from the centre sensor; no heating while the pot is absent
-- Plate temperature reach: ≥ 230 °C at the centre sensor for sear stages (to be confirmed against the selected unit and the inner pot's coating rating)
+- Plate temperature range: 80–200 °C at the centre sensor, as on the reference unit; sear and tadka stages are written for ≤ 200 °C (the inner pot is non-stick, so no higher target is wanted)
+- CAN port: the OEM unit ships with a control board that exposes the HEAT_* set on CAN (confirmed 2026-11-04); the retail OneChef's touch-panel board is not used. No Epicura controller drives the plate
+
+### 2.3 Reference Unit: Philips OneChef NX5300/00
+
+The OneChef is a 6 L multicooker with a detachable air-fryer lid, sold in India since 2026. Epicura takes the cooker body, heating plate, controller, inner pot and glass lid; the air-fryer lid (its heater and fan) is dropped and the Dispensing Unit docks in its place, and the body is modified to carry the Stirring Unit gantry and the dock pillar. Published figures (retail listings disagree on size and weight; the OEM drawing governs):
+
+| Parameter | Reference unit | Used in Epicura |
+|-----------|----------------|-----------------|
+| Nameplate power | 2,280 W (base plate + air-fryer lid), 230 V | Base plate only: 1,000–1,300 W expected, **1,300 W planning figure** |
+| Heating | "AmbiHeat": resistive plate under the pot with temperature sensors under the pot; stage-wise temperature profiles in firmware | Plate + centre sensor; the profile logic moves to the recipe engine, the unit's controller keeps the PID |
+| Temperature range | 80–200 °C | 60–200 °C requested (keep-warm at 60–70 °C), sear ≤ 200 °C |
+| Inner pot | 6 L, non-stick, min/max marks (fill ≤ 4/5 → ~4.8 L usable), dishwasher safe | Epicura's pot; replaces the 3–4 L stainless pot |
+| Lid | Glass lid (plus the air-fryer lid, dropped) | Glass lid kept for the UNIT_LIFTED / manual-cook case; the DU is the lid in normal use |
+| Body | Matte plastic, 38.5 × 35.7 × 28 cm / 6.2 kg (Croma, with lid) or 33 × 33 × 33 cm / 4.6 kg (Reliance Digital) | Cooking Surface envelope; stirrer and dock added |
+| Sensing / safety | Under-pot temperature sensors, lid detection ("No Lid" in air-fry mode), auto shut-off, cool-touch handles | Centre sensor → `surface_temp`, plate sensor → `element_temp`, `pot_detected`; lid detection not used |
+| Interface | Touch panel, 33 presets; HomeID app for recipes only, no device connectivity | OEM control board with CAN port (ships with the unit) |
+| Pressure cooking | No (glass lid) | No |
+| Price | ₹19,995 MRP (₹18,995 street) | Donor unit for prototypes; OEM pricing for production |
 
 ### 2.2 System Block Diagram
 
@@ -147,14 +165,14 @@ AC Mains (220-240V 50Hz)
 |-----------|-------|
 | Maximum Power | 1,300 W (assumed, unit TBD; range 1,000–1,400 W) |
 | AC Input Voltage | 220-240V, 50Hz single-phase |
-| Plate Diameter | 180-200mm (matched to pot base) |
+| Plate Diameter | Matched to the 6 L inner pot base: pot is 228.6 mm Ø × 150 mm, plate est. ~220 mm (OEM drawing governs) |
 | Efficiency | ~65-75% (electrical to thermal, contact heating) |
-| Pot Compatibility | Any flat-bottomed pot; rice-cooker inner pot (aluminium, non-stick) by default |
+| Pot Compatibility | The unit's own 6 L non-stick inner pot (~4.8 L usable); any flat-bottomed pot of the same base diameter fits |
 | Minimum Pot Diameter | 120mm |
 | Control Interface | CAN bus (500 kbps), temperature mode + power mode |
 | Temperature Control | Unit-internal PID on its centre (pot-bottom) sensor; setpoint resolution 1 °C, reported at 0.1 °C |
 | Internal Safety | Pot detection (centre sensor), over-temperature cut-off, thermal fuse |
-| Temperature Range | 60-250C at the centre sensor (sear range above 230 °C to be confirmed per unit and pot coating) |
+| Temperature Range | 60-200C at the centre sensor (reference unit: 80–200 °C; keep-warm at 60–70 °C to be confirmed with the OEM) |
 
 ## 5. Temperature Control
 
@@ -212,8 +230,8 @@ The centre sensor reads the pot-bottom temperature through the pot base, not the
 
 | Stage | Target Temp (C) | Power Level | Ramp Rate | Hold Time | Typical Use |
 |-------|-----------------|-------------|-----------|-----------|-------------|
-| Preheat | 200 | 100% (1300W) | ~2-4 C/s (plate-limited) | Until target reached (1-2 min) | Initial pot heating |
-| Sear | 200-230 | 90-100% | - | 30-120s | Browning onions, tempering spices (upper limit per pot coating) |
+| Preheat | 180-200 | 100% (1300W) | ~2-4 C/s (plate-limited) | Until target reached (1-2 min) | Initial pot heating |
+| Sear / Tadka | 180-200 | 90-100% | - | 30-120s | Browning onions, tempering spices (200 °C is the unit's ceiling) |
 | Boil | 100 | 80% (1040W) | Maintain | Until rolling boil | Bringing water/gravy to boil |
 | Simmer | 80-95 | 30-40% (390-520W) | Maintain | 10-60 min | Slow cooking dal, curry |
 | Warm | 60-70 | 15-20% (195-260W) | Maintain | Until served | Keep-warm after cooking |
@@ -222,9 +240,9 @@ The centre sensor reads the pot-bottom temperature through the pot base, not the
 
 ```
 Temp (C)
-  230 ┤             ┌─── Sear ───┐
+  200 ┤             ┌─── Sear ───┐
       │            /              \
-  200 ┤     Preheat                \
+  180 ┤     Preheat                \
       │    /                        \
   100 ┤───/                          └── Boil ──┐
       │                                          \
@@ -279,7 +297,7 @@ Safety is handled at two levels:
 | Unit | Command watchdog | No HEAT_SET_TEMP / HEAT_SET_POWER refresh for 1 s (AP stalled or bus down) | Power to 0 | 1s |
 | Unit | Temperature loop | Internal PID holds the setpoint; internal over-temperature limit | Power reduced / cut internally | Unit-internal |
 | System | Safety relay | E-stop, STM32 fault, RV1106 heartbeat loss | Relay opens, cuts AC to unit | <100ms |
-| System | STM32 CAN off-switch | HEAT_STATUS surface_temp >270C, element over-temp, HEAT_FAULT, or RV1106 heartbeat loss | Send HEAT_ON_OFF=0 and broadcast E_STOP on the bus | <100ms |
+| System | STM32 CAN off-switch | HEAT_STATUS surface_temp >230C (unit ceiling 200 °C), element over-temp, HEAT_FAULT, or RV1106 heartbeat loss | Send HEAT_ON_OFF=0 and broadcast E_STOP on the bus | <100ms |
 | System | RV1106 heat thread | No HEAT_STATUS for 500 ms, HEAT_FAULT, pot absent | HEAT_ON_OFF 0, PAUSED | <500ms |
 | System | Dispensing Unit lifted (dock) | DOCK_SENSE_B opens on the CSC; the AP leaves the isolated bus | Unit keep-alive expires → power 0; STM32 safe hold (HEAT_ON_OFF = 0, Q_STIR and Q_DOCK off, STATUS DU_UNDOCKED); RV1106 PAUSED (UNIT_LIFTED), resume only by user tap after re-docking | ≤ 1 s |
 | System | STM32 watchdog | Firmware hang | STM32 resets, relay opens (fail-safe) | 1s |
@@ -358,7 +376,7 @@ Power (W)
 | Safety Relay Timing | Trigger E-stop, measure time to relay open | <100ms from trigger to cutoff |
 | Pot Detection | Remove pot during operation, verify unit stops heating | Unit stops within 500ms |
 | CAN Communication | Verify all message IDs send/receive correctly at 500 kbps | No errors over 10,000 messages |
-| Thermal Cycling | 1,000 cycles: heat to 230 C, cool to ambient | No component failure or drift >5% |
+| Thermal Cycling | 1,000 cycles: heat to 200 C, cool to ambient | No component failure or drift >5% |
 | Insulation Resistance | 500V DC megger test, mains to logic | >7 Mohm |
 
 ### 11.2 Prototype Validation Checklist
@@ -367,7 +385,7 @@ Power (W)
 - [ ] CAN power level commands (HEAT_SET_POWER) correctly modulate plate power; HEAT_SET_TEMP engages the unit's temperature mode
 - [ ] Unit's internal pot detection prevents heating without pot
 - [ ] Unit holds a HEAT_SET_TEMP setpoint within +/- 5 C after settling; RV1106 keep-alive at 2 Hz is never late with the LCD refreshing
-- [ ] Sear stage reaches the recipe target at the centre sensor without exceeding the inner pot's coating rating
+- [ ] Sear / tadka stage reaches 200 °C at the centre sensor within 3 min from 25 °C with the 6 L pot empty
 - [ ] STM32 watchdog resets to safe state on firmware hang
 - [ ] RV1106 heartbeat loss triggers power cutoff within 5s; killing `epicurad` drops unit power within 1s
 - [ ] Lifting the Dispensing Unit mid-cook drops unit power within 1 s (keep-alive loss) and the STM32 reports DU_UNDOCKED; heating does not resume on re-dock without a user tap
@@ -401,3 +419,5 @@ Power (W)
 | 5.0 | 2026-11-04 | Manas Pradhan | IR thermometer dropped: the module runs its own temperature loop on its under-glass sensor; RV1106 sends HEAT_SET_TEMP (0x100, 2 Hz keep-alive) or HEAT_SET_POWER (0x103) and reads surface_temp from HEAT_STATUS; §5 rewritten (no PID in Epicura), §7 feedback sources, safety table and tests updated; isolated CAN port named J_CAN_HEAT (stirring motor on a separate non-isolated port) |
 | 5.1 | 2026-11-04 | Manas Pradhan | Three-unit architecture: J_CAN_HEAT, ISO1050DUB #1 and the B0505S-1WR3 move to the Cooking Surface Controller in the CS base; ISO1050DUB #2 + MCP2518FD stay on the Unified PCB in the Dispensing Unit with the bus side fed from dock 5V_ISO; the isolated bus crosses the dock on pogo pins 3–6 (stub ≤ 30 cm); lifting the DU stops heating ≤ 1 s by keep-alive loss and the STM32 holds safe on DOCK_SENSE_B (DU_UNDOCKED); block diagram, physical-layer table, isolation paragraph, safety-layer table and checklist updated |
 | 6.0 | 2026-11-04 | Manas Pradhan | Induction surface replaced by a commercial electric heating unit of the premium rice-cooker class (resistive plate, spring-loaded centre sensor, own PID and CAN port). Document renamed from Induction Heating. CAN message set, bus topology, CSC, Unified PCB and both firmwares unchanged; `coil_temp` renamed `element_temp`. Rated power assumed 1,300 W (unit TBD): power tables, ramp rates, efficiency, pot compatibility (any flat-bottomed pot, no ferromagnetic requirement), pot detection (centre sensor), EMI/EMF notes, step-response and thermal-cycling criteria updated; §1.2 now records the induction trade-offs |
+| 6.1 | 2026-11-04 | Manas Pradhan | Reference unit fixed: Philips OneChef NX5300/00 (§2.3) — its body becomes the Cooking Surface (modified for the stirrer and dock), its air-fryer lid is replaced by the Dispensing Unit, its 6 L non-stick pot is Epicura's pot. 2,280 W nameplate includes the lid heater; base plate 1,000–1,300 W, planning figure stays 1,300 W. Temperature range 60–200 °C (sear/tadka ≤ 200 °C, STM32 cut-off 230 °C), selection requirement for an OEM CAN control board added with the Case B fallback named |
+| 6.2 | 2026-11-04 | Manas Pradhan | OEM unit confirmed to ship with a CAN control board: Case B fallback removed from §2.1 and §2.3 |

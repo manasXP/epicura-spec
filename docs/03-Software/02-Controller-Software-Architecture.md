@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 3.4
+version: 3.5
 status: Draft
 ---
 
@@ -545,7 +545,7 @@ void heat_tick(heat_ctx_t *h)
 |------|----|-----------|
 | NORMAL | WARNING | Temperature > warning threshold (e.g., setpoint + 20C) |
 | NORMAL | WARNING | Single sensor reading out of range |
-| WARNING | CRITICAL | Temperature > critical threshold (e.g., 260C) |
+| WARNING | CRITICAL | Temperature > critical threshold (surface_temp > 220C; E_STOP at 230C) |
 | WARNING | CRITICAL | Motor stall detected (overcurrent) |
 | WARNING | CRITICAL | RV1106 heartbeat lost for > 5 seconds |
 | CRITICAL | E_STOP | Any CRITICAL condition persists > 3 seconds |
@@ -924,7 +924,7 @@ The RV1106 has one core. The `can` and `heat` threads run at real-time priority 
 | Sensor failure (temp/weight) | Module sensor fault flag in HEAT_STATUS; NAU7802 I2C NACK or no data-ready (dispense thread) | CRITICAL | Fall back to timer-based cooking, alert user |
 | Unit lifted | DOCK_SENSE_A high on the RV1106 (DOCK_SENSE_B open on the STM32) | WARNING | Pause (UNIT_LIFTED); heater stops ≤ 1 s by keep-alive loss, STM32 safe hold; resume by user tap after re-docking |
 | Communication timeout | No ACK within 500 ms x 3 retries | WARNING → CRITICAL | Retry 3x, then pause cooking, alert user |
-| Over-temperature | Temp > 260C (absolute max) | CRITICAL → E_STOP | Immediately cut heater, stop motor, alarm |
+| Over-temperature | surface_temp > 220C (CRITICAL), > 230C (E_STOP; unit ceiling 200C) | CRITICAL → E_STOP | Immediately cut heater, stop motor, alarm |
 | Motor stall | Overcurrent on motor driver | WARNING → CRITICAL | Stop motor, alert user, suggest pot check |
 | CV failure | Camera disconnect, ISP timeout or rknn error | WARNING | Fall back to timer + temp thresholds |
 | Memory pressure | Free RAM < 32 MB | WARNING | Kill `rtsp-stream`, drop LCD preview, log |
@@ -969,3 +969,4 @@ The RV1106 has one core. The `can` and `heat` threads run at real-time priority 
 | 3.0 | 2026-11-04 | Manas Pradhan | Isolated CAN bus now connects the RV1106 (MCP2518FD on SPI0 CS1, SocketCAN), the STM32 (FDCAN1) and the induction surface MCU; UART2 kept as service link only (flashing/debug); temperature PID moved from the STM32 to the RV1106 `heat` thread, AP commands HEAT_SET_POWER directly, STM32 keeps HEAT_ON_OFF=0 / E_STOP / relay authority; §7 rewritten as the CAN ID map (0x001 E_STOP, 0x010 HB_AP, 0x1xx heater, 0x2xx commands, 0x3xx reports); SET_TEMP retired |
 | 3.3 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 moves to the Cooking Surface Controller (CSC) in the base (stir motor, heater off-switch, relay, E-stop, fans, dock power; tasks = CAN Comms, Motor Control, Safety Monitor, Thermal/Fan); RV1106 on the Unified PCB v4.0 in the lift-off Dispensing Unit (battery primary) owns dispensing (new `dispense` thread over I2C3, §5.7), LED ring and buzzer PWM, battery/dock monitoring; isolated CAN crosses the dock (J_DOCK), UART service link removed, STM32 update over CAN (0x7E0/0x7E8); §7.2: 0x220, 0x230–0x239 and 0x311 removed, 0x260–0x262 exhaust and 0x7E0/0x7E8 added, TELEMETRY flags and STATUS codes updated (0x17 DU_UNDOCKED); DOCK_SENSE_B safe hold; power-loss and unit-lifted fallbacks |
 | 3.4 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, own PID, CAN port); CAN contract unchanged — §7.2 block `0x1xx` renamed heating unit, HEAT_STATUS field `coil_temp` → `element_temp` (same byte), surface_temp is the unit's centre (pot-bottom) sensor; heater wording in §1, §5.3.1, §7, §8 updated; `PAUSE_INDUCTION_ERROR` → `PAUSE_HEATER_ERROR` |
+| 3.5 | 2026-11-04 | Manas Pradhan | Heating unit referenced to the Philips OneChef NX5300/00 (80–200 °C centre-sensor range): absolute over-temperature limits in §5 state table and §8 fault table re-based 260 °C → 220 °C CRITICAL, 230 °C E_STOP (see [[05-MCU-Functional-Specification]] v1.3) |

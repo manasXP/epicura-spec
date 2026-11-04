@@ -2,7 +2,7 @@
 tags: [epicura, mcu, stm32, functional-spec, firmware]
 created: 2026-02-16
 modified: 2026-11-04
-version: 1.2
+version: 1.3
 aliases: [STM32 Spec, MCU Spec]
 ---
 
@@ -14,8 +14,9 @@ aliases: [STM32 Spec, MCU Spec]
 > **Package:** LQFP-64
 > **Board:** Cooking Surface Controller (CSC) v1.0, in the Cooking Surface base beside the LRS-75-24
 > **Related:** [[04-MPU-Functional-Specification]], [[02-Controller-Software-Architecture]], [[01-Unified-PCB-Design]]
-> **Revision:** 2026-11-04 (v1.2) — Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, own PID, CAN port); CAN contract unchanged: HEAT_STATUS `coil_temp` → `element_temp`, fault 0x02 renamed OVER_TEMP_ELEMENT, power profiles re-based on the assumed 1,300 W unit
-> **Previous revision:** 2026-11-04 (v1.1) — Three-unit architecture: the STM32 moves off the Unified PCB onto the Cooking Surface Controller (CSC) in the Cooking Surface base. Dispensing, sensor polling, load cells, LED ring, buzzer, battery monitoring, I2C peripherals and the UART service link leave the MCU (now on the RV1106 in the Dispensing Unit, see [[04-MPU-Functional-Specification]]); four FreeRTOS tasks remain. Added: exhaust-fan control (0x260–0x262, FAN_STALL), dock interface (DOCK_SENSE_B on PB3 → safe hold, Q_DOCK on PB5), Q_STIR on PB4, CAN bootloader (0x7E0/0x7E8), fault 0x17 DU_UNDOCKED
+> **Revision:** 2026-11-04 (v1.3) — Heating unit referenced to the Philips OneChef NX5300/00 (80–200 °C range, 6 L non-stick pot): Sear profile 180–200 °C; absolute limits re-based to surface_temp > 220 °C CRITICAL, > 230 °C E_STOP (were 260/270); element_temp > 250 °C WARNING unchanged
+> **Previous revision:** 2026-11-04 (v1.2) — Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, own PID, CAN port); CAN contract unchanged: HEAT_STATUS `coil_temp` → `element_temp`, fault 0x02 renamed OVER_TEMP_ELEMENT, power profiles re-based on the assumed 1,300 W unit
+> **Earlier revision:** 2026-11-04 (v1.1) — Three-unit architecture: the STM32 moves off the Unified PCB onto the Cooking Surface Controller (CSC) in the Cooking Surface base. Dispensing, sensor polling, load cells, LED ring, buzzer, battery monitoring, I2C peripherals and the UART service link leave the MCU (now on the RV1106 in the Dispensing Unit, see [[04-MPU-Functional-Specification]]); four FreeRTOS tasks remain. Added: exhaust-fan control (0x260–0x262, FAN_STALL), dock interface (DOCK_SENSE_B on PB3 → safe hold, Q_DOCK on PB5), Q_STIR on PB4, CAN bootloader (0x7E0/0x7E8), fault 0x17 DU_UNDOCKED
 > **Earlier revision:** 2026-11-04 — MCU changed from STM32G474RE to STM32G0B1RE (no control loop on the MCU, so no FPU or 170 MHz needed; two FDCAN controllers kept; same ST HAL, FreeRTOS, system bootloader and X-CUBE-CLASSB); I2C1_SCL PA15 → PB6, VBUS/battery ADC PC0/PC1 → PA0/PA4, buzzer PC7/TIM8 → PA8/TIM1_CH1, FDCAN AF9 → AF3; two CAN ports (FDCAN1 isolated heater/host bus, FDCAN2 regular stir-motor bus); IR thermometer removed (module reports its own temperature); stirring motor is a CAN servo; 2S battery monitoring; host link on the isolated CAN bus, MCU keeps heater off-switch, relay and E-stop authority
 
 ---
@@ -51,7 +52,7 @@ The STM32G0B1RE is the real-time controller and safety guardian for Epicura on t
 |----|-------------|----------|---------------------|
 | FR-MCU-001 | Mirror the unit's `surface_temp` and `pot_detected` from HEAT_STATUS into TELEMETRY flags for the RV1106 (the RV1106 also reads HEAT_STATUS directly) | Should | Within one TELEMETRY interval (50 ms) |
 | FR-MCU-002 | Never send HEAT_SET_TEMP or HEAT_SET_POWER; the only heater command the MCU sends is HEAT_ON_OFF = 0 (0x101) | Must | Verified by bus capture |
-| FR-MCU-003 | Absolute thermal limits independent of the AP: HEAT_STATUS surface_temp > 270 °C, element over-temp or HEAT_FAULT → HEAT_ON_OFF = 0, E_STOP (0x001) broadcast, relay open | Must | Checked every 100 ms |
+| FR-MCU-003 | Absolute thermal limits independent of the AP: HEAT_STATUS surface_temp > 230 °C, element over-temp or HEAT_FAULT → HEAT_ON_OFF = 0, E_STOP (0x001) broadcast, relay open | Must | Checked every 100 ms |
 | FR-MCU-004 | Pot-absent in HEAT_STATUS → flag in TELEMETRY; RV1106 pauses | Should | Flag within one status interval |
 | FR-MCU-005 | No temperature sensor on the MCU (IR thermometer removed) | — | — |
 | FR-MCU-006 | Listen to HEAT_STATUS (0x180) on the shared bus for surface temperature, element temperature and faults | Must | No request needed; the unit broadcasts at 10 Hz |
@@ -61,7 +62,7 @@ The STM32G0B1RE is the real-time controller and safety guardian for Epicura on t
 
 | Profile | Power (W) | Temp Range (°C) | Duty Cycle | CAN Command Value |
 |---------|-----------|-----------------|------------|-------------------|
-| Sear | 1,300 (assumed, unit TBD) | 200–230 | 100% | 0xFF |
+| Sear | 1,300 (assumed, unit TBD) | 180–200 | 100% | 0xFF |
 | Boil | 1,040 | 100 | 80% | 0xCC |
 | Simmer | 390–520 | 80–95 | 30–40% | 0x4D–0x66 |
 | Warm | 150 | 60–70 | 10–15% | 0x1A |
@@ -111,7 +112,7 @@ Retired in full (FR-MCU-030–034, §2.5.1, §2.5.2): dispensing is local to the
 |----|-------------|----------|---------------------|
 | FR-MCU-050 | E-stop button (PB2, EXTI interrupt) → immediate shutdown | Must | <1 ms from button press to relay open |
 | FR-MCU-051 | Safety relay control (PB0 → MOSFET → relay) | Must | Cuts AC mains to the heating unit |
-| FR-MCU-052 | Thermal cutoff: HEAT_STATUS surface_temp >270 °C, CAN element over-temp or HEAT_FAULT → E_STOP | Must | Checked every 100 ms (safety monitor cycle) |
+| FR-MCU-052 | Thermal cutoff: HEAT_STATUS surface_temp >230 °C, CAN element over-temp or HEAT_FAULT → E_STOP | Must | Checked every 100 ms (safety monitor cycle) |
 | FR-MCU-053 | Hardware watchdog (IWDG, 5 s timeout) | Must | Kick in main loop; timeout → full reset |
 | FR-MCU-054 | Pot detection via CAN (unit-reported `pot_detected`, spring-loaded centre sensor) | Must | No heat command if pot absent |
 | FR-MCU-055 | Boot-safe state: all actuator outputs OFF until initialized — Q_STIR off, Q_DOCK off, relay open, fans off | Must | Pull-downs/pull-ups on MOSFET gates; verified with the MCU held in reset |
@@ -266,8 +267,8 @@ CRITICAL ──[condition cleared within timeout]──→ WARNING
 | From | To | Trigger |
 |------|----|---------|
 | NORMAL | WARNING | HEAT_STATUS element temp > 250 °C, stir-motor temperature > 80 °C, fan stall (FAN_STALL) |
-| WARNING | CRITICAL | HEAT_STATUS surface_temp > 260 °C, or CAN fault from the heating unit |
-| CRITICAL | E_STOP | surface_temp > 270 °C, CAN element over-temp, HEAT_FAULT, E-stop button, RV1106 heartbeat timeout (5 s) |
+| WARNING | CRITICAL | HEAT_STATUS surface_temp > 220 °C, or CAN fault from the heating unit |
+| CRITICAL | E_STOP | surface_temp > 230 °C, CAN element over-temp, HEAT_FAULT, E-stop button, RV1106 heartbeat timeout (5 s) |
 | E_STOP | NORMAL | Manual hardware reset (E-stop button released + PB2 debounce) |
 
 **Safe hold (DU undocked):** DOCK_SENSE_B going high is not a safety-state transition and not an E_STOP. The safety monitor applies the safe-hold outputs (HEAT_ON_OFF = 0, stir disable + Q_STIR off, Q_DOCK off, relay stays closed), reports error_code 0x17 DU_UNDOCKED in STATUS and refuses commands until DOCK_SENSE_B is low again and HB_AP has returned, then resumes NORMAL and clears the code. Battery-low is no longer a WARNING trigger: the pack and its monitoring are in the Dispensing Unit.
@@ -370,7 +371,7 @@ Removed — the CSC has no I2C devices (I2C1 pads unpopulated, §3.2).
 | Safety relay | PB0 → N-MOSFET → relay coil (NC relay, fail-safe open) | <5 ms |
 | Hardware watchdog (IWDG) | 5 s timeout, kicked in safety monitor task | 5 s (worst case) |
 | Class B self-tests | X-CUBE-CLASSB: CPU/RAM/flash/clock/program-flow checks at boot; RAM and flash CRC re-checked periodically | Fault → safe state at next safety tick |
-| Thermal cutoff (surface) | HEAT_STATUS surface_temp > 270 °C → E_STOP | ≤200 ms (status interval + poll) |
+| Thermal cutoff (surface) | HEAT_STATUS surface_temp > 230 °C → E_STOP | ≤200 ms (status interval + poll) |
 | Thermal cutoff (CAN element) | CAN element over-temp → E_STOP | ≤500 ms (CAN status interval) |
 | Stir motor | Motor disable on FDCAN2 + Q_STIR 24 V switch off on E-stop / heartbeat loss / FDCAN2 fault / DU undock | ≤10 ms |
 | Dock sense | DOCK_SENSE_B (PB3) high → safe hold: HEAT_ON_OFF = 0, stir disable, Q_STIR off, Q_DOCK off (dock pads de-energised), STATUS DU_UNDOCKED | ≤100 ms (safety-monitor cycle); Q_DOCK ≤ 1 ms |
@@ -382,7 +383,7 @@ Removed — the CSC has no I2C devices (I2C1 pads unpopulated, §3.2).
 
 | Fault Code | Name | Severity | Action |
 |------------|------|----------|--------|
-| 0x01 | OVER_TEMP_SURFACE | Critical | E_STOP, cut relay, log (HEAT_STATUS surface_temp > 270 °C) |
+| 0x01 | OVER_TEMP_SURFACE | Critical | E_STOP, cut relay, log (HEAT_STATUS surface_temp > 230 °C) |
 | 0x02 | OVER_TEMP_ELEMENT | Critical | E_STOP, cut relay, log |
 | 0x03 | E_STOP_PRESSED | Critical | E_STOP, cut relay; the RV1106 sounds the buzzer (on the DU) from STATUS |
 | 0x04 | CAN_FAULT | Critical | Open relay (heater unreachable on the bus), alert RV1106 when the bus returns |
@@ -478,3 +479,4 @@ Removed codes (now RV1106-detected, see [[04-MPU-Functional-Specification]] §7.
 | 1.0 | 2026-02-16 | Manas Pradhan | Initial document; subsequent single-board revisions recorded in the header (STM32G474RE → STM32G0B1RE, CAN host link, CAN servo stir motor, 2S battery monitoring) |
 | 1.1 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 moved to the Cooking Surface Controller (CSC) in the CS base; four FreeRTOS tasks (Motor Control, Safety Monitor, CAN Comms, Thermal/Fan); dispensing (§2.5), sensor polling, load cells, LED ring (§2.8), buzzer, battery/POWER_FAIL, I2C peripherals and the UART service link retired (moved to the RV1106); added dock interface (DOCK_SENSE_B PB3 safe hold, Q_DOCK PB5, §2.9/§3.4), exhaust-fan FRs (0x260–0x262, FAN_STALL, §2.10), Q_STIR on PB4, CAN bootloader 0x7E0/0x7E8 (§5.1), fault 0x17 DU_UNDOCKED; CAN filters, TELEMETRY flags, pin table, power and dependencies updated |
 | 1.2 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, own PID, CAN port); CAN contract unchanged — HEAT_STATUS `coil_temp` → `element_temp` (FR-MCU-006/-023, §5.2 table), fault 0x02 OVER_TEMP_COIL → OVER_TEMP_ELEMENT (same code), safety-state table coil temp → element temp; §2.2 power profiles re-based on the assumed 1,300 W unit (Sear 200–230 °C, Boil 80 %, Simmer 30–40 %); FR-MCU-054 pot detection via the unit's centre sensor; heater wording in §1, §2.1, §3, §4, §5.2, §7 updated |
+| 1.3 | 2026-11-04 | Manas Pradhan | Heating unit referenced to the Philips OneChef NX5300/00 (centre-sensor range 80–200 °C, 6 L non-stick inner pot, see [[01-Electric-Heating]] §2.3): §2.2 Sear profile 200–230 → 180–200 °C; absolute limits re-based — FR-MCU-003/-052, §3 safety-state table, §5 fault 0x01: surface_temp > 260 °C CRITICAL → > 220 °C, > 270 °C E_STOP → > 230 °C (the unit's ceiling is 200 °C); element_temp > 250 °C WARNING unchanged |

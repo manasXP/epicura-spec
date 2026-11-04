@@ -101,7 +101,7 @@ The STM32 on the Cooking Surface Controller modulates fan speed based on the cur
 | **Warm (60-70C)** | 20% | Low | Minimal steam |
 | **Simmer (80-95C)** | 40% | Medium | Moderate steam |
 | **Boil (100C)** | 70% | High | Heavy steam |
-| **Sear / Tadka (200-250C)** | 100% | Max | Oil smoke + volatile fumes |
+| **Sear / Tadka (180-200C)** | 100% | Max | Oil smoke + volatile fumes |
 | **Post-cook cooldown** | 50% | Medium | Clear residual fumes, 2-min timer |
 
 ### 3.3 STM32 Control Interface

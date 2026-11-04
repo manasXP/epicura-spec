@@ -173,7 +173,7 @@ Published when a cooking error or abort occurs.
   "timestamp": "2026-02-14T12:40:00Z",
   "session_id": "local-session-uuid",
   "error_code": "OVER_TEMPERATURE",
-  "message": "Temperature exceeded 260°C. E-stop activated.",
+  "message": "Temperature exceeded 230°C. E-stop activated.",
   "severity": "critical",
   "stage_at_error": "Saute Onions",
   "temperature_at_error": 262.3

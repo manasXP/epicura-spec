@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.6
+version: 1.7
 status: Draft
 ---
 
@@ -12,7 +12,7 @@ status: Draft
 | Sensor | Type | Interface | Range | Accuracy | Sampling Rate | Connected To |
 |--------|------|-----------|-------|----------|---------------|--------------|
 | Camera (IMX415-98) | CMOS image sensor, 8 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
-| Cooking surface temperature | Heating-unit-internal spring-loaded centre sensor (NTC, pot-bottom) reported in HEAT_STATUS | Isolated CAN (0x180) | Unit-reported, typ. 0-300C | Unit accuracy (typ. +/-3-5C) | 10 Hz | Heating unit MCU → RV1106 + STM32 |
+| Cooking surface temperature | Heating-unit-internal spring-loaded centre sensor (NTC, pot-bottom) reported in HEAT_STATUS | Isolated CAN (0x180) | 60-200C operating (unit ceiling 200C; sensor range typ. 0-300C) | Unit accuracy (typ. +/-3-5C) | 10 Hz | Heating unit MCU → RV1106 + STM32 |
 | Battery pack voltage + current | INA219 #2 (0x44), 10 mΩ shunt in the BAT+ path | I2C3 | 0-26 V, ±3.2 A | +/-1% | 1 Hz | RV1106 I2C3 (Unified PCB v4.0, Dispensing Unit) → state of charge |
 | SLD load cells (×2) | Strain-gauge 2 kg, one per reservoir | I2C (NAU7802 24-bit ADC, 0x2A, behind TCA9543A 0x71) | 0-2 kg | +/-5% dispense | 10 Hz | RV1106 I2C3 (`dispense` thread) |
 | Pot Detection (backup) | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 PB1 on the CSC (J_SAFE pin 2); primary pot detection is the heating unit's HEAT_STATUS (`pot_detected`, centre sensor) |
@@ -113,7 +113,7 @@ Epicura has no temperature sensor of its own. The IR thermometer of earlier revi
 | Source | HEAT_STATUS (CAN 0x180), field `surface_temp_dC` (int16, 0.1 °C), 10 Hz |
 | What it measures | Pot-bottom temperature at the centre sensor, not the food surface |
 | Setpoint path | RV1106 sends HEAT_SET_TEMP (0x100) or HEAT_SET_POWER (0x103); the unit regulates |
-| Consumers | RV1106 engine thread (stage transitions, UI graph), STM32 safety monitor (over-temperature cut-off at 270 °C) |
+| Consumers | RV1106 engine thread (stage transitions, UI graph), STM32 safety monitor (CRITICAL at 220 °C, E_STOP at 230 °C; unit ceiling 200 °C) |
 | Accuracy | Unit-specified; verified against a thermocouple on the pot bottom during bring-up (±5 °C at 100 °C target) |
 | Food-state detection | Camera + CV pipeline (browning, boiling, thickening) — see §5 |
 
@@ -270,7 +270,7 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 - [ ] Compare unit surface_temp against a thermocouple clamped to the pot bottom at 60C, 100C, 180C (+/-5C)
 - [ ] HEAT_SET_TEMP 100C with 1L water: unit settles within +/-5C in < 180 s (plate-limited ramp), overshoot < 10C
 - [ ] Remove HEAT_SET_TEMP keep-alive: unit drops to zero power within 1 s
-- [ ] STM32 cut-off: inject surface_temp > 270C on a bench CAN node, verify HEAT_ON_OFF=0, E_STOP and relay open within 100 ms
+- [ ] STM32 cut-off: inject surface_temp > 220C (CRITICAL) then > 230C on a bench CAN node, verify HEAT_ON_OFF=0, E_STOP and relay open within 100 ms
 
 ### 7.3 Pot Detection Test Procedures
 
@@ -312,3 +312,4 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 | 1.4 | 2026-11-04 | Manas Pradhan | IR thermometer (MLX90614) dropped: cooking temperature is the induction module's own under-glass sensor reported in HEAT_STATUS; §3 rewritten, fusion/health/fallback tables and tests updated; battery pack voltage added to the sensor table |
 | 1.5 | 2026-11-04 | Manas Pradhan | Three-unit architecture: battery voltage/current via INA219 #2 and SLD load cells via NAU7802 (TCA9543A mux) on RV1106 I2C3; pot reed on the CSC (STM32 PB1); dock sense / dock power rows added; white PWM LED ring driven by the RV1106 (WS2812B, SET_LED and STM32 removed); camera on the Dispensing Unit underside looking straight down; sampling, health and test checklists updated |
 | 1.6 | 2026-11-04 | Manas Pradhan | Heater is now a commercial electric heating unit (rice-cooker class) instead of the induction surface: cooking temperature comes from its spring-loaded centre (pot-bottom) sensor, pot detection is the pot pressing that sensor (`pot_detected`; no ferromagnetic pot, reed backup unchanged), `coil` → `element` temperature; §3, §4, fusion/health/fallback tables and tests updated (settle < 180 s) |
+| 1.7 | 2026-11-04 | Manas Pradhan | Temperature limits re-based to the Philips OneChef NX5300/00 reference unit (200 °C ceiling): STM32 surface_temp CRITICAL 220 °C / E_STOP 230 °C (was 270 °C) in §3 and the cut-off test; operating range 60-200 °C |

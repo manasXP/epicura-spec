@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.7
+version: 1.8
 status: Draft
 ---
 
@@ -94,8 +94,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.2.2 Tasks
 
 **Week 5: Heating Unit Setup**
-- [ ] Acquire commercial electric heating unit (rice-cooker class, ~1,300 W assumed) with CAN bus port
-- [ ] Review the unit's CAN protocol documentation
+- [ ] Buy a Philips OneChef NX5300/00 donor cooker (or equivalent, ₹19,995 ≈ $230) and strip the air-fryer lid; keep the body, heating plate (~1,300 W assumed), controller, 6 L non-stick inner pot and glass lid
+- [ ] Obtain the OEM unit with its CAN control board (ships with the unit, confirmed 2026-11-04) and review its CAN protocol documentation; the retail OneChef board has no external interface and is not used
 - [ ] Connect the unit's CAN port to J_CAN_HEAT on the Cooking Surface Controller (the RV1106 node reaches the same bus over the dock contacts; both nodes already up)
 - [ ] Verify CAN communication from the RV1106: send HEAT_QUERY, receive HEAT_STATUS on `can0`; confirm the STM32 sees the same frames
 - [ ] Wire safety relay on AC mains to module (STM32 GPIO control)
@@ -109,7 +109,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 7: Temperature Control & Sensors**
 - [ ] Verify surface_temp and element temperature reporting in HEAT_STATUS from the heating unit (10 Hz)
-- [ ] Calibrate the unit's surface_temp against a thermocouple on the pot bottom (0-250°C range)
+- [ ] Calibrate the unit's surface_temp against a thermocouple on the pot bottom (ambient to the unit's 200°C ceiling)
 - [ ] Implement the `heat` thread on the RV1106 (SCHED_FIFO): HEAT_SET_TEMP / HEAT_SET_POWER keep-alive at 2 Hz, HEAT_STATUS parsing, 500 ms watchdog
 - [ ] Characterise the unit's own loop: step response (ambient → 100°C, 100°C → simmer at 85°C); derive pot-bottom `temp_target` values for the recipe schema
 - [ ] Validate accuracy: ±10°C at target (prototype), ±5°C goal
@@ -140,7 +140,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Heater control | RV1106 can set power 0-100% in 10% steps over CAN; STM32 off-switch verified |
 | Temperature sensing | Unit surface_temp (HEAT_STATUS) within ±5°C of a pot-bottom thermocouple |
 | Temperature mode (unit PID, RV1106 setpoint) | Reach 100°C in < 10 min (1L water, 1,300 W plate), hold ±10°C |
-| Safety cutoff | Unit's own element over-temp cut-off and thermal fuse verified; STM32 E_STOP at element temp > 250°C |
+| Safety cutoff | Unit's own element over-temp cut-off and thermal fuse verified; STM32 CRITICAL at surface_temp > 220°C, E_STOP at > 230°C (element temp > 250°C → WARNING) |
 
 ---
 
@@ -188,7 +188,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 │            │                             │
 │     ┌──────────────┐   ┌─────────────┐   │
 │     │     Pot      │   │ Heating unit│   │
-│     │  (3-4L SS)   │   │ centre temp │   │
+│     │(6L non-stick)│   │ centre temp │   │
 │     └──────┬───────┘   └─────────────┘   │
 │            │                             │
 │  ┌─────┐┌─────┐┌─────┐┌─────┐            │
@@ -446,7 +446,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Evaluate results: taste, texture, consistency, timing
 - [ ] Identify failure modes and edge cases
 - [ ] Tune PID, CV thresholds, and dispensing calibration
-- [ ] Test with different pot sizes (2L, 3L, 4L)
+- [ ] Test with different fill levels in the 6 L pot (1L, 2L, 4L; ~4.8 L usable max)
 
 **Week 23: Safety Validation**
 - [ ] Test all interlocks:
@@ -485,7 +485,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Category | Items | Estimated Cost |
 |----------|-------|----------------|
 | Compute | Luckfox Pico Zero (RV1106G3) + STM32 Nucleo dev board | $65-80 |
-| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + electric heating unit | $205-305 |
+| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + OneChef NX5300/00 donor cooker (heating unit, controller, 6 L pot, lid, body) | $390-490 |
 | Sensors | IMX415-98 camera + reed switch + white LED ring + NAU7802 ×2 + INA219 ×2 (no thermometer) | $65-80 |
 | Mechanical | 3D printing (PETG filament) + stainless steel shaft + fasteners + brackets | $100-200 |
 | Display | 4" ST7796S SPI IPS touchscreen (FT6336 I2C touch) | $15-20 |
@@ -493,7 +493,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Tools | Soldering station + multimeter + oscilloscope + 3D printer access | $100-200 |
 | Consumables | Ingredients (20+ cook sessions) + thermal paper + misc | $50-100 |
 | Miscellaneous | PCBs (JLCPCB) + shipping + contingency | $200-400 |
-| **Total** | | **$835-1,465** |
+| **Total** | | **$1,020-1,650** |
 
 ---
 
@@ -503,7 +503,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
-| Heater control difficulty (CAN protocol of the chosen unit) | Medium | High | Start with relay on/off (HEAT_ON_OFF), then the unit's temperature and power modes; worst case: use a unit with manual power setting plus relay on/off |
+| Heater control difficulty (CAN protocol of the chosen unit) | Medium | High | Start with relay on/off (HEAT_ON_OFF), then the unit's temperature and power modes; worst case: use a unit with manual power setting plus relay on/off. The OEM unit ships with a CAN control board (confirmed 2026-11-04); the retail OneChef board is not used |
 | CV accuracy insufficient | Medium | Medium | Rule-based fallback (color + temperature thresholds); collect more training data; use ensemble of simple classifiers |
 | Mechanical assembly issues | Low | Medium | Iterate 3D prints rapidly; consult maker community; use off-the-shelf brackets where possible |
 | RV1106 resource limits (256 MB RAM, single Cortex-A7) | Medium | Medium | Keep all image work in the ISP/NPU/RGA/VENC hardware blocks; verify the ~95 MB peak memory budget on hardware; phone streaming on demand only; memory-pressure fallback kills `rtsp-stream` |
@@ -551,7 +551,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Category | Estimated Cost |
 |----------|---------------|
-| Electronic Components (BOM) | $433 |
+| Electronic Components (BOM) | $618 |
 | Tools & Equipment | $100-200 |
 | 3D Printing & Mechanical | $100-200 |
 | Consumables (ingredients, filament) | $50-100 |
@@ -607,3 +607,4 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | 1.4 | 2026-11-04 | Manas Pradhan | Phases 1–2 rewritten for the isolated 3-node CAN bus (RV1106 MCP2518FD node, STM32 FDCAN1, induction surface) and the RV1106 heat thread PID; UART2 is a service link only |
 | 1.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 on the Cooking Surface Controller (no UART service link, CAN bootloader), dispensers driven by the RV1106 dispense thread on I2C3 (NAU7802 load cells, 6.0 V rail), white PWM LED ring on the Dispensing Unit underside, per-unit wiring check with the dock |
 | 1.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, ~1,300 W assumed, own PID, CAN port; same CAN contract): Phase 2 renamed Heater Integration, week 5/7 tasks, control diagram (plate, centre NTC, element temp), deliverables (boil < 10 min, element over-temp cut-off), budget row ($205-305), risk and production rows reworded |
+| 1.8 | 2026-11-04 | Manas Pradhan | Heating unit referenced to the Philips OneChef NX5300/00: Phase 2 starts by buying the donor cooker and stripping the air-fryer lid, OEM CAN control board (Case A / Case B) task and risk note; pot is the donor's 6 L non-stick inner pot (diagram, fill-level tests); calibration range and cut-offs re-based (surface_temp 220 °C CRITICAL / 230 °C E_STOP, unit ceiling 200 °C); budget: Actuation $205-305 → $390-490 (donor $230 replaces heating unit $45), total $835-1,465 → $1,020-1,650, BOM $433 → $618 |

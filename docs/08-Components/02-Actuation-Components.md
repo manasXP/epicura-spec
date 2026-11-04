@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 10.2
+version: 10.3
 status: Draft
 ---
 
@@ -50,7 +50,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
-| Electric Heating Unit (rice-cooker class, 1,300 W assumed, CAN) | Commercial unit, TBD | 1 | $45.00 | $45.00 | Supplier TBD | Self-contained unit with heating plate, centre sensor, own PID and CAN bus port; replaces the induction surface (2026-11-04); no teardown needed |
+| Donor cooker: Philips OneChef NX5300/00 or equivalent (heating unit, controller, 6 L non-stick pot, glass lid, base body) | NX5300/00 | 1 | $230.00 | $230.00 | Retail (₹19,995 MRP) | Heating plate (1,300 W assumed), centre sensor, own PID; air-fryer lid dropped; the OEM unit ships with a control board exposing HEAT_* on CAN (confirmed 2026-11-04; the retail board has no CAN and is not used); supplies Epicura's pot |
 | 24V CAN Servo Motor (stirring) | CyberGear/RobStride-class integrated BLDC servo, ≥ 3 N·m continuous, CAN 1 Mbps (model TBD) | 1 | $45.00 | $45.00 | AliExpress / Robstride | Main stirring arm in the Stirring Unit (SU); encoder feedback, velocity + position modes; on the CSC's regular CAN port (STM32 FDCAN2) with switched 24 V, reached through J_SU in the right pillar |
 | SN65HVD230 CAN Transceiver (stir-motor port) | SN65HVD230DR (SOIC-8) | 1 | $0.90 | $0.90 | TI / LCSC | Non-isolated 3.3 V transceiver on STM32 FDCAN2 → J_CAN_STIR; on the CSC |
 | Stir-Motor Bus Passives + 24 V Switch | 120Ω, PESD1CAN, AO4407A + 2N7002, 5 A polyfuse | 1 lot | $0.30 | $0.30 | LCSC | Termination/ESD at J_CAN_STIR; Q_STIR high-side switch (STM32 PB4) → J_STIR_PWR, costed with CSC passives |
@@ -91,7 +91,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 
 | Item | Cost |
 |------|------|
-| Electric Heating Unit (rice-cooker class, CAN) | $45.00 |
+| Donor cooker: Philips OneChef NX5300/00 or equivalent (heating unit, controller, 6 L pot, lid, body) | $230.00 |
 | 24V CAN Servo Motor (main arm) | $45.00 |
 | SN65HVD230 + stir-bus passives (CSC) | $1.20 |
 | Dispenser Servos — DSB (4x) | $40.00 |
@@ -112,7 +112,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 | Connectors + Wiring (XT60, J_SU pair, harness, servo cables) | $20.00 |
 | Exhaust Fan + Filtration | $22.50 |
 | Piezo Buzzer + MOSFET | $0.85 |
-| **Category Subtotal** | **$282.18** |
+| **Category Subtotal** | **$467.18** |
 
 ---
 
@@ -120,6 +120,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 
 ### 5.1 Electric Heating Unit Strategy
 - **Both Prototype and Production:** Commercial electric heating unit of the premium rice-cooker class with CAN bus port (replaces the induction surface, 2026-11-04; same CAN contract, no controller change)
+  - Reference unit: Philips OneChef NX5300/00 (see [[01-Electric-Heating]] §2.3) — prototypes use the retail cooker as a donor (body, plate, controller, 6 L non-stick pot, glass lid; air-fryer lid dropped); temperature range 80–200 °C, so sear/tadka stages stop at 200 °C. The OEM unit ships with a control board exposing HEAT_* on CAN (confirmed 2026-11-04); the retail touch-panel board is not used
   - Self-contained unit: resistive heating plate, spring-loaded centre temperature sensor, relay/triac mains power stage, safety circuits; any flat-bottomed pot
   - RV1106 sends temperature setpoints (HEAT_SET_TEMP) or power levels (HEAT_SET_POWER) via CAN 2.0B at 500 kbps on the shared isolated bus; the unit runs its own temperature loop on its centre sensor (no IR thermometer in Epicura); the STM32 can force the unit off (HEAT_ON_OFF=0)
   - No custom mains power electronics needed
@@ -151,7 +152,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 
 | Item | Prototype | Production (1000 qty) | Savings |
 |------|-----------|----------------------|---------|
-| Electric heating unit | $45 | $30 (bulk) | 33% |
+| Donor cooker (heating unit + 6 L pot) | $230 | $60 (OEM heating unit + pot, bulk) | 74% |
 | 24V CAN servo motor | $45 | $30 (bulk) | 33% |
 | FID + CID servo carousels (4 servos, PCA9685, rings, canisters) | $86.50 | $45 (bulk, molded rings/canisters) | 48% |
 | Peristaltic pumps x2 (SLD, 6 V) | $20 | $10 (bulk) | 50% |
@@ -192,3 +193,4 @@ This document details the actuation subsystem components for the Epicura kitchen
 | 10.0 | 2026-11-04 | Manas Pradhan | 24V BLDC (PWM/EN/DIR, $25) replaced by a 24V CAN servo motor ($45) on the Unified PCB's regular CAN port; SN65HVD230 transceiver + stir-bus passives added ($1.20); induction note updated for module-internal temperature control; subtotal $274.98 → $296.18 |
 | 10.1 | 2026-11-04 | Manas Pradhan | Three-unit split: stir-motor port (SN65HVD230, Q_STIR), ISO1050DUB #1 + B0505S, relay and fan drivers now on the CSC in the CS; dispensers, pumps, solenoids and load cells driven by the RV1106 on the Unified PCB v4.0 (6.0 V rail); pumps/solenoids re-specified 6 V (same price); 2× HX711 (−$6.00) replaced by 2× NAU7802 (+$4.00) + TCA9543A (+$1.00); J_SU Micro-Fit pair added (+$2.00); diagram redrawn; subtotal $296.18 → $297.18 |
 | 10.2 | 2026-11-04 | Manas Pradhan | Heater changed from the Microwave Induction Surface ($60, bulk $40) to a commercial Electric Heating Unit of the rice-cooker class with own PID and CAN port ($45, bulk $30; 1,300 W assumed, unit TBD); same CAN contract, no controller change; §5.1 strategy rewritten, diagram and notes reworded; subtotal $297.18 → $282.18 |
+| 10.3 | 2026-11-04 | Manas Pradhan | Heating unit referenced to the Philips OneChef NX5300/00: heater line becomes the donor cooker (heating unit, controller, 6 L non-stick pot, glass lid, base body) $45 → $230; production $30 → $60 (OEM heating unit + pot, bulk); Case A / Case B CAN note in §5.1; subtotal $282.18 → $467.18 |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 5.7
+version: 5.8
 status: Draft
 ---
 
@@ -11,23 +11,23 @@ status: Draft
 
 ### 1.1 Electric Heating Unit (Rice-Cooker Class)
 
-The primary cooking element is a commercial electric heating unit of the premium rice-cooker class — a self-contained unit with a resistive heating plate, a spring-loaded centre temperature sensor pressed by the pot, its own relay/triac mains power stage and its own controller. The unit handles all high-voltage power electronics internally and exposes a CAN bus interface for external control. This eliminates the need for any custom mains electronics. It replaced the induction surface on 2026-11-04 as a drop-in CAN node (same HEAT_* message set); see [[../05-Subsystems/01-Electric-Heating|Electric Heating]].
+The primary cooking element is a commercial electric heating unit of the premium rice-cooker class — a self-contained unit with a resistive heating plate, a spring-loaded centre temperature sensor pressed by the pot, its own relay/triac mains power stage and its own controller. The unit handles all high-voltage power electronics internally and exposes a CAN bus interface for external control. This eliminates the need for any custom mains electronics. It replaced the induction surface on 2026-11-04 as a drop-in CAN node (same HEAT_* message set); see [[../05-Subsystems/01-Electric-Heating|Electric Heating]]. Reference unit: **Philips OneChef NX5300/00** (Electric Heating §2.3) — its body is the Cooking Surface, its 6 L non-stick inner pot is Epicura's pot; its 2,280 W nameplate includes the air-fryer lid heater, the base plate alone is expected at 1,000–1,300 W.
 
 - **Rated Power:** 1,300W maximum (assumed, unit TBD; premium rice-cooker units are 1,000-1,400W)
 - **AC Input:** 220-240V, 50Hz single-phase (standard Indian household outlet) — connected directly to the unit
-- **Plate Diameter:** 180-200mm (matched to pot base, internal to the unit)
-- **Temperature Range:** 60-250C at the centre sensor (sear range above 230C to be confirmed per unit and pot coating)
+- **Plate Diameter:** Matched to the 6 L inner pot base (pot 228.6 mm Ø × 150 mm; plate est. ~220mm, internal to the unit)
+- **Temperature Range:** 60-200C at the centre sensor (reference unit 80-200C; keep-warm at 60-70C to be confirmed with the OEM)
 - **Preheat Ramp:** ~2-4 C/s (plate-limited); preheat 1-2 min
 - **Control:** Temperature loop inside the unit on its own centre (pot-bottom) sensor; the RV1106 sends a setpoint (HEAT_SET_TEMP) or power level (HEAT_SET_POWER) over the shared isolated CAN bus and reads the measured temperature back; the STM32 can only force the unit off. No IR thermometer in Epicura
 - **Control Interface:** CAN 2.0B at 500 kbps, isolated 3-node bus (RV1106 via MCP2518FD on the Unified PCB v4.0 in the Dispensing Unit, STM32 FDCAN1 on the Cooking Surface Controller, heating unit MCU) on the CSC's isolated CAN port (J_CAN_HEAT); the bus reaches the DU over the dock (J_DOCK pins 3-6)
-- **Pot Detection:** Internal to the unit — the pot presses the spring-loaded centre sensor and the unit reports `pot_detected` (won't heat without a pot); any flat-bottomed pot, rice-cooker inner pot (aluminium, non-stick) by default
+- **Pot Detection:** Internal to the unit — the pot presses the spring-loaded centre sensor and the unit reports `pot_detected` (won't heat without a pot); the unit's own 6 L non-stick inner pot (~4.8 L usable); any flat-bottomed pot of the same base fits
 - **Internal Safety:** Pot detection, over-temperature cut-off, thermal fuse (all unit-internal)
 
 ### 1.2 Power Level Profiles
 
 | Profile | Power (W) | Temp Range (C) | Use Case | Duty Cycle |
 |---------|-----------|-----------------|----------|------------|
-| **Sear** | 1,300 | 200-230 | Browning onions, tempering spices (upper limit per pot coating) | 100% |
+| **Sear** | 1,300 | 180-200 | Browning onions, tempering spices (200C is the unit's ceiling) | 100% |
 | **Boil** | 1,040 | 100 | Bringing water/gravy to boil | 80% |
 | **Simmer** | 390-520 | 80-95 | Slow cooking dal, curry reduction | 30-40% |
 | **Warm** | 150 | 60-70 | Keep-warm after cooking complete | 10-15% |
@@ -40,7 +40,7 @@ The primary cooking element is a commercial electric heating unit of the premium
 - **Feedback to Epicura:** HEAT_STATUS (0x180, 10 Hz) `surface_temp_dC` — pot-bottom temperature, used for stage transitions (±5C for 3 readings) and the STM32 cut-off
 - **Command:** HEAT_SET_TEMP (0x100: target, ramp ≤ 5C/s, max power) or HEAT_SET_POWER (0x103) re-sent at 2 Hz as keep-alive; the unit drops to 0 after 1 s without a refresh
 - **Overshoot:** Unit-internal; the plate stores heat, so the pot-bottom temperature lags the command by tens of seconds; recipe tolerance ±5C
-- **Safety Cutoff:** CAN element over-temp, surface_temp >270C or HEAT_FAULT → STM32 sends HEAT_ON_OFF=0, broadcasts E_STOP and opens the relay, independently of the RV1106
+- **Safety Cutoff:** CAN element over-temp, surface_temp >230C (CRITICAL at >220C) or HEAT_FAULT → STM32 sends HEAT_ON_OFF=0, broadcasts E_STOP and opens the relay, independently of the RV1106
 
 ## 2. Sensor Specifications
 
@@ -223,3 +223,4 @@ The Dispensing Unit draws from DOCK_24V while docked (the pack only charges) and
 | 5.5 | 2026-11-04 | Manas Pradhan | IR thermometer dropped (module-internal temperature control, HEAT_SET_TEMP + HEAT_STATUS surface_temp); stirring motor is a CAN servo on the Unified PCB's regular CAN port (FDCAN2); external 12V UPS and single-cell micro-UPS replaced by a 2S Li-ion pack with on-board TP5100 charger and VSYS diode-OR; power, performance and interface tables updated |
 | 5.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 moves to the Cooking Surface Controller (CSC) with both CAN ports, relay, fans and dock switch; Unified PCB v4.0 in the lift-off Dispensing Unit with the 2S pack as primary supply (1.0 A dock charging, INA219 #2 monitoring), 6 V dispenser rail, NAU7802 load cells and white PWM LED ring on the RV1106; isolated CAN crosses the 8-pin pogo dock; UART service link replaced by a CAN bootloader; power, battery, budget-per-unit and interface tables rewritten |
 | 5.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit of the rice-cooker class (resistive plate, spring-loaded centre sensor, own PID, CAN port; same HEAT_* contract, no controller change): §1.1 rewritten, power 1,800W → 1,300W (assumed), profiles table re-derived (sear 200-230C, boil 80 %), pot detection by the centre sensor, `coil` → `element`, maximum draw, budget (total ~485 W / ~1,440 W peak) and interface rows updated |
+| 5.8 | 2026-11-04 | Manas Pradhan | Reference unit Philips OneChef NX5300/00 named in §1.1 (donor body = Cooking Surface, 6 L non-stick pot ~4.8 L usable, 2,280 W nameplate incl. lid heater); temperature range 60-200C, sear 180-200C, plate diameter per the 6 L pot, cut-off surface_temp >230C (CRITICAL >220C) |

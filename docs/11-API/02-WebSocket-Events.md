@@ -279,7 +279,7 @@ An error occurred during cooking.
   "data": {
     "session_id": "session-uuid-001",
     "error_code": "OVER_TEMPERATURE",
-    "message": "Temperature exceeded safe threshold (260°C). Heating disabled.",
+    "message": "Temperature exceeded safe threshold (230°C). Heating disabled.",
     "severity": "critical",
     "action_taken": "e_stop"
   }
@@ -358,7 +358,7 @@ This ensures horizontal scalability — multiple API server instances can serve 
 | Error Code | Severity | Description |
 |------------|----------|-------------|
 | `SENSOR_FAILURE` | `warning` | Temperature or weight sensor malfunction |
-| `OVER_TEMPERATURE` | `critical` | Temperature exceeded safe maximum (260°C) |
+| `OVER_TEMPERATURE` | `critical` | Temperature exceeded safe maximum (230°C) |
 | `MOTOR_STALL` | `warning` | Stirring arm stalled (overcurrent detected) |
 | `COMMUNICATION_LOST` | `critical` | RV1106-STM32 communication timeout |
 | `CV_FAILURE` | `warning` | Camera or ML model failure (timer fallback active) |

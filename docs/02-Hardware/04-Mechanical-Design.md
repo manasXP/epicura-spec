@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.6
+version: 2.8
 status: Draft
 ---
 
@@ -17,6 +17,7 @@ status: Draft
 - **Depth:** 400 mm
 - **Height:** ≈ 350 mm (to be confirmed; was 300 mm): Cooking Surface ≈ 110 mm + Stirring Unit gantry over the pot + Dispensing Unit ≈ 130 mm on top
 - **Weight:** 8-12 kg (assembled, without pot contents); Dispensing Unit ≤ 4 kg fully loaded (two-hand lift)
+- **Cooking Surface envelope:** donor Philips OneChef NX5300/00 body + rear pillars + stirrer gantry (§1.5). Retail listings disagree on the donor's size and weight — 38.5 × 35.7 × 28 cm / 6.2 kg (Croma, with the air-fryer lid) vs 33 × 33 × 33 cm / 4.6 kg (Reliance Digital); the OEM drawing governs, and the 500 × 400 mm footprint above is to be confirmed against it
 - **Comparable Size:** Large microwave oven or bread maker
 
 ### 1.3 Design Philosophy
@@ -33,11 +34,23 @@ Epicura is physically three units. Only one cable exists between units (Cooking 
 
 | Unit | Short | Mains? | Contents |
 |------|-------|--------|----------|
-| **Cooking Surface** | CS | Yes (IEC C14 inlet, fuse, EMI filter) | Commercial electric heating unit (rice-cooker class, own AC stage + CAN), Mean Well LRS-75-24 (24 V), Cooking Surface Controller PCB (CSC, STM32G0B1RE), safety relay, E-stop button (front), 2× exhaust fans + filter cartridge (rear), two rear pillars that carry the Stirring Unit and the dock block |
+| **Cooking Surface** | CS | Yes (IEC C14 inlet, fuse, EMI filter) | Modified Philips OneChef NX5300/00 body — the donor cooker's heating plate, controller (own AC stage + CAN), 6 L non-stick inner pot and glass lid; its air-fryer lid is removed and the Dispensing Unit seats in its place (§1.5) — Mean Well LRS-75-24 (24 V), Cooking Surface Controller PCB (CSC, STM32G0B1RE), safety relay, E-stop button (front), 2× exhaust fans + filter cartridge (rear), two rear pillars that carry the Stirring Unit and the dock block |
 | **Stirring Unit** | SU | No — fed 24 V by the CS | Gantry bridge between the rear pillars over the pot: 24 V CAN servo stir motor, vertical shaft, paddle, fume hood. One port J_SU (Molex Micro-Fit 3.0, 5-way: 24V_STIR, GND, CAN_H, CAN_L, SHIELD) at the right pillar; harness runs inside the pillar to the CSC |
 | **Dispensing Unit** | DU | No — battery is the primary supply | Unified PCB v4.0 (Luckfox Pico Zero RV1106 in J_AP, 2S Li-ion pack, dispenser drivers, RV1106 CAN node), 4" LCD on the front face (tilted 15-30°), IMX415-98 camera + white LED ring on the underside, centred over the pot and looking straight down behind a sealed borosilicate window, FID carousel (rear) + CID carousel (front) with chutes through the underside, SLD oil + water reservoirs (sides) with pumps, solenoids, load cells and nozzles through the underside, buzzer. Dock pads on the underside over the left pillar |
 
 The DU seats on the rear pillars in one orientation only (keyed dock recess on the left pillar). The 8-contact magnetic pogo dock (J_DOCK) carries the 24 V charge input and the isolated CAN bus; lifting the DU opens the bus and the 24 V at the same instant. The user lifts the DU off between sessions to load ingredients and to clean individual coarse slots; on a mains outage the DU (the brain) keeps running on its battery and the session resumes when mains returns. Front-edge support of the DU over the pot well is to be confirmed in the CAD.
+
+### 1.5 Donor Body Modification
+
+The Cooking Surface is not a new enclosure: it is the body of the Philips OneChef NX5300/00 (6 L multicooker with a detachable air-fryer lid; reference unit in [[../05-Subsystems/01-Electric-Heating|Electric Heating]] §2.3), modified as follows.
+
+| | Items |
+|---|---|
+| **Kept** | Cooker body (matte plastic, cool-touch handles), heating plate with its spring-loaded centre sensor, controller cavity (OEM control board with the CAN port), 6 L non-stick inner pot, glass lid (manual / UNIT_LIFTED use only) |
+| **Removed** | Detachable air-fryer lid with its heater and fan, the touch panel (and its lid-detection switch) |
+| **Added** | Stirring Unit gantry mount on the rim, two rear pillars (left: dock block + keyed DU recess; right: J_SU port + harness), front E-stop button, 2× exhaust fans + filter cartridge, CSC + LRS-75-24 bay in the rear compartment |
+
+The air-fryer lid's seat on the pot rim is where the Dispensing Unit sits in normal use; the glass lid goes on only when the DU is lifted for a manual cook.
 
 ---
 
@@ -56,14 +69,14 @@ The DU seats on the rear pillars in one orientation only (keyed dock recess on t
 
 | Parameter | Value |
 |-----------|-------|
-| Material | Aluminium, flat-bottomed (rice-cooker inner pot class); any flat-bottomed pot works, 304 stainless acceptable |
+| Material | Aluminium, non-stick — the 6 L inner pot supplied with the donor OneChef NX5300/00; any flat-bottomed pot of the same base fits, 304 stainless acceptable |
 | Interior Coating | Ceramic non-stick or PTFE (Teflon) |
-| Capacity | 3-4 liters |
-| Diameter | 220 mm (base matched to the 180-200 mm heating plate) |
-| Height | 120-150 mm |
+| Capacity | 6 L nominal, ~4.8 L usable (fill ≤ 4/5, min/max marks inside) |
+| Diameter | 9 in = 228.6 mm (circular; confirmed 2026-11-04), base matched to the donor heating plate |
+| Height | 150 mm (fixed 2026-11-04): 6 L brim-full at 228.6 mm Ø is 146 mm as a straight cylinder, the extra 4 mm covers the rounded base corner; the 4/5 max-fill line (4.8 L) sits at ~120 mm |
 | Weight (empty) | 0.8-1.2 kg |
-| Handles | Two folding side handles (heat-resistant silicone or Bakelite) |
-| Lid | Optional, vented (for steam release during certain recipes) |
+| Handles | As supplied on the OneChef inner pot (OEM drawing); must clear the gantry opening |
+| Lid | Donor glass lid, retained for manual / UNIT_LIFTED use; in normal use the Dispensing Unit is the lid |
 | Cleaning | Dishwasher-safe, removable |
 | Detection | Pot presses the heating unit's spring-loaded centre sensor; the unit reports `pot_detected` (internal pot detection) |
 
@@ -105,7 +118,7 @@ The DU seats on the rear pillars in one orientation only (keyed dock recess on t
 │     │  │  4" LCD on the DU front face (15-30 deg)  │   │     │
 │     │  │  dock pads (underside, over left pillar)  │   │     │
 │     │  └───────────────────────────────────────────┘   │     │
-│     │  (pot well + 22 cm pot on the CS underneath)     │     │
+│     │  (pot well + 23 cm pot on the CS underneath)     │     │
 │                                                              │
 │  [E-STOP]   FRONT                             [Status LED]   │
 └──────────────────────────────────────────────────────────────┘
@@ -131,7 +144,7 @@ The DU seats on the rear pillars in one orientation only (keyed dock recess on t
 │ │L │  Stirring Unit (SU): gantry bridge between the    │R │  │  │ over
 │ │  │  rear pillars, CAN servo motor + shaft + fume hood│  │  │  │ the pot
 │ │  │        Pot Access Opening (insert/remove pot)     │  │  │  │
-│ │  │                  [ 22 cm pot ]              J_SU ►│  │  │  │
+│ │  │                  [ 23 cm pot ]              J_SU ►│  │  │  │
 │ └──┘                                                   └──┘  │ ─┼─
 │  ┌────────────────────────────────────────────────────────┐  │  │
 │  │  Cooking Surface (CS): heating unit, LRS-75-24 PSU,    │  │  │ ≈110 mm
@@ -195,7 +208,7 @@ The DU seats on the rear pillars in one orientation only (keyed dock recess on t
     │  gantry between the     │ 20-30 cm to the  │ CAN   │ │  │ gantry
     │  rear pillars           │ pot rim          │ servo │ │  │ over
     │          ┌──────────────┴───────────┐ shaft│ motor │ │  │ the pot
-    │          │  Pot + Food Zone (22 cm) │◄─────┴───────┤ │  │
+    │          │  Pot + Food Zone (23 cm) │◄─────┴───────┤ │  │
     │          │  (open top; paddle in)   │  rear pillar │ │  │
     │          │                          │  (harness +  │ │  │
     │          │                          │   dock block)│ │  │
@@ -290,17 +303,17 @@ The SU is the gantry bridge between the rear pillars: the 24 V CAN servo stir mo
 
 | Parameter | Value |
 |-----------|-------|
-| Body Material | Aluminum alloy (3003 or 5052, food-grade) |
+| Body Material | Aluminium, non-stick (the OneChef NX5300/00 6 L inner pot; alloy per OEM) |
 | Base | Flat aluminium base in contact with the heating plate (presses the spring-loaded centre sensor) |
 | Interior Coating | Ceramic non-stick (PFOA-free) or PTFE |
-| Capacity | 3-4 liters (useful volume) |
-| Outer Diameter | 220 mm |
-| Inner Diameter | 210 mm |
-| Height | 130 mm |
+| Capacity | 6 L nominal; ~4.8 L usable (fill ≤ 4/5) |
+| Outer Diameter | 228.6 mm (9 in, confirmed 2026-11-04) |
+| Inner Diameter | ~225 mm (wall ~1.5–2 mm; OEM drawing governs) |
+| Height | 150 mm (fixed 2026-11-04; 6 L brim-full, max-fill line at ~120 mm) |
 | Wall Thickness | 3 mm (aluminum body) |
 | Base Thickness | 3-5 mm aluminium (flat for plate contact) |
 | Weight (empty) | 0.8-1.2 kg |
-| Max Operating Temp | 260C (limited by non-stick coating) |
+| Max Operating Temp | 200C (heating unit ceiling; non-stick coating) |
 
 ### 5.2 Detection Mechanism
 
@@ -311,9 +324,9 @@ The SU is the gantry bridge between the rear pillars: the 24 V CAN servo stir mo
 
 ### 5.3 Handle Design
 
-- Two folding side handles: stow flat against pot body, flip out for lifting
+- Handles as supplied on the OneChef inner pot (OEM drawing); if folding side handles: stow flat against pot body, flip out for lifting
 - Material: Bakelite or silicone-wrapped stainless steel
-- Heat rating: handles remain <60C even when pot contents at 250C
+- Heat rating: handles remain <60C even when pot contents at 200C
 - Clearance: handles fit through gantry opening when folded
 
 ---
@@ -369,7 +382,7 @@ The camera and LED ring are no longer on the gantry: they sit on the underside o
 | Shaft Material | 304 stainless steel, 8mm diameter |
 | Shaft Length | 150 mm (extends from gantry into pot) |
 | Depth Adjustment | Fixed depth (set during assembly for target pot) |
-| Paddle | Food-grade silicone or nylon, removable twist-lock |
+| Paddle | Food-grade silicone or nylon, PTFE-tipped edge — non-stick-safe, no metal touches the coated pot; removable twist-lock |
 | Seal | Silicone gasket around shaft penetration (IPX5 rated) |
 | Cleaning | Shaft and paddle removable, dishwasher-safe |
 
@@ -452,7 +465,7 @@ All three dispensers travel with the Dispensing Unit. The FID carousel (rear) an
 
 | Source | Typical Heat Dissipation | Unit / Location |
 |--------|--------------------------|-----------------|
-| Electric heating unit | 100-400W (plate losses at ~65-75% efficiency, 1,300 W assumed) | CS, center-bottom |
+| Electric heating unit | 100-400W (plate losses at ~65-75% efficiency, 1,300 W assumed); plate ceiling 200 °C at the centre sensor | CS, center-bottom |
 | PSU LRS-75-24 (switch-mode) | 15-30W (at full load, ~85% efficient) | CS, rear compartment beside the CSC |
 | CSC (STM32G0B1RE, relay coil, transceivers) | <1W | CS, rear compartment |
 | CAN servo stirring motor | 12-48W (intermittent) | SU gantry |
@@ -574,10 +587,10 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 
 | Component | Fabrication Method | Notes |
 |-----------|-------------------|-------|
-| Enclosure (body) | 3D printed (FDM, PETG or ABS) | Three shells (CS base + pillars, SU gantry, DU); iterative design, <$100 per print |
+| Enclosure (body) | Donor OneChef NX5300/00 body (CS) + 3D printed (FDM, PETG or ABS) pillars, SU gantry and DU shell | Air-fryer lid, its heater/fan and the touch panel removed from the donor (§1.5); iterative design, <$100 per print |
 | Dock block + DU recess | Off-the-shelf 8-pin magnetic pogo pair in a 3D printed keyed recess | Spring pins on the left pillar top, gold pads on the DU underside |
-| Enclosure (pot well) | 3D printed + aluminum sheet insert | Heat-resistant surface near the heating plate |
-| Pot | Off-the-shelf rice-cooker inner pot or any flat-bottomed pot (22cm) | Embedded magnet only for the optional reed backup |
+| Enclosure (pot well) | Donor cooker pot well, as is | Already matched to the plate and the 6 L pot |
+| Pot | OneChef 6 L non-stick inner pot, supplied with the donor cooker | Embedded magnet only for the optional reed backup |
 | Gantry | Aluminum extrusion + 3D printed brackets | Standard 2020 or 2040 V-slot |
 | FID canisters, FID/CID carousel rings, base plate, chutes, index gears | 3D printed (food-safe PETG; POM for gears) | Or silicone mold for flexibility |
 | PCBs | 4-layer custom PCB (JLCPCB or similar) | 2 boards: Unified PCB v4.0 in the DU (Pico Zero slot, dispenser drivers, 2S battery, RV1106 CAN node, dock pads) and the Cooking Surface Controller in the CS (STM32G0B1RE, safety relay, fans, dock switch, both CAN ports); Luckfox Pico Zero is an off-the-shelf module |
@@ -589,7 +602,7 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 |-----------|-------------------|-------|
 | Enclosure (body) | Injection mold (PC/ABS blend) | Tooling cost ~$5,000-15,000, <$5/unit |
 | Enclosure (pot well) | Stamped stainless steel | Press-formed, integrated with base |
-| Pot | Custom die-cast aluminum, flat base | Non-stick coated; magnet only for the optional reed backup |
+| Pot | OEM-supplied 6 L non-stick aluminium inner pot (with the heating unit) | Magnet only for the optional reed backup |
 | Gantry | Zinc die-cast or stamped steel | Integrated motor mount and fume hood (camera is on the DU) |
 | FID/CID carousels, canisters, housings | Injection mold (food-grade PP) | Tooling ~$2,000 per shape |
 | PCBs | SMT assembly (pick-and-place) | Panelized, automated testing |
@@ -599,7 +612,7 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 
 **Cooking Surface (CS) first**
 
-1. Mount the electric heating unit into the base; route its AC feed through the safety relay and its CAN cable to J_CAN_HEAT on the CSC (isolated bus shared by the RV1106, the STM32 and the unit)
+1. Strip the donor OneChef: remove the air-fryer lid, its heater and fan and the touch panel; keep the body, heating plate, controller cavity, 6 L pot and glass lid (§1.5). Route the heating unit's AC feed through the safety relay and its CAN cable to J_CAN_HEAT on the CSC (isolated bus shared by the RV1106, the STM32 and the unit)
 2. Mount the LRS-75-24 PSU and the Cooking Surface Controller in the rear compartment beside the fans; wire IEC C14 inlet → fuse / EMI filter → heating unit AC (via the relay) and PSU; PSU 24 V → J_24V_IN (XT30) on the CSC
 3. Fit the two exhaust fans and the filter cartridge slot (J_FAN), the front E-stop button and the optional pot reed (J_SAFE)
 4. Fit the rear pillars: dock pogo block in the keyed recess on top of the left pillar, 8-way harness down the pillar to J_DOCK on the CSC; J_SU port in the right pillar, harness (J_CAN_STIR + J_STIR_PWR bundled) down the pillar to the CSC
@@ -651,3 +664,5 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | 2.4 | 2026-11-04 | Manas Pradhan | Assembly steps updated for the shared isolated CAN bus (RV1106 CAN node on the Unified PCB; UART2 service link) |
 | 2.5 | 2026-11-04 | Manas Pradhan | Three-unit architecture: Cooking Surface (induction module, PSU, CSC, E-stop, fans, rear pillars), Stirring Unit (gantry, J_SU harness) and lift-off Dispensing Unit (Unified PCB v4.0, battery, LCD, camera + white LED ring on the underside, all three dispensers); magnetic pogo dock on the left pillar; height ≈ 350 mm (TBC), DU ≤ 4 kg; enclosure views, internal layout, thermal, cleaning, cable management, DFM and assembly sequence rewritten per unit |
 | 2.6 | 2026-11-04 | Manas Pradhan | Induction surface replaced by a commercial electric heating unit of the rice-cooker class: pot is any flat-bottomed (aluminium, non-stick) pot with no ferromagnetic base, pot detection by the unit's spring-loaded centre sensor, CS layout/labels, thermal budget (plate losses at ~65-75 %), cooling diagram, thermal barriers, DFM pot rows and assembly steps updated |
+| 2.7 | 2026-11-04 | Manas Pradhan | Reference unit fixed: Philips OneChef NX5300/00. The Cooking Surface is the modified donor body (§1.5: kept / removed / added), the air-fryer lid position is the Dispensing Unit seat, the pot is the donor's 6 L non-stick inner pot (~4.8 L usable; 3-4 L stainless/aluminium pot rows replaced), glass lid retained for manual use; CS envelope quoted from the conflicting retail figures; paddle non-stick-safe; pot and plate temperature ceiling 200 °C; DFM and assembly step 1 updated |
+| 2.8 | 2026-11-04 | Manas Pradhan | Pot dimensions fixed: 9 in (228.6 mm) diameter, 150 mm height (6 L brim-full; 4.8 L max-fill line at ~120 mm); §2.2 and §5.1 pot rows updated, layout views say 23 cm pot |
