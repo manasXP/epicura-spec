@@ -61,7 +61,7 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 
 #### 1.1.10 PCB Design
 22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - Single 4-layer board (160x90mm): STM32, Luckfox Pico Zero slot, CID/FID/SLD drivers, isolated + regular CAN ports, 2S Li-ion backup (document lives in the epicura-pcb repo)
-23. **[epicura-pcb](https://github.com/manasXP/epicura-pcb)** - Dedicated repo for KiCad project files, schematics, layouts, Gerbers, and DRC/fabrication outputs
+23. **[epicura-design / PCB](https://github.com/manasXP/Epicura-Design/tree/main/PCB)** - Dedicated repo for KiCad project files, schematics, layouts, Gerbers, and DRC/fabrication outputs
 
 #### 1.1.11 Backend
 24. **[[01-Backend-Architecture|Backend Architecture]]** - Cloud backend (Fastify, PostgreSQL, Redis, MQTT bridge)
