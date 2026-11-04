@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 2.8
+version: 2.9
 status: Draft
 ---
 
@@ -380,11 +380,26 @@ The camera and LED ring are no longer on the gantry: they sit on the underside o
 | Rotation | 360 degrees continuous (modified servo or stepper alternative) |
 | Speed Range | 10-60 RPM (adjustable via recipe) |
 | Shaft Material | 304 stainless steel, 8mm diameter |
-| Shaft Length | 150 mm (extends from gantry into pot) |
-| Depth Adjustment | Fixed depth (set during assembly for target pot) |
+| Shaft Length | 175 mm overall: 30 mm above the gantry seal plane (bearing + coupler) + 145 mm below it (40 mm rim gap + 105 mm into the pot); derived from the stack below |
+| Depth Adjustment | Fixed depth (set during assembly for the 150 mm pot; set-screw range ±10 mm) |
 | Paddle | Food-grade silicone or nylon, PTFE-tipped edge — non-stick-safe, no metal touches the coated pot; removable twist-lock |
 | Seal | Silicone gasket around shaft penetration (IPX5 rated) |
 | Cleaning | Shaft and paddle removable, dishwasher-safe |
+
+#### 6.2.1 Shaft and Paddle Vertical Stack
+
+Derived from the 228.6 mm × 150 mm pot (§5.1). Heights are measured from the pot bottom (inside); adjust the gantry gap if the donor-body rim height moves.
+
+| Level | Height above pot bottom | Note |
+|-------|------------------------|------|
+| Gantry seal plane (bearing + silicone gasket) | 190 mm | 40 mm above the rim: clears the folded pot handles and the fume-hood lip, keeps the gasket 70 mm above the max-fill line |
+| Pot rim | 150 mm | Pot height |
+| Max-fill line (4.8 L) | ~120 mm | Shaft is wetted below this level |
+| Paddle hub (twist-lock) centre | 45 mm | End of the drive shaft; hub body 45 mm → 25 mm |
+| Paddle blade lower edge | 3 mm | PTFE-tipped edge sweeps the non-stick bottom without touching it |
+| Paddle blade outer edge | 3 mm from the pot wall | Blade radius ~110 mm on the ~225 mm inner diameter |
+
+Shaft: 304 stainless, 8 mm, **175 mm** overall = 30 mm above the seal plane (bearing seat + coupler engagement) + 145 mm below it (190 − 45). The 25 mm from the rim to the hood underside is the fume-collection gap. The DU camera window sits a further 200–300 mm above the rim (§3.4) and is unaffected.
 
 ### 6.3 Stirring Patterns
 
@@ -666,3 +681,4 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | 2.6 | 2026-11-04 | Manas Pradhan | Induction surface replaced by a commercial electric heating unit of the rice-cooker class: pot is any flat-bottomed (aluminium, non-stick) pot with no ferromagnetic base, pot detection by the unit's spring-loaded centre sensor, CS layout/labels, thermal budget (plate losses at ~65-75 %), cooling diagram, thermal barriers, DFM pot rows and assembly steps updated |
 | 2.7 | 2026-11-04 | Manas Pradhan | Reference unit fixed: Philips OneChef NX5300/00. The Cooking Surface is the modified donor body (§1.5: kept / removed / added), the air-fryer lid position is the Dispensing Unit seat, the pot is the donor's 6 L non-stick inner pot (~4.8 L usable; 3-4 L stainless/aluminium pot rows replaced), glass lid retained for manual use; CS envelope quoted from the conflicting retail figures; paddle non-stick-safe; pot and plate temperature ceiling 200 °C; DFM and assembly step 1 updated |
 | 2.8 | 2026-11-04 | Manas Pradhan | Pot dimensions fixed: 9 in (228.6 mm) diameter, 150 mm height (6 L brim-full; 4.8 L max-fill line at ~120 mm); §2.2 and §5.1 pot rows updated, layout views say 23 cm pot |
+| 2.9 | 2026-11-04 | Manas Pradhan | Stirrer shaft re-sized for the 150 mm pot: §6.2 shaft length 150 → 175 mm overall (145 mm below the gantry seal plane), new §6.2.1 vertical stack (seal plane 40 mm above the rim, paddle hub at 45 mm, blade edge 3 mm off the bottom and wall) |

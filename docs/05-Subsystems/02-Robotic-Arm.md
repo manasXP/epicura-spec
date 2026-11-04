@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 3.1
+version: 3.2
 status: Draft
 ---
 
@@ -17,7 +17,7 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 
 - **Type:** Single-axis rotary arm, gantry-mounted above pot center (Stirring Unit bridge between the rear pillars; also carries the fume hood)
 - **Motion:** 360-degree continuous rotation around the vertical axis
-- **Depth:** Fixed paddle depth in V1 (adjustable via manual set screw during setup)
+- **Depth:** Fixed paddle depth in V1 (adjustable ±10 mm via manual set screw during setup). Shaft 175 mm overall, 145 mm below the gantry seal plane, paddle hub 45 mm above the pot bottom and blade edge 3 mm off the bottom of the 228.6 × 150 mm pot — stack in [[../02-Hardware/04-Mechanical-Design#6.2.1 Shaft and Paddle Vertical Stack|Mechanical Design §6.2.1]]
 - **Paddle:** Removable silicone or nylon blade, heat-resistant, food-safe
 - **Drive:** 24V BLDC motor at top of gantry, coupled to a vertical drive shaft through a bearing and seal
 - **Camera:** None on the gantry — the camera and LED ring are on the underside of the Dispensing Unit above it (see [[04-Vision-System|Vision System]])
@@ -338,3 +338,4 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | 2.3 | 2026-11-04 | Manas Pradhan | Command protocol mapped onto the shared CAN bus (IDs 0x202, 0x221–0x225) |
 | 3.0 | 2026-11-04 | Manas Pradhan | Stirring motor changed to a 24 V integrated CAN servo on the Unified PCB's regular (non-isolated) CAN port (STM32 FDCAN2, PB12/PB13, SN65HVD230, 1 Mbps, J_CAN_STIR) with switched 24 V (J_STIR_PWR, Q_STIR); PWM/EN/DIR on PA8/PA4/PA5 retired; encoder feedback replaces FG tachometer and Hall homing (Hall kept as optional backup); stall/over-torque from motor-reported current; motor specs, control interface, tasks, safety and tests updated |
 | 3.1 | 2026-11-04 | Manas Pradhan | Three-unit architecture: the arm is the Stirring Unit (gantry between the rear pillars); the STM32, FDCAN2, SN65HVD230, Q_STIR, J_CAN_STIR and J_STIR_PWR move to the Cooking Surface Controller in the base, harness inside the right pillar to the SU port J_SU (Micro-Fit 3.0, 5-way); Q_STIR enable is STM32 PB4 (was PCF8574 #2 P5); SET_LED retired; DU-undocked safe hold (DOCK_SENSE_B → stir disabled, DU_UNDOCKED) added to safety; the gantry no longer carries the camera; INA219 plausibility check dropped (no current sense on the CSC) |
+| 3.2 | 2026-11-04 | Manas Pradhan | Paddle depth tied to the 150 mm OneChef pot: shaft 175 mm overall (145 mm below the seal plane), hub 45 mm above the pot bottom, ±10 mm set-screw range; geometry owned by Mechanical Design §6.2.1 |
