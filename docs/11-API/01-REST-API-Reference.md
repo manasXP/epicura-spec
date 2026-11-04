@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.2
 status: Draft
 ---
 
@@ -93,7 +93,7 @@ Tokens are obtained via the login flow. See [[01-Backend-Architecture#JWT Authen
 |-------|-------|--------|
 | Authentication endpoints | 10 requests | 1 minute |
 | General API | 100 requests | 1 minute |
-| Recipe sync (CM5) | 30 requests | 1 minute |
+| Recipe sync (device) | 30 requests | 1 minute |
 | Telemetry ingestion | 600 requests | 1 minute |
 
 ---
@@ -431,7 +431,7 @@ Soft-delete a recipe (sets `is_published = false`).
 
 #### 6.2.6 `GET /recipes/sync`
 
-CM5 recipe sync endpoint. Returns recipes updated since a given timestamp.
+Device recipe sync endpoint, called by `epicurad` daily and on the `recipe_sync_now` MQTT command. Returns recipes updated since a given timestamp; the device upserts them into its SQLite mirror.
 
 **Query Parameters:**
 
@@ -470,14 +470,14 @@ curl "https://api.epicura.io/api/v1/recipes/sync?since=2026-02-01T00:00:00Z" \
 
 #### 6.3.1 `POST /appliances/register`
 
-Register a new appliance (called by CM5 on first boot).
+Register a new appliance (called by the device on first boot).
 
 **Request:**
 ```json
 {
   "device_id": "EPIC-001",
   "serial_number": "SN2026020001",
-  "firmware_version_cm5": "1.0.0",
+  "firmware_version_rv1106": "1.0.0",
   "firmware_version_stm32": "1.0.0",
   "wifi_mac": "AA:BB:CC:DD:EE:FF"
 }
@@ -525,7 +525,7 @@ List user's paired appliances.
       "device_id": "EPIC-001",
       "name": "Kitchen Epicura",
       "status": "online",
-      "firmware_version_cm5": "1.2.0",
+      "firmware_version_rv1106": "1.2.0",
       "firmware_version_stm32": "1.1.0",
       "last_seen_at": "2026-02-14T12:28:00Z"
     }
@@ -550,11 +550,48 @@ Update appliance (e.g., rename).
 
 ---
 
+#### 6.3.6 `POST /appliances/:id/live-view`
+
+Request the on-demand live pot view. The backend publishes the MQTT `live_view_start` command to the device (see [[03-MQTT-Topics|MQTT Topics]] §5.1) and returns the stream location. The device encodes 1280x720 H.264 at 15 fps and serves one RTSP client; the stream tears itself down after `idle_timeout_s` with no viewer.
+
+**Request:**
+```json
+{
+  "prefer": "lan"
+}
+```
+
+`prefer` is `lan` (default) or `relay`. With `lan`, the response carries the device's last reported `lan_ip`; the app should fall back to `relay` if the RTSP connection fails within 5 s (different network, AP isolation).
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "mode": "lan",
+    "url": "rtsp://192.168.1.42:554/pot",
+    "relay_url": "rtsps://relay.epicura.io/EPIC-001/pot?token=eyJ...",
+    "idle_timeout_s": 60,
+    "expires_at": "2026-02-14T12:42:00Z"
+  }
+}
+```
+
+`relay_url` is always included so the app can switch without a second request. `expires_at` is the relay token expiry (10 min, refreshed by calling again).
+
+**Errors:** `409 Conflict` if another viewer holds the stream (single client), `503 Service Unavailable` if the appliance is offline or cooking in a state that forbids streaming (E_STOP).
+
+#### 6.3.7 `DELETE /appliances/:id/live-view`
+
+Stop the live view early. The backend publishes `live_view_stop`. Returns `204 No Content`. Not required: the device stops on its own after `idle_timeout_s`.
+
+---
+
 ### 6.4 Cooking Sessions
 
 #### 6.4.1 `POST /sessions`
 
-Create a new cooking session (called by CM5 when cooking starts or by mobile app to upload synced logs).
+Create a new cooking session (called by the device from its `sync_outbox` when cooking starts, or by the mobile app to upload synced logs).
 
 **Request:**
 ```json
@@ -572,7 +609,7 @@ Create a new cooking session (called by CM5 when cooking starts or by mobile app
 
 #### 6.4.2 `PUT /sessions/:id`
 
-Update session status and data (called by CM5 during/after cooking).
+Update session status and data (called by the device during/after cooking; queued in `sync_outbox` while offline).
 
 **Request (during cooking):**
 ```json
@@ -733,13 +770,13 @@ Register a device push token.
 
 #### 6.7.1 `GET /firmware/latest`
 
-Check for firmware updates (called by CM5).
+Check for firmware updates (called by the device daily and on the `ota_check` MQTT command).
 
 **Query Parameters:**
 
 | Param | Type | Required | Description |
 |-------|------|----------|-------------|
-| `target` | string | Yes | `cm5` or `stm32` |
+| `target` | string | Yes | `rv1106` or `stm32` |
 | `current_version` | string | Yes | Currently installed version |
 | `channel` | string | No | `stable` (default), `beta`, `alpha` |
 
@@ -750,7 +787,7 @@ Check for firmware updates (called by CM5).
   "data": {
     "update_available": true,
     "version": "1.2.1",
-    "binary_url": "https://cdn.epicura.io/firmware/cm5/1.2.1.img",
+    "binary_url": "https://cdn.epicura.io/firmware/rv1106/1.2.1.swu",
     "checksum_sha256": "a1b2c3d4...",
     "file_size_bytes": 209715200,
     "is_mandatory": false,
@@ -770,28 +807,25 @@ Check for firmware updates (called by CM5).
 ```
 
 ```bash
-curl "https://api.epicura.io/api/v1/firmware/latest?target=cm5&current_version=1.2.0" \
+curl "https://api.epicura.io/api/v1/firmware/latest?target=rv1106&current_version=1.2.0" \
   -H "Authorization: Bearer <token>"
 ```
 
 ---
 
-## 7. CM5 Local API
+## 7. Device as API Client
 
-The CM5 runs the **same Fastify API server** as the cloud backend (same codebase, same endpoints), excluding admin-only routes (`/admin/*`). Mobile apps on the local network connect directly to the CM5 via mDNS discovery at `http://<epicura-local>:3000/api/v1/...`.
+The Epicura device (RV1106, `epicurad`) hosts **no HTTP server**. It is a client of this cloud API (libcurl + mbedTLS) and of the cloud MQTT broker; mobile apps never connect to the device over HTTP. Outbound requests are queued in the device's `sync_outbox` table while offline and drained in order on reconnect.
 
-This unified deployment means:
-- **No API drift** — cloud and device serve identical endpoint contracts
-- **Single codebase** — the `epicura-api` repo deploys to both cloud and CM5 Docker
-- **Admin routes excluded** — the CM5 Fastify instance disables the admin module via environment flag (`DISABLE_ADMIN=true`)
+| Endpoint | Called by device when | Notes |
+|----------|----------------------|-------|
+| `POST /appliances/register` | First boot | Reports `firmware_version_rv1106` / `firmware_version_stm32` |
+| `GET /recipes/sync?since=` | Daily, and on MQTT `recipe_sync_now` | Upserted into SQLite in one transaction |
+| `POST /sessions`, `PUT /sessions/:id` | Session start / progress / completion | From `sync_outbox` (`kind = session`) |
+| `PUT /users/me` | Preferences changed on the touchscreen | From `sync_outbox` (`kind = preferences`) |
+| `GET /firmware/latest?target=rv1106` | Daily, and on MQTT `ota_check` | Signed `.swu` applied by swupdate (A/B slots) |
 
-| Local Endpoint | Cloud Equivalent | Notes |
-|----------------|------------------|-------|
-| `GET /recipes` | `GET /recipes` | Both serve from PostgreSQL; identical response format |
-| `GET /status` | WebSocket events | Local is REST polling; cloud uses WebSocket |
-| `POST /sessions` | `POST /sessions` | Identical endpoint on both |
-| `POST /cook/stop` | WebSocket `cooking:stop` | Local sends command via bridge → SPI E_STOP; cloud relays via MQTT |
-| `GET /camera/stream` | — | Served by cv-pipeline container (Flask MJPEG on port 8080), not part of Fastify |
+Live video is not served over HTTP. The app calls `POST /appliances/:id/live-view` (§6.3.6); the backend relays it to the device as the MQTT `live_view_start` command (see [[03-MQTT-Topics|MQTT Topics]]) and returns the RTSP URL (`rtsp://<lan_ip>:554/pot` on the same LAN) plus a cloud relay URL.
 
 ---
 
@@ -824,3 +858,5 @@ All list endpoints support cursor or offset pagination:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: removed device-hosted local API section; device is a REST client only; `firmware_version_cm5` → `firmware_version_rv1106`, firmware target `rv1106` with `.swu` binaries |
+| 1.2 | 2026-11-04 | Manas Pradhan | Added POST/DELETE /appliances/:id/live-view (§6.3.6–6.3.7) for on-demand RTSP live view |

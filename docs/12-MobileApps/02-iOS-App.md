@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -36,7 +36,7 @@ EpicuraApp/
 │   │   ├── APIError.swift               Error types and handling
 │   │   ├── AuthInterceptor.swift        JWT attach + 401 refresh logic
 │   │   ├── WebSocketManager.swift       WebSocket connection + event parsing
-│   │   └── MJPEGStreamView.swift        MJPEG frame parser + SwiftUI view
+│   │   └── RTSPPlayerView.swift         RTSP live-view player (MobileVLCKit) + SwiftUI view
 │   │
 │   ├── BLE/
 │   │   ├── BLEManager.swift             Core Bluetooth central manager
@@ -129,9 +129,9 @@ EpicuraApp/
 | **SwiftUI** | Apple | Declarative UI framework |
 | **Combine** | Apple | Reactive streams, publisher/subscriber |
 | **Core Bluetooth** | Apple | BLE scanning, connection, GATT operations |
-| **AVFoundation** | Apple | MJPEG camera stream decoding |
+| **MobileVLCKit** | SPM | RTSP/H.264 playback of the on-demand live pot view (LAN or cloud relay) |
 | **SwiftData** | Apple | Local persistence (recipes, history, preferences) |
-| **Network** (NWBrowser) | Apple | mDNS/Bonjour discovery of Epicura device on LAN |
+| **Network** (NWPathMonitor) | Apple | Detect same-LAN Wi-Fi to try `rtsp://<lan_ip>:554/pot` directly before falling back to the cloud relay |
 | **UserNotifications** | Apple | Local + remote push notification handling |
 | **Security** (Keychain) | Apple | Secure JWT token storage |
 | **CryptoKit** | Apple | AES-128 encryption for BLE WiFi password |
@@ -274,3 +274,4 @@ func application(_ application: UIApplication,
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: MJPEG view replaced by RTSP player (MobileVLCKit); mDNS discovery replaced by LAN reachability check for direct RTSP |

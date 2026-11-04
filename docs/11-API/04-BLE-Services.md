@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -9,20 +9,20 @@ status: Draft
 
 ## 1. Overview
 
-Epicura uses Bluetooth Low Energy (BLE) 5.0 for initial device setup: pairing the appliance with a user's mobile app and provisioning WiFi credentials. BLE is not used during cooking — all real-time communication happens over WiFi (REST, WebSocket, MQTT). The CM5's built-in Bluetooth 5.0 radio handles BLE advertising and GATT services.
+Epicura uses Bluetooth Low Energy (BLE) for initial device setup: pairing the appliance with a user's mobile app and provisioning WiFi credentials. BLE is not used during cooking — all real-time communication happens over WiFi (REST, WebSocket, MQTT via the cloud). The Luckfox Pico Zero's on-board Bluetooth 5.2 LE radio handles BLE advertising and GATT services, served by bluez5 on the device's Buildroot Linux.
 
 ---
 
 ## 2. BLE Architecture
 
 ```
-┌──────────────────┐          BLE 5.0           ┌──────────────────┐
-│   Mobile App     │◄──────────────────────────►│   Epicura CM5    │
+┌──────────────────┐          BLE 5.2           ┌──────────────────┐
+│   Mobile App     │◄──────────────────────────►│  Epicura RV1106  │
 │   (Central)      │                            │   (Peripheral)   │
 │                  │                            │                  │
 │  ┌────────────┐  │                            │  ┌────────────┐  │
 │  │ BLE Manager│  │   GATT Read/Write/Notify   │  │ BLE Server │  │
-│  │ (CoreBT /  │  │                            │  │ (BlueZ)    │  │
+│  │ (CoreBT /  │  │                            │  │ (bluez5)   │  │
 │  │ Companion  │  │                            │  │            │  │
 │  │ Device Mgr)│  │                            │  │ 3 Services │  │
 │  └────────────┘  │                            │  └────────────┘  │
@@ -43,7 +43,7 @@ Provides read-only device identification and status.
 |---------------|------|------------|--------|-------------|
 | Device ID | `E001DA01-...` | Read | UTF-8 | Hardware device ID (e.g., `EPIC-001`) |
 | Serial Number | `E001DA02-...` | Read | UTF-8 | Manufacturing serial |
-| Firmware Version | `E001DA03-...` | Read | UTF-8 | CM5 firmware version string |
+| Firmware Version | `E001DA03-...` | Read | UTF-8 | RV1106 firmware version string |
 | Device Status | `E001DA04-...` | Read, Notify | UTF-8 | `setup`, `ready`, `cooking`, `error` |
 | Pairing Code | `E001DA05-...` | Read | UTF-8 | 6-digit code for cloud pairing (rotated every 5 minutes) |
 
@@ -63,7 +63,7 @@ Provides read-only device identification and status.
 
 **Service UUID:** `E002WIFI-EPIC-4C5F-A123-456789ABCDEF`
 
-Allows the mobile app to configure the CM5's WiFi connection during initial setup.
+Allows the mobile app to configure the device's WiFi connection during initial setup.
 
 | Characteristic | UUID | Properties | Format | Description |
 |---------------|------|------------|--------|-------------|
@@ -81,7 +81,7 @@ The WiFi password is encrypted before writing to the BLE characteristic to preve
 2. App derives AES-128 key from: `SHA256(pairing_code + device_id)` truncated to 16 bytes
 3. App encrypts the WiFi password using AES-128-CBC with random IV
 4. App writes `IV (16 bytes) + ciphertext` to the Password characteristic
-5. CM5 decrypts using the same derived key
+5. Device decrypts using the same derived key
 
 ---
 
@@ -107,7 +107,7 @@ Minimal cooking control for cases where WiFi is not yet configured. Primary cook
 ```
 ┌──────────┐                    ┌──────────┐                    ┌──────────┐
 │  Mobile  │                    │ Epicura  │                    │  Cloud   │
-│   App    │                    │   CM5    │                    │   API    │
+│   App    │                    │  RV1106  │                    │   API    │
 └────┬─────┘                    └────┬─────┘                    └────┬─────┘
      │                               │                               │
      │  1. Scan for BLE devices      │                               │
@@ -138,7 +138,7 @@ Minimal cooking control for cases where WiFi is not yet configured. Primary cook
      │  8. Write WiFi Password (enc) │                               │
      │──────────────────────────────►│                               │
      │                               │                               │
-     │  9. Subscribe WiFi Status     │  10. CM5 connects to WiFi     │
+     │  9. Subscribe WiFi Status     │  10. Device connects to WiFi  │
      │──────────────────────────────►│──────────────────────────────►│
      │                               │       (network)               │
      │  11. Notify: status=connected │                               │
@@ -192,7 +192,7 @@ Minimal cooking control for cases where WiFi is not yet configured. Primary cook
 | **Slow** | After fast advertising period | 1000 ms | Indefinite |
 | **Off** | After WiFi configured and device paired | — | BLE advertising stops |
 
-The CM5 stops BLE advertising once WiFi is configured and the device is paired. BLE can be re-enabled by pressing a physical "Setup" button on the device or via the touchscreen Settings menu.
+The device stops BLE advertising once WiFi is configured and the device is paired. BLE can be re-enabled by pressing a physical "Setup" button on the device or via the touchscreen Settings menu.
 
 ---
 
@@ -217,8 +217,8 @@ The CM5 stops BLE advertising once WiFi is configured and the device is paired. 
 
 ### 6.3 Pairing Code Security
 
-- 6-digit random code generated by CM5
-- Displayed on the 10" touchscreen — requires physical access to the device
+- 6-digit random code generated by the RV1106
+- Displayed on the 4" touchscreen — requires physical access to the device
 - Rotated every 5 minutes
 - Single use: invalidated after successful cloud pairing
 - Used to prevent unauthorized pairing by nearby BLE devices
@@ -263,3 +263,4 @@ The CM5 stops BLE advertising once WiFi is configured and the device is paired. 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106 (Luckfox Pico Zero on-board BT 5.2, bluez5); UUIDs unchanged; touchscreen is 4" |

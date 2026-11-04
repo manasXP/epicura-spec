@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-20
-version: 2.0
+modified: 2026-11-04
+version: 2.4
 status: Draft
 ---
 
@@ -91,12 +91,12 @@ status: Draft
 │    │   │          Stirring Paddle Path           │    │     │
 │    │   └─────────────────────────────────────────┘    │     │
 │    │                                                   │     │
-│    │  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐            │     │
-│    │  │ASD-1│ │ASD-2│ │ASD-3│  SLD-OIL  SLD-H2O   │     │
-│    │  │     │ │     │ │     │  [pump]    [pump]    │     │
-│    │  └──┬──┘ └──┬──┘ └──┬──┘                      │     │
-│    │     └───────┴───────┘    CID-1    CID-2       │     │
-│    │     ASD (Seasonings)    [tray]    [tray]       │     │
+│    │  FID carousel (rear): 6 canisters   SLD-OIL  SLD-H2O │
+│    │  [Box1 … Box6] F1 index, F2 dose,   [pump]    [pump] │
+│    │                F3 steam gate                         │
+│    │  CID carousel (front): 5 slots + cover sector        │
+│    │  [Slot1 … Slot5] C1 index  (DSB: 4 servos,           │
+│    │                  PCA9685 + 6.5 V rail)               │
 │    └───────────────────────────────────────────────────┘     │
 │                                                              │
 │    [E-STOP]                                   [Status LEDs] │
@@ -118,7 +118,7 @@ status: Draft
 │                                                              │
 │    ┌──────────────────────────────────────────────────┐      │
 │    │                                                  │      │
-│    │          10" Touchscreen Display                 │      │
+│    │          4" Touchscreen Display                  │      │
 │    │          (angled 15-30 degrees)                  │      │
 │    │                                                  │      │
 │    │   ┌──────────────────────────────────────────┐   │      │
@@ -189,7 +189,7 @@ status: Draft
     │  │   Induction Coil + Ferrite       │  (tilted   │   │  │
     │  │   (center-bottom)                │   15-30)   │   │  │
     │  ├────────┬─────────────────────────┤            │   │  │
-    │  │  PSU   │  STM32 PCB │ CM5 Module │            │   │  │
+    │  │  PSU   │  STM32 PCB │ Pico Zero  │            │   │  │
     │  │ (rear  │  (side)    │ (rear-top) │            │   │  │
     │  │ bottom)│            │            │            │   │  │
     │  └────────┴────────────┴────────────┴────────────┘   │  │
@@ -208,8 +208,8 @@ status: Draft
 │                        REAR                                  │
 │                                                              │
 │  ┌──────────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │  PSU Module   │  │  CM5 Module   │  │  Ventilation    │  │
-│  │  (AC-DC)      │  │  (+ Carrier)  │  │  Fan (exhaust)  │  │
+│  │  PSU Module   │  │  Pico Zero    │  │  Ventilation    │  │
+│  │  (AC-DC)      │  │  (RV1106G3)   │  │  Fan (exhaust)  │  │
 │  │  Multi-rail   │  │  WiFi antenna │  │  40mm, 12V      │  │
 │  │               │  │  near rear    │  │                  │  │
 │  └──────┬────────┘  └──────┬────────┘  └──────────────────┘  │
@@ -345,51 +345,49 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 ### 7.1 Layout and Design
 
 ```
-                    ┌─────────────────────────────────────┐
+                    ┌───────────────────────────────────────┐
                     │     Dispensing Layout (Top View)      │
                     │                                       │
-                    │  ASD (Rear, behind pot):               │
-                    │  ┌──────┐ ┌──────┐ ┌──────┐           │
-                    │  │ASD-1 │ │ASD-2 │ │ASD-3 │           │
-                    │  │Turmer│ │Chili │ │Salt/ │           │
-                    │  │ 80mL │ │ 80mL │ │Masala│           │
-                    │  └──┬───┘ └──┬───┘ └──┬───┘           │
-                    │     │SG90    │SG90    │SG90            │
-                    │     └────────┴────────┘                │
-                    │            ▼ Gravity Drop              │
+                    │  FID (Rear, behind pot):              │
+                    │       ┌───────────────┐               │
+                    │     ┌─┤ Box4  │ Box3  ├─┐             │
+                    │     │ Box5 ──┼── Box2   │  F1 index   │
+                    │     └─┤ Box6  │ Box1  ├─┘  (4:3 gear) │
+                    │       └───────┬───────┘               │
+                    │      station: F2 dose, F3 gate        │
+                    │            ▼ Chute (¼ tsp doses)      │
                     │                                       │
-                    │  SLD (Left/Right sides):               │
+                    │  SLD (Left/Right sides):              │
                     │  SLD-OIL ═══► Pot ◄═══ SLD-WATER      │
-                    │  [pump+sol]         [pump+sol]         │
+                    │  [pump+sol]         [pump+sol]        │
                     │                                       │
-                    │  CID (Front, below pot):               │
-                    │  ┌──────────┐  ┌──────────┐           │
-                    │  │  CID-1   │  │  CID-2   │           │
-                    │  │Vegetables│  │ Dal/Rice │           │
-                    │  │ 400mL   │  │ 400mL    │           │
-                    │  │[LinAct] │  │[LinAct]  │           │
-                    │  └─────┬────┘  └─────┬────┘           │
-                    │        ▼             ▼                 │
-                    │      Push into Pot                     │
-                    └─────────────────────────────────────┘
+                    │  CID (Front, above pot rim):          │
+                    │            ▲ Chute (whole slot)       │
+                    │       ┌───────┴───────┐               │
+                    │     ┌─┤Slot3  │Slot2  ├─┐             │
+                    │     │Slot4 ──┼── Slot1  │  C1 index   │
+                    │     └─┤Slot5  │COVER  ├─┘  (4:3 gear) │
+                    │       └───────────────┘               │
+                    └───────────────────────────────────────┘
 ```
 
 ### 7.2 Subsystem Specifications
 
-| Parameter | ASD (Seasonings) | CID (Coarse) | SLD (Liquids) |
-|-----------|-----------------|-------------|--------------|
-| Count | 3 hoppers | 2 trays | 2 channels (oil + water) |
-| Capacity | 80 mL each | 400 mL each | 200 mL (oil), 500 mL (water) |
-| Material | Food-grade PP | Food-grade PP | PP reservoirs + silicone tubing |
-| Actuator | SG90 servo gate | 12V linear actuator | Peristaltic pump + solenoid valve |
-| Metering | Pressure-and-time-based (~±20%) | Position-based | Dedicated load cell (±5%) |
-| Cleaning | Removable, dishwasher-safe | Slide-out, dishwasher-safe | Removable reservoir; tubing replaceable |
+| Parameter | FID (Fine / Seasonings) | CID (Coarse) | SLD (Liquids) |
+|-----------|------------------------|-------------|--------------|
+| Count | 6 canisters on one carousel | 5 slots + cover sector on one carousel | 2 channels (oil + water) |
+| Capacity | 60 mL each | ~200 mL each (~1 L total) | 200 mL (oil), 500 mL (water) |
+| Material | Food-grade PP, integral ¼ tsp measure wheel | Food-grade PP lift-off ring on fixed base plate | PP reservoirs + silicone tubing |
+| Actuator | 3 servos (F1 index, F2 dose, F3 steam gate) on the DSB | 1 servo (C1 index) on the DSB | Peristaltic pump + solenoid valve |
+| Carousel | Ø170 mm, 60° bays, 4:3 gear-up from servo | Ø230 mm, 60° sectors, 4:3 gear-up from servo | — |
+| Metering | Volumetric, ¼ tsp per dose stroke (±10%) | Whole slot, user pre-measured; ascending slot order | Dedicated load cell (±5%) |
+| Cleaning | Canisters lift out, dishwasher-safe | Ring + base plate lift off, dishwasher-safe | Removable reservoir; tubing replaceable |
 
 ### 7.3 Dispensing Sequence
 
-**ASD:** Recipe engine sends `DISPENSE_ASD(id, target_g)` → STM32 opens solenoid for calibrated duration → monitors pressure drop via ADS1015 → post-dispense purge
+**FID:** Recipe engine sends `DISPENSE_FID(box_id, qty_quarter_tsp)` → STM32 indexes carousel (F1) → opens steam gate (F3) → N dose strokes of the canister measure wheel (F2, ¼ tsp each) → closes gate
 
-**CID:** Recipe engine sends `DISPENSE_CID(id, FULL)` → STM32 drives linear actuator → ingredients pushed off tray into pot → actuator retracts
+**CID:** Recipe engine sends `DISPENSE_CID(slot_id)` → STM32 indexes carousel (C1) so the slot sits over the base-plate aperture → contents free-fall through chute into pot → dwell + wiggle
 
 **SLD:** Recipe engine sends `DISPENSE_SLD(channel, target_g)` → STM32 opens solenoid + starts pump → monitors reservoir weight loss → stops pump + closes solenoid at target
 8. Recipe engine logs dispensed amount and proceeds
@@ -404,9 +402,10 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 |--------|--------------------------|----------|
 | Microwave surface module | 30-100W (waste heat at 85% efficiency) | Center-bottom |
 | PSU (switch-mode) | 15-30W (at full load, ~85% efficient) | Rear-bottom |
-| CM5 compute module | 3-5W | Rear-top |
+| RV1106 (Luckfox Pico Zero) | ~1W | Rear-top |
 | STM32 + sensors | <1W | Side |
-| BLDC stirring motor | 12-48W (intermittent) | Top gantry |
+| CAN servo stirring motor | 12-48W (intermittent) | Top gantry |
+| 2S Li-ion battery pack | <1W (charging) | Cool zone, away from the surface module and PSU (< 45C) |
 
 ### 8.2 Cooling Strategy
 
@@ -419,8 +418,8 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 │    (rear)                  ▲                               │
 │                            │                               │
 │                   ┌────────┴──────────┐                    │
-│                   │  CM5 heatsink     │                    │
-│                   │  (passive, aluminum)                   │
+│                   │  Pico Zero, ~1 W  │                    │
+│                   │  (no heatsink)      │                  │
 │                   └───────────────────┘                    │
 │                            ▲                               │
 │                   ┌────────┴──────────┐                    │
@@ -442,7 +441,7 @@ See [[03-Ingredient-Dispensing|Ingredient Dispensing System]] for full details.
 
 Dual-fan push-pull configuration:
   Fan 1 (bottom): intake fresh air, cools PSU and electronics
-  Fan 2 (top): exhaust hot air past CM5
+  Fan 2 (top): exhaust hot air past the Pico Zero
   Airflow path avoids pot/food zone (no contamination risk)
 ```
 
@@ -472,7 +471,7 @@ See [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] for full specificat
 
 - **Angle:** Tilted 15-30 degrees from vertical (optimal viewing while standing at kitchen counter)
 - **Height:** Screen center at ~200mm from countertop (within natural downward gaze)
-- **Size:** 10.1" diagonal, large enough for recipe steps and camera feed
+- **Size:** 4.0" diagonal, 480x320. Panel: 4.0" ST7796S + FT6336U SPI module, glass 94.57 x 60.88 mm, active area 83.52 x 55.68 mm (landscape), module 108.0 x 60.88 x 14.8 mm including the 14-pin header. Bezel aperture 84 x 56 mm (+0.5 mm clearance), pocket 95 x 61 mm for the glass, 15 mm depth behind the bezel for the module and header. Recipe steps and controls fit; the pot camera view is an optional on-demand screen
 - **Touch:** Capacitive (works with dry fingers, not with wet/gloved hands -- design assumes user dries hands)
 
 ### 9.2 Cleaning Design
@@ -482,8 +481,8 @@ See [[05-Exhaust-Fume-Management|Exhaust & Fume Management]] for full specificat
 | Pot | Dishwasher or hand wash | Yes |
 | Stirring paddle | Dishwasher or hand wash | Yes (twist-lock) |
 | Stirring shaft | Wipe with damp cloth | Yes (pull-out) |
-| ASD hoppers (×3) | Dishwasher or hand wash | Yes (lift out) |
-| CID trays (×2) | Dishwasher or hand wash | Yes (slide out) |
+| FID canisters (×6) + carousel ring | Dishwasher or hand wash | Yes (lift out) |
+| CID carousel ring (5 bins) + base plate + chute | Dishwasher or hand wash | Yes (lift off at home position) |
 | SLD reservoirs (×2) | Dishwasher or hand wash | Yes (lift out) |
 | SLD tubing (×2) | Hand wash / boil sterilize | Yes (disconnect) |
 | Pot platform | Wipe with damp cloth | No (fixed, sealed surface) |
@@ -521,8 +520,8 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | Enclosure (pot well) | 3D printed + aluminum sheet insert | Heat-resistant surface near coil |
 | Pot | Off-the-shelf induction pot (22cm) | Modified with embedded magnet |
 | Gantry | Aluminum extrusion + 3D printed brackets | Standard 2020 or 2040 V-slot |
-| ASD hoppers + CID trays | 3D printed (food-safe PETG) | Or silicone mold for flexibility |
-| PCBs | 4-layer custom PCB (JLCPCB or similar) | 2 boards: CM5 carrier, STM32 control |
+| FID canisters, FID/CID carousel rings, base plate, chutes, index gears | 3D printed (food-safe PETG; POM for gears) | Or silicone mold for flexibility |
+| PCBs | 4-layer custom PCB (JLCPCB or similar) | 1 board: Unified PCB (STM32 control + drivers); Luckfox Pico Zero is an off-the-shelf module |
 | Wiring | Hand-soldered, JST/Dupont connectors | Label all connectors |
 
 ### 10.2 Production Phase
@@ -533,24 +532,24 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 | Enclosure (pot well) | Stamped stainless steel | Press-formed, integrated with base |
 | Pot | Custom die-cast aluminum + SS base | With embedded magnet, non-stick coated |
 | Gantry | Zinc die-cast or stamped steel | Integrated camera/motor mounts |
-| ASD/CID housings | Injection mold (food-grade PP) | Tooling ~$2,000 per shape |
+| FID/CID carousels, canisters, housings | Injection mold (food-grade PP) | Tooling ~$2,000 per shape |
 | PCBs | SMT assembly (pick-and-place) | Panelized, automated testing |
 | Assembly | Semi-automated line | Target 30 min per unit |
 
 ### 10.3 Assembly Sequence (Prototype)
 
 1. Mount microwave induction surface module into base
-2. Route CAN bus cable from module to controller PCB
+2. Route CAN bus cable from module to J_CAN on the Unified PCB (isolated bus shared by the RV1106 and the STM32)
 3. Mount PSU module in rear-bottom compartment
 6. Install STM32 control PCB on side bracket
-7. Install CM5 + carrier board in rear-top area
+7. Install Luckfox Pico Zero in rear-top area (no carrier board; four 3.0 mm mounting holes)
 8. Wire PSU to all DC loads (color-coded connectors)
-9. Wire STM32 to sensors, servos, CAN bus (to microwave surface)
-10. Wire CM5 UART to STM32
-11. Connect camera FFC cable, mount camera on gantry
-12. Mount display, connect DSI/HDMI and I2C touch
+9. Wire STM32 to sensors and servos (its CAN node is on-board)
+10. Wire Pico Zero SPI0 CS1 + INT to the MCP2518FD CAN controller and UART2 to STM32 USART2 (service link)
+11. Connect IMX415-98 camera FPC to the Pico Zero CSI connector, mount camera on gantry
+12. Mount 4" display, connect SPI (LCD) and I2C (touch)
 13. Install gantry assembly (bridge + arm motor + camera)
-14. Install dispensing subsystems: ASD hoppers + servos, CID trays + linear actuators, SLD pumps + solenoids + tubing
+14. Install dispensing subsystems: FID carousel + 3 servos + dosing station, CID carousel + index servo + base plate, SLD pumps + solenoids + tubing; plug servo leads into J_DSB1-4
 15. Install fans, E-stop button, LED ring
 16. Close enclosure, connect power cord
 17. Power-on test and calibration
@@ -559,10 +558,10 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 
 ## 11. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture & Wiring Diagrams]]
 - [[03-Sensors-Acquisition|Sensors & Data Acquisition]]
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
 - [[05-Exhaust-Fume-Management|Exhaust & Fume Management]]
 - [[01-Safety-Compliance|Safety & Compliance]]
 
@@ -576,3 +575,7 @@ Optional automated cleaning: fill pot with water, heat to 60C, stir for 5 minute
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 2.0 | 2026-02-20 | Manas Pradhan | Replaced DS3225 servo references with 24V BLDC motor |
+| 2.1 | 2026-11-04 | Manas Pradhan | Compute module changed to Luckfox Pico Zero (RV1106G3, no carrier, no heatsink); 10.1" display replaced by 4" 480x320 SPI LCD (cut-out to be confirmed); camera is SC3336 on the Pico Zero CSI FPC; assembly steps updated |
+| 2.2 | 2026-11-04 | Manas Pradhan | Dispensers redesigned as servo carousels: FID (6 canisters, 3 servos) replaces P-ASD/ASD hoppers, CID (5 slots + cover, 1 servo) replaces two push-plate trays; layout, specs, sequence, cleaning, fabrication and assembly updated |
+| 2.3 | 2026-11-04 | Manas Pradhan | Display cut-out fixed from the 4.0" ST7796S/FT6336U module drawing (active 83.52 x 55.68 mm); camera IMX415-98 |
+| 2.4 | 2026-11-04 | Manas Pradhan | Assembly steps updated for the shared isolated CAN bus (RV1106 CAN node on the Unified PCB; UART2 service link) |

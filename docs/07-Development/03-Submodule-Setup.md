@@ -21,7 +21,7 @@ epicura-firmware/          # or any other repo
 | Repository | Stack | Submodule Path |
 |-----------|-------|----------------|
 | `epicura-firmware` | C / STM32 / FreeRTOS | `docs/` |
-| `epicura-cm5` | Python / Docker / Yocto | `docs/` |
+| `epicura-rv1106` | C / CMake / Buildroot | `docs/` |
 | `epicura-api` | TypeScript / Node / Next.js | `docs/` |
 | `epicura-ios` | Swift / Xcode | `docs/` |
 | `epicura-android` | Kotlin / Gradle | `docs/` |

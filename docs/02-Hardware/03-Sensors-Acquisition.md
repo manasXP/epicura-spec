@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.4
 status: Draft
 ---
 
@@ -11,8 +11,9 @@ status: Draft
 
 | Sensor | Type | Interface | Range | Accuracy | Sampling Rate | Connected To |
 |--------|------|-----------|-------|----------|---------------|--------------|
-| Camera (IMX219/477) | CMOS image sensor | MIPI CSI-2 (2-lane) | 1080p @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | CM5 CSI port |
-| IR Thermometer (MLX90614) | Non-contact thermopile | I2C (0x5A) | -70 to +380C | +/-0.5C | 10 Hz | STM32 I2C1 |
+| Camera (IMX415-98) | CMOS image sensor, 8 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
+| Cooking surface temperature | Module-internal under-glass sensor (NTC) reported in HEAT_STATUS | Isolated CAN (0x180) | Module-reported, typ. 0-300C | Module accuracy (typ. +/-3-5C) | 10 Hz | Induction surface MCU → RV1106 + STM32 |
+| Battery pack voltage | Resistive divider | ADC (PA4) | 5.5-8.5V | +/-2% | 1 Hz | STM32 ADC1 |
 | Pot Detection | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 GPIO |
 
 ---
@@ -21,19 +22,20 @@ status: Draft
 
 ### 2.1 Module Selection
 
-| Parameter | IMX219 (Standard) | IMX477 (HQ Option) |
-|-----------|-------------------|---------------------|
-| Resolution | 8 MP (3280x2464) | 12.3 MP (4056x3040) |
-| Sensor Size | 1/4" | 1/2.3" |
-| Pixel Size | 1.12 um | 1.55 um |
-| Max Video | 1080p @ 30fps | 1080p @ 30fps (4K capable) |
-| Interface | MIPI CSI-2 (2-lane) | MIPI CSI-2 (2-lane) |
-| Lens | Fixed focus, 62.2 deg FOV | C/CS mount (interchangeable) |
-| Low-Light Performance | Adequate | Better (larger pixels) |
-| Estimated Cost | $25 | $50 |
-| Recommendation | **Default choice** (cost, simplicity) | Upgrade for better CV accuracy |
+| Parameter | IMX415-98 (Luckfox module) |
+|-----------|-------------------------|
+| Resolution | 8.29 MP (3840×2160 native), run at 1280x720 |
+| Sensor Size | 1/2.8" |
+| Pixel Size | 1.45 um (Sony STARVIS, back-illuminated) |
+| Max Video | 2160p @ 15fps on 4 lanes; Epicura uses 720p @ 30fps |
+| Interface | MIPI CSI-2, 4-lane, 22-pin FPC (supplied) to the Pico Zero CSI connector |
+| Lens | 3.95 mm F2.0 M12, 98 deg diagonal / 84 deg horizontal / 44 deg vertical, distortion < 1%, manual focus, switchable IR-CUT (held in the visible-light position) |
+| Low-Light Performance | Very good (STARVIS pixels, ISP 2D/3D noise reduction) |
+| ISP Support | RV1106 ISP tuning file shipped in the Luckfox SDK |
+| Estimated Cost | $54 (Luckfox IMX415-98 IR-CUT module incl. 22-pin FPC) |
+| Recommendation | **Fixed choice** (IMX219/IMX477 dropped: no RV1106 ISP tuning file) |
 
-**Selection Rationale:** The IMX219 is the default choice for the prototype. Its fixed-focus lens and adequate resolution are sufficient for food color/texture classification. The IMX477 with a C-mount lens offers more flexibility if fine-grained visual analysis is needed (e.g., detecting individual spice particles or subtle color gradients).
+**Selection Rationale:** The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero (its CSI tutorial and factory image target this module), so it is the fixed choice. Luckfox's SC3336 module, used on the other Pico boards, is listed by Luckfox as not compatible with the Pico Zero; IMX219 and IMX477 are dropped because the RV1106 ISP has no tuning file for them. Its 98 deg lens and 8 MP resolution are more than sufficient for food color/texture classification. Running at 1280x720 rather than 1080p halves ISP/VI buffer memory and encoder load, and is more than sufficient for the 224x224 stage classifier and the phone preview. Dehaze, noise reduction, lens shading, sharpening, AWB and AE all run in the ISP; no CPU image processing is needed.
 
 ### 2.2 Camera Mounting
 
@@ -46,7 +48,7 @@ status: Draft
 │                                                     │
 │         ┌──────────────┐                            │
 │         │   Camera      │                           │
-│         │   (IMX219)    │                           │
+│         │   (IMX415-98) │                           │
 │         │   ┌──────┐    │                           │
 │         │   │ Lens │    │   ◄── LED Ring            │
 │         │   └──┬───┘    │       (surrounding lens)  │
@@ -64,20 +66,9 @@ status: Draft
 └────────────────────────────────────────────────────┘
 ```
 
-### 2.3 Field of View Calculation
+### 2.3 Field of View
 
-At a mounting height of 25cm above a 22cm diameter pot:
-
-```
-Camera FOV (IMX219): 62.2 degrees horizontal
-Half-angle: 31.1 degrees
-Coverage at 25cm: 2 x 25 x tan(31.1) = 2 x 25 x 0.603 = 30.2 cm
-
-Result: 30.2 cm coverage > 22 cm pot diameter
-Margin: ~37% extra coverage (captures pot rim and surroundings)
-```
-
-For the IMX477 with a suitable lens, FOV can be tuned via lens selection. A 6mm lens at 25cm gives approximately 28cm coverage. A wider 3.6mm lens gives approximately 45cm coverage.
+The IMX415-98 lens is specified by Luckfox at 98 deg diagonal, 84 deg horizontal and 44 deg vertical (3.95 mm, F2.0, distortion < 1%). In a 16:9 720p frame the vertical axis is the limiting one: at 25 cm above the pot the coverage is about 45 x 20 cm, which does not clear a 22 cm pot rim, while at 30 cm it is about 54 x 24 cm. The nominal mounting height is therefore **30 cm** above the pot rim, giving ~1 cm margin on the short axis and ample width for the LED ring and ladle. The 720p output is produced by the ISP scaling the full sensor frame, so the full FOV is retained; if the Rockchip driver only offers a cropped 720p sensor mode, use the 1080p (2x2 binned) mode and scale in the ISP instead. Confirm the measured coverage on the assembled gantry before fixing its height.
 
 ### 2.4 Lighting System
 
@@ -90,8 +81,8 @@ For the IMX477 with a suitable lens, FOV can be tuned via lens selection. A 6mm 
 | Ring Diameter | 50-60mm (surrounds camera lens) |
 | Color Temperature | Neutral white (5000-6500K, RGB mixed) |
 | Brightness | Software-adjustable, 0-100% |
-| Interface | Single-wire data (SPI/GPIO from CM5 or STM32) |
-| Power | 5V, ~60mA per LED at full white (total ~1A max) |
+| Interface | Single-wire data (800 kHz) from STM32 PB14 (TIM15_CH1 PWM + DMA) via 74AHCT1G125 3.3→5V level shifter; modes requested by the RV1106 via SET_LED |
+| Power | 5V (switched by PCF8574 #2 P3), ~60mA per LED at full white (total ~1A max) |
 
 #### 2.4.2 Lighting Design
 
@@ -109,114 +100,21 @@ For the IMX477 with a suitable lens, FOV can be tuned via lens selection. A 6mm 
 
 ---
 
-## 3. IR Thermometer (MLX90614)
+## 3. Cooking Temperature (Module-Reported)
 
-### 3.1 Specifications
+Epicura has no temperature sensor of its own. The IR thermometer of earlier revisions (MLX90614) is dropped because the commercial induction surface runs its own closed-loop temperature control on an under-glass sensor and reports the measured temperature on the isolated CAN bus.
 
 | Parameter | Value |
 |-----------|-------|
-| Part Number | MLX90614ESF-BAA |
-| Type | Non-contact infrared thermopile |
-| Object Temperature Range | -70C to +380C |
-| Ambient Temperature Range | -40C to +125C |
-| Accuracy (0-50C ambient) | +/-0.5C |
-| Accuracy (full range) | +/-1.0C |
-| Resolution | 0.02C |
-| Field of View | 90 degrees (wide FOV variant) |
-| Interface | I2C / SMBus (address 0x5A) |
-| Supply Voltage | 3.3V (2.6V to 3.6V) |
-| Current Consumption | 1.5 mA (typical) |
-| Response Time | 100ms (to 90% of final value) |
+| Source | HEAT_STATUS (CAN 0x180), field `surface_temp_dC` (int16, 0.1 °C), 10 Hz |
+| What it measures | Pot-bottom / glass temperature under the pot, not the food surface |
+| Setpoint path | RV1106 sends HEAT_SET_TEMP (0x100) or HEAT_SET_POWER (0x103); the module regulates |
+| Consumers | RV1106 engine thread (stage transitions, UI graph), STM32 safety monitor (over-temperature cut-off at 270 °C) |
+| Accuracy | Module-specified; verified against a thermocouple on the pot bottom during bring-up (±5 °C at 100 °C target) |
+| Food-state detection | Camera + CV pipeline (browning, boiling, thickening) — see §5 |
 
-### 3.2 Mounting Configuration
-
-```
-                     ┌──── Gantry Arm ────┐
-                     │                    │
-                     │   ┌────────────┐   │
-                     │   │  MLX90614  │   │
-                     │   │  (angled   │   │
-                     │   │   ~30 deg) │   │
-                     │   └─────┬──────┘   │
-                     │         │          │
-                     │         │ IR beam  │
-                     │         │ (90 deg  │
-                     │         │  FOV)    │
-                     │         ▼          │
-              ┌──────┴─────────────────────┴──────┐
-              │                                    │
-              │         Pot (center area)           │
-              │     Food surface measurement        │
-              │                                    │
-              └────────────────────────────────────┘
-
-Mounting distance: 5-10 cm from food surface
-Aim: Center of pot
-FOV at 7cm distance: covers ~14cm diameter circle
-(adequate for pot center measurement)
-```
-
-### 3.3 Emissivity Calibration
-
-Different food surfaces have different IR emissivity values, affecting temperature accuracy:
-
-| Surface | Emissivity | Notes |
-|---------|-----------|-------|
-| Water | 0.95-0.98 | Highly consistent |
-| Cooking Oil | 0.90-0.95 | Depends on oil type |
-| Food (general) | 0.90-0.97 | Curries, stews, sauces |
-| Metal (pot rim) | 0.10-0.30 | Avoid measuring bare metal |
-| Non-stick coating | 0.85-0.95 | Ceramic or PTFE |
-
-- **Default Emissivity:** 0.95 (suitable for most food/water surfaces)
-- **Configurable:** Recipe engine can set emissivity per recipe stage (e.g., dry spices vs. liquid gravy)
-- **Calibration:** Compare IR reading against reference thermometer in water bath at 50C, 70C, 90C
-
-### 3.4 I2C Wiring Diagram
-
-```
-STM32G474RE                        MLX90614ESF-BAA
-┌──────────────────┐              ┌──────────────────┐
-│                  │              │                  │
-│  PA15 (SCL) ────┼──────┬──────┼──── Pin 3 (SCL) │
-│                  │      │      │                  │
-│  PB7 (SDA) ─────┼──────┼──┬───┼──── Pin 1 (SDA) │
-│                  │      │  │   │                  │
-│  3.3V ───────────┼──┬───┘  │   │  Pin 2 (VDD) ───┼── 3.3V
-│                  │  │      │   │                  │
-│                  │  R1     R2  │  Pin 4 (VSS) ───┼── GND
-│                  │  4.7k   4.7k│                  │
-│                  │  │      │   │                  │
-│  GND ────────────┼──┴──────┴───┼──── GND          │
-│                  │              │                  │
-└──────────────────┘              └──────────────────┘
-
-R1, R2: 4.7k ohm pull-up resistors to 3.3V
-C1: 100nF ceramic decoupling cap on VDD (close to MLX90614)
-Cable: Shielded 4-wire, <30cm length
-Shield: Connected to GND at STM32 end only
-```
-
-### 3.5 STM32 Software Interface
-
-```c
-// MLX90614 I2C read sequence (simplified)
-#define MLX90614_ADDR   0x5A
-#define MLX90614_TOBJ1  0x07  // Object temperature register
-
-float mlx90614_read_object_temp(I2C_HandleTypeDef *hi2c) {
-    uint8_t buf[3];
-    HAL_I2C_Mem_Read(hi2c, MLX90614_ADDR << 1,
-                     MLX90614_TOBJ1, I2C_MEMADD_SIZE_8BIT,
-                     buf, 3, 100);
-    uint16_t raw = buf[0] | (buf[1] << 8);
-    // Temperature in Kelvin * 50, convert to Celsius
-    float temp_c = (raw * 0.02f) - 273.15f;
-    return temp_c;
-}
-```
-
----
+> [!note]
+> Because the reading is the pot-bottom temperature, recipe `temp_target` values are pot-bottom targets calibrated during recipe development. Boiling water reads above 100 °C at the glass; the CV pipeline, not the temperature, decides "boiling".
 
 ---
 
@@ -257,10 +155,10 @@ Alternative: Hall effect sensor (SS49E or A3144)
 
 ### 4.2 Interlock Logic
 
-1. On boot, STM32 queries microwave surface module via CAN for pot detection status
+1. On boot, the RV1106 queries the microwave surface module (HEAT_QUERY) on the shared CAN bus; both processors read pot detection from HEAT_STATUS
 2. If pot not detected, display "Place pot" on UI
 3. Module will not heat without pot detected (internal interlock)
-4. If pot removed during cooking, module stops heating internally; STM32 receives status via CAN
+4. If pot removed during cooking, module stops heating internally; both processors receive the status via CAN and the RV1106 sends HEAT_SET_POWER 0
 5. Recipe pauses and UI shows "Pot removed" warning
 6. When pot replaced, resume after 3-second confirmation delay
 
@@ -270,7 +168,7 @@ Alternative: Hall effect sensor (SS49E or A3144)
 
 ### 5.1 Multi-Sensor Cooking Stage Detection
 
-The recipe engine on CM5 combines data from multiple sensors to determine the current cooking stage and trigger transitions:
+The recipe engine on the RV1106 combines data from multiple sensors to determine the current cooking stage and trigger transitions:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -281,9 +179,9 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 │  ├── Texture features ─────────┤                        │
 │  └── Bubble detection ─────────┤                        │
 │                                │                        │
-│  IR Temp (10Hz)                ├──► Stage Classifier    │
-│  ├── Surface temperature ──────┤    (CM5, TFLite/       │
-│  └── Rate of change ───────────┘     OpenCV logic)      │
+│  Surface Temp (CAN, 10Hz)      ├──► Stage Classifier    │
+│  ├── Module-reported temp ─────┤    (RV1106 NPU,        │
+│  └── Rate of change ───────────┘     RKNN INT8)         │
 │                                         │              │
 │                                         ▼              │
 │                                    Cooking Stage ID    │
@@ -303,7 +201,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 
 ### 5.2 Decision Matrix
 
-| Cooking Stage | Camera Signal | IR Temp (C) | Confidence |
+| Cooking Stage | Camera Signal | Surface Temp (C, module-reported) | Confidence |
 |---------------|---------------|-------------|------------|
 | Raw/Cold | Raw ingredient colors, no bubbles | <50 | High |
 | Heating | Slight color shift, steam wisps | 50-90 | Medium |
@@ -319,7 +217,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 | Sensor | Acquisition Rate | Processing Rate | Latency Budget |
 |--------|-----------------|-----------------|----------------|
 | Camera | 30 fps capture | 2 Hz CV inference | <500ms per frame |
-| IR Thermometer | 10 Hz read | 10 Hz to PID | <100ms |
+| Surface Temperature | 10 Hz HEAT_STATUS from the induction module on CAN | 1 Hz engine tick (stage logic), 10 Hz STM32 safety monitor | <200ms |
 | Pot Detection | Interrupt-driven | Immediate (<1ms) | <1ms |
 
 ---
@@ -331,7 +229,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 | Sensor | Health Check | Pass Criteria | Failure Mode |
 |--------|-------------|---------------|--------------|
 | Camera | Frame received, not black/white | Valid histogram, >10% variance | Lens blocked, cable loose, module fault |
-| IR Thermometer | I2C ACK, reading in range | ACK on address, -20C < T < 350C | I2C bus fault, sensor damaged |
+| Surface Temperature | HEAT_STATUS received, reading in range | Frame every ≤ 500 ms, -20C < T < 350C | CAN bus fault, module sensor fault (fault_flags) |
 | Pot Detection | State change matches expectations | Toggles when pot placed/removed | Switch stuck, magnet missing |
 
 ### 6.2 Degradation Fallback Strategy
@@ -339,7 +237,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 | Primary Sensor Failed | Fallback Strategy | Limitations |
 |-----------------------|-------------------|-------------|
 | Camera fails | Timer-based cooking (no CV stage detection) | Cannot detect browning, must rely on time/temp |
-| IR thermometer fails | CAN coil temp + camera (color-based temp estimation) | Less accurate food temp, wider PID margins |
+| Module surface sensor fails (fault flag or no HEAT_STATUS) | Pause; if coil temperature is still reported, allow power-mode stages with timers + camera | No temperature-mode stages; user prompted |
 
 ---
 
@@ -347,23 +245,23 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 
 ### 7.1 Camera Test Procedures
 
-- [ ] Mount camera at 25cm height, verify full pot is in frame
+- [ ] Mount camera at 30cm height, verify full pot is in frame
+- [ ] Verify IMX415-98 coverage at 30cm in the 720p ISP output (expected ~54 x 24 cm from the 84/44 deg H/V spec); confirm the ISP scales the full frame rather than cropping; confirm pot rim margin and fix gantry height
+- [ ] Verify 1280x720 @ 30fps on the ISP main path and 224x224 self-path frames reaching the NPU at 2 Hz
 - [ ] Capture image of white card, verify white balance (R/G/B within +/-10%)
 - [ ] Capture image of X-Rite ColorChecker, verify color accuracy (deltaE < 5)
-- [ ] LED ring on: verify even illumination (no hot spots >20% variance)
+- [ ] LED ring on (SET_LED CAPTURE mode via STM32): verify even illumination (no hot spots >20% variance)
 - [ ] LED ring off: verify camera captures adequate image under typical kitchen lighting
 - [ ] Steam test: boil water for 10 minutes, verify lens does not fog (shroud effective)
 - [ ] FPS test: verify 30fps capture sustained over 30 minutes
 
-### 7.2 IR Thermometer Test Procedures
+### 7.2 Surface Temperature Test Procedures
 
-- [ ] Read room temperature, compare to reference thermometer (+/-1C)
-- [ ] Read boiling water surface, verify 97-102C (altitude-dependent)
-- [ ] Read 70C water bath, compare to reference (+/-1C)
-- [ ] Read cooking oil at 180C, compare to reference (+/-3C)
-- [ ] Emissivity test: compare readings for water (0.95) vs. oil (0.92)
-- [ ] Steam interference: verify stable reading during active boiling
-- [ ] Response time: apply sudden temp change, verify 90% response in <200ms
+- [ ] HEAT_STATUS arrives at 10 Hz on the isolated CAN bus; `surface_temp_dC` is parsed by both the RV1106 and the STM32
+- [ ] Compare module surface_temp against a thermocouple clamped to the pot bottom at 60C, 100C, 180C (+/-5C)
+- [ ] HEAT_SET_TEMP 100C with 1L water: module settles within +/-5C in < 90 s, overshoot < 10C
+- [ ] Remove HEAT_SET_TEMP keep-alive: module drops to zero power within 1 s
+- [ ] STM32 cut-off: inject surface_temp > 270C on a bench CAN node, verify HEAT_ON_OFF=0, E_STOP and relay open within 100 ms
 
 ### 7.3 Pot Detection Test Procedures
 
@@ -377,7 +275,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 
 ## 8. Related Documentation
 
-- [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
+- [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture & Wiring Diagrams]]
 - [[04-Mechanical-Design|Mechanical Design]]
 - [[02-Controller-Software-Architecture|Controller & Software]]
@@ -391,3 +289,7 @@ The recipe engine on CM5 combines data from multiple sensors to determine the cu
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Camera changed to SC3336 3 MP at 1280x720 on the Luckfox Pico Zero (RV1106G3) 4-lane CSI with hardware ISP; IMX219/IMX477 dropped; FOV section rewritten (stock-lens FOV to be confirmed); LED ring now STM32-driven via level shifter; sensor fusion runs on the RV1106 NPU; camera test checklist updated |
+| 1.2 | 2026-11-04 | Manas Pradhan | Camera changed to Luckfox IMX415-98 IR-CUT (8 MP, 98/84/44 deg FOV): SC3336 is not compatible with the Pico Zero; FOV section rewritten with datasheet figures, nominal height 30 cm |
+| 1.3 | 2026-11-04 | Manas Pradhan | Pot-detection interlock and IR data flow updated for the shared CAN bus (PID on the RV1106) |
+| 1.4 | 2026-11-04 | Manas Pradhan | IR thermometer (MLX90614) dropped: cooking temperature is the induction module's own under-glass sensor reported in HEAT_STATUS; §3 rewritten, fusion/health/fallback tables and tests updated; battery pack voltage added to the sensor table |

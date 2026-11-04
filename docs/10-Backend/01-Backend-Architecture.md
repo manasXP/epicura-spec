@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 ---
 
@@ -16,8 +16,8 @@ Epicura's cloud backend provides centralized services for recipe management, app
 │                         Epicura Cloud Architecture                         │
 │                                                                            │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │  iOS App     │  │ Android App  │  │ Admin Portal │  │ Epicura CM5  │    │
-│  │  (SwiftUI)   │  │ (Compose)    │  │ (Next.js)    │  │ (Yocto)      │    │
+│  │  iOS App     │  │ Android App  │  │ Admin Portal │  │Epicura RV1106│    │
+│  │  (SwiftUI)   │  │ (Compose)    │  │ (Next.js)    │  │ (epicurad)   │    │
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘    │
 │         │ HTTPS           │ HTTPS           │ HTTPS           │ MQTT/HTTPS │
 │         └────────┬────────┘                 │                 │            │
@@ -72,7 +72,7 @@ Epicura's cloud backend provides centralized services for recipe management, app
 | Module | Responsibility | Key Endpoints |
 |--------|---------------|---------------|
 | **Auth** | Registration, login, JWT lifecycle, password reset | `/auth/*` |
-| **Recipes** | CRUD, versioning, search, CM5 sync | `/recipes/*` |
+| **Recipes** | CRUD, versioning, search, device sync | `/recipes/*` |
 | **Appliances** | Registration, pairing, status tracking | `/appliances/*` |
 | **Sessions** | Cooking session lifecycle, history | `/sessions/*` |
 | **Telemetry** | Ingest MQTT data, store time-series, analytics | `/telemetry/*` |
@@ -284,12 +284,12 @@ services:
 
 ## 8. MQTT Bridge (Device to Backend)
 
-The backend subscribes to device MQTT topics and bridges telemetry data to WebSocket clients (mobile apps) and to PostgreSQL for persistence.
+The backend subscribes to device MQTT topics and bridges telemetry data to WebSocket clients (mobile apps) and to PostgreSQL for persistence. The device side is `epicurad`'s sync thread (libmosquitto client, TLS, QoS 1); the device runs no broker of its own.
 
 ```
 ┌──────────┐     MQTT      ┌──────────────┐     Internal    ┌───────────┐
 │ Epicura  │──────────────►│  MQTT Broker │────────────────►│ API Server│
-│ CM5      │               │  (Mosquitto /│                 │ (Fastify) │
+│ RV1106   │               │  (Mosquitto /│                 │ (Fastify) │
 │          │               │   AWS IoT)   │                 │           │
 └──────────┘               └──────────────┘                 └─────┬─────┘
                                                                    │
@@ -320,25 +320,24 @@ The backend subscribes to device MQTT topics and bridges telemetry data to WebSo
 
 ---
 
-## 10. Unified Deployment Model (Cloud + CM5)
+## 10. Device Sync Model (Cloud + RV1106)
 
-The same Fastify codebase deploys to both the cloud and each CM5 device. This eliminates API drift and reduces maintenance to a single implementation.
+The cloud Fastify API is the only API server. The Epicura device (Luckfox Pico Zero, RV1106G3) runs no Node.js, no PostgreSQL and no HTTP or WebSocket server; it is a REST client and an MQTT client of the cloud, with a local SQLite mirror of the cloud schema (see [[02-Controller-Software-Architecture|Controller & Software Architecture]] section 5.5).
 
-| Aspect | Cloud | CM5 (On-Device) |
-|--------|-------|-----------------|
-| **Runtime** | Node.js 20 LTS (cloud VM / container) | Node.js 20 LTS (Docker on Yocto) |
-| **Database** | PostgreSQL 16 (RDS/Neon) | PostgreSQL 16 (Docker container) |
-| **Schema** | Identical | Identical |
-| **Modules Enabled** | All (Auth, Recipes, Appliances, Sessions, Telemetry, Notifications, OTA, **Admin**) | All except **Admin** (`DISABLE_ADMIN=true`) |
-| **Port** | 3000 | 3000 |
-| **Access** | Public internet (HTTPS) | Local network only (HTTP via mDNS) |
+| Aspect | Cloud | RV1106 (On-Device) |
+|--------|-------|--------------------|
+| **Runtime** | Node.js 20 LTS (cloud VM / container) | `epicurad` sync thread (C11; libcurl + mbedTLS, libmosquitto) |
+| **Database** | PostgreSQL 16 (RDS/Neon) | SQLite 3 (WAL, JSON1, FTS5) at `/data/epicura.db` |
+| **Schema** | Authoritative | Table-for-table mirror (UUID→TEXT, JSONB→TEXT+JSON1, TEXT[]→JSON array, TIMESTAMPTZ→ISO-8601 TEXT, GIN→FTS5) plus device-only `session_checkpoint` and `sync_outbox` |
+| **API role** | Serves REST + WebSocket | REST client + MQTT client only; no inbound HTTP |
+| **Access** | Public internet (HTTPS) | Outbound HTTPS/MQTTS only; RTSP on `:554` (LAN) while live view is active; BLE for provisioning |
 
-**How it works:**
-- The `epicura-api` monorepo builds a single Docker image
-- An environment variable (`DISABLE_ADMIN=true`) excludes the admin module on CM5
-- Kivy UI calls `http://api:3000/api/v1/...` endpoints via Python `requests` — the interface is identical regardless of whether Fastify or any other framework serves it
-- Recipe engine, CV pipeline, and bridge services also call Fastify endpoints over HTTP rather than touching PostgreSQL directly
-- Camera MJPEG streaming (port 8080) is bundled inside the cv-pipeline container
+**How it works (offline-first):**
+- Recipes: the device pulls `GET /recipes/sync?since=<last_sync_at>` on the `recipe_sync_now` MQTT command and daily, and upserts into SQLite in one transaction
+- Sessions and preferences: written to SQLite first, queued as rows in `sync_outbox`, and pushed with `POST /sessions` / `PUT /sessions/:id` / `PUT /users/me` when connectivity allows; the queue drains in order after an offline period
+- Telemetry: published straight to the cloud broker on `epicura/{device_id}/telemetry` (QoS 1, every 10 s while cooking); spooled to `sync_outbox` (capped at 1,000 rows) when offline
+- Commands: the device subscribes to `epicura/{device_id}/cmd` (`live_view_start`, `live_view_stop`, `recipe_sync_now`, `ota_check`)
+- Live view: the app asks the cloud, the cloud publishes `live_view_start` over MQTT, and the device serves H.264 over RTSP (`rtsp://<device>:554/pot` on the same LAN, otherwise via a cloud relay). No MJPEG and no WebSocket video from the device
 
 ---
 
@@ -349,7 +348,7 @@ The same Fastify codebase deploys to both the cloud and each CM5 device. This el
 - [[01-REST-API-Reference|REST API Reference]] - Complete endpoint documentation
 - [[02-WebSocket-Events|WebSocket Events]] - Real-time event protocol
 - [[03-MQTT-Topics|MQTT Topics]] - Device telemetry topic hierarchy
-- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - CM5 PostgreSQL schema and cloud sync
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Device SQLite schema and cloud sync
 - [[01-Tech-Stack|Tech Stack]] - Overall technology choices
 
 #epicura #backend #fastify #typescript #postgresql #redis #mqtt #architecture
@@ -361,3 +360,4 @@ The same Fastify codebase deploys to both the cloud and each CM5 device. This el
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106 (Luckfox Pico Zero): removed on-device Fastify/PostgreSQL/Docker deployment; device is now a REST + MQTT client with a SQLite mirror and offline-first `sync_outbox` |

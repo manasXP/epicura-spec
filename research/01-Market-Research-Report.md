@@ -1,7 +1,7 @@
 ---
 created: 2026-02-16
-modified: 2026-02-16
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 tags: [epicura, market-research, business-case]
 ---
@@ -64,13 +64,13 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 
 1. **India-First Recipe Library** — 100+ recipes at launch covering dal, curry, biryani, sambar, and regional variations across North, South, East, and West India. No competitor offers this depth for Indian cuisine.
 
-2. **Affordable Price Point** — $400–600 target retail vs. Posha at $1,500 and Thermomix at $1,800+. Achieved through commodity hardware (Raspberry Pi CM5, STM32), production BOM of ~$337 at 1,000 units.
+2. **Affordable Price Point** — $400–600 target retail vs. Posha at $1,500 and Thermomix at $1,800+. Achieved through commodity hardware (Rockchip RV1106 on a Luckfox Pico Zero, STM32), production BOM of ~$337 at 1,000 units.
 
 3. **Under 2kW Power Draw** — Designed for standard Indian 15A/220V household outlets. Many Western appliances exceed Indian wiring capacity.
 
 4. **Compact Countertop Form** — 50×40×30 cm fits Indian kitchen counters. Self-contained with exhaust filtration (no external venting required).
 
-5. **Vernacular UI** — Multi-language support (English, Hindi, Tamil, Telugu) on a 10" touchscreen, with native mobile companion apps.
+5. **Vernacular UI** — Multi-language support (English, Hindi, Tamil, Telugu) on a 4" touchscreen, with native mobile companion apps.
 
 ---
 
@@ -99,9 +99,9 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 | **Price** | 3–4x cheaper than Posha; 60% cheaper than CookingPal Julia |
 | **India Focus** | Purpose-built for Indian cooking (tempering, slow simmering, spice dispensing) |
 | **AI Vision** | Real-time cooking stage detection; competitors rely on timers |
-| **Three-Subsystem Dispensing** | Seasoning (pneumatic), coarse ingredients (linear actuator), liquids (peristaltic) — most competitors have single-type dispensing |
+| **Three-Subsystem Dispensing** | Seasoning (servo carousel, ¼ tsp dosing), coarse ingredients (servo carousel), liquids (peristaltic) — most competitors have single-type dispensing |
 | **Offline Capable** | Full local recipe database; works without internet |
-| **Open Hardware** | Raspberry Pi CM5 + STM32 = repairable, upgradeable, no vendor lock-in |
+| **Open Hardware** | Rockchip RV1106 (Luckfox Pico Zero) + STM32 = repairable, upgradeable, no vendor lock-in |
 
 ---
 
@@ -113,11 +113,11 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 |---|---|
 | **Autonomous One-Pot Cooking** | Load ingredients, select recipe, walk away. AI vision + PID control handle the rest |
 | **100+ Indian Recipes** | Curated library: curries, dal, rice, biryani, stir-fries, soups with regional variations |
-| **AI Vision Monitoring** | Overhead camera with TFLite edge AI detects cooking stages (raw → browning → simmering → done) |
+| **AI Vision Monitoring** | Overhead camera with NPU edge AI (RKNN) detects cooking stages (raw → browning → simmering → done) |
 | **PID Induction Control** | 1,800W with ±5°C accuracy; sear at 250°C, simmer at 60°C |
 | **Robotic Stirring** | Single-axis servo arm with multiple stir patterns and auto-scraping |
-| **Three-Subsystem Dispensing** | P-ASD (6 sealed seasoning cartridges), CID (2 coarse ingredient trays), SLD (2 liquid reservoirs with load cells) |
-| **10" Touchscreen** | Kivy-based UI for recipe browsing, live camera feed, cooking status |
+| **Three-Subsystem Dispensing** | FID (6 sealed seasoning canisters on a servo carousel), CID (5-slot servo carousel), SLD (2 liquid reservoirs with load cells) |
+| **4" Touchscreen** | LVGL-based UI for recipe browsing, cooking status, on-demand pot preview |
 | **Companion Mobile Apps** | Native iOS (SwiftUI) and Android (Jetpack Compose) apps for remote control and monitoring |
 | **Exhaust Filtration** | Built-in grease and carbon filters; no external venting needed |
 
@@ -126,7 +126,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 | Feature | Description |
 |---|---|
 | **Cloud Recipe Updates** | New recipes pushed OTA; community recipe sharing |
-| **Offline Operation** | Full local PostgreSQL database; works without internet |
+| **Offline Operation** | Full local SQLite database; works without internet |
 | **Live Camera Streaming** | Watch cooking progress from mobile app |
 | **Push Notifications** | Alerts for cooking completion, anomalies, low ingredients |
 | **BLE Pairing** | Quick device setup and WiFi provisioning via Bluetooth |
@@ -231,7 +231,7 @@ At 10,000 units: BOM drops to ~$280, COGS to ~$345, gross margin improves to **3
 
 | Enabler | Relevance |
 |---|---|
-| **Edge AI (TFLite on ARM)** | Real-time cooking vision on $45 Raspberry Pi CM5 — was impossible 3 years ago |
+| **Edge AI (NPU on a $47 SoC board)** | Real-time cooking vision on the 1 TOPS NPU of a $47 Luckfox Pico Zero (RV1106G3) — was impossible 3 years ago |
 | **Commodity Induction Modules** | CAN-controlled induction surfaces available off-shelf for $40–60 |
 | **Connected Appliance Infrastructure** | MQTT, BLE, WiFi stack is mature and low-cost |
 | **OTA Update Ecosystem** | swupdate + A/B partitions enable continuous improvement post-sale |
@@ -245,7 +245,7 @@ At 10,000 units: BOM drops to ~$280, COGS to ~$345, gross margin improves to **3
 | **Posha enters India at lower price** | High | First-mover in affordable segment; India-specific recipe depth; local manufacturing cost advantage |
 | **Consumer trust in autonomous cooking** | Medium | Live camera monitoring; gradual trust-building through supervised mode; money-back guarantee |
 | **BIS/Safety certification delays** | Medium | Start compliance process in Alpha phase; engage BIS consultant early |
-| **Supply chain (CM5 availability)** | Medium | Alternative: CM4 with adapter; or Radxa CM5 compatible board |
+| **Supply chain (Luckfox Pico Zero availability)** | Medium | Alternative: Luckfox Core1106 SoM, or bare RV1106G3 on the custom PCB (same SDK and software) |
 | **Recipe quality inconsistency** | Medium | Closed-loop CV verification; recipe testing with 30+ cook sessions per recipe |
 | **Competition from Chinese low-cost robots** | Low-Medium | Xiaomi et al. optimize for Chinese cuisine; Indian cooking has distinct requirements (tempering, slow cook, spice profiles) |
 

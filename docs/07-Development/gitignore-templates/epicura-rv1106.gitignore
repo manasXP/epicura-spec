@@ -1,0 +1,45 @@
+# === epicura-rv1106 (.gitignore) ===
+# C / CMake / Buildroot
+
+# CMake / build output
+build/
+*.o
+*.d
+*.a
+*.so
+*.elf
+*.map
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# Buildroot output (br2-external on the Luckfox SDK)
+output/
+dl/
+*.img
+*.swu
+
+# ML models: the INT8 .rknn under models/ is tracked (converted offline, ~3.5 MB);
+# ignore intermediate exports and stray conversions elsewhere
+*.tflite
+*.onnx
+*.rknn
+!models/**/*.rknn
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+swupdate/keys/*.pem
+!swupdate/keys/*.pub
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

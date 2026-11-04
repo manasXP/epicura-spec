@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-02-15
-version: 1.0
+modified: 2026-11-04
+version: 1.2
 status: Draft
 ---
 
@@ -89,7 +89,7 @@ The Epicura Admin Portal is a web application for internal team use, providing r
 
 ## 5. Recipe Editor
 
-The recipe editor is the most complex page, featuring a stage-by-stage builder that matches the YAML recipe format used by the CM5.
+The recipe editor is the most complex page, featuring a stage-by-stage builder that matches the YAML recipe format used by the device.
 
 ### 5.1 Recipe Editor Wireframe
 
@@ -141,9 +141,9 @@ The recipe editor is the most complex page, featuring a stage-by-stage builder t
 
 - Drag-and-drop stage reordering (via `[↕]` handle)
 - Each stage has: name, temperature target, duration, stir pattern, CV check class, and ingredients
-- Ingredients include subsystem (ASD/CID/SLD), ID/channel, name, and amount (g)
+- Ingredients include subsystem (FID/CID/SLD), box/slot/channel, name, and quantity (¼ tsp count for FID, slot for CID, ml for SLD)
 - JSON preview panel shows the `recipe_data` JSONB that will be stored
-- Schema validation via Zod before save (matches CM5 recipe format)
+- Schema validation via Zod before save (matches device recipe format)
 - "Preview" button renders the recipe as it would appear on the touchscreen UI
 
 ---
@@ -156,7 +156,7 @@ The recipe editor is the most complex page, featuring a stage-by-stage builder t
 | Serial | Manufacturing serial number |
 | Owner | Linked user email |
 | Status | Online / Offline / Cooking / Error (color-coded) |
-| FW (CM5) | Current CM5 firmware version |
+| FW (RV1106) | Current RV1106 (Linux) firmware version |
 | FW (STM32) | Current STM32 firmware version |
 | Last Seen | Time since last heartbeat |
 | Sessions | Total cooking sessions count |
@@ -185,10 +185,10 @@ The recipe editor is the most complex page, featuring a stage-by-stage builder t
 
 | Field | Description |
 |-------|-------------|
-| Target | CM5 or STM32 |
+| Target | RV1106 or STM32 |
 | Version | Semantic version string |
 | Channel | `stable`, `beta`, `alpha` |
-| Binary | Upload firmware file (.img for CM5, .bin for STM32) |
+| Binary | Upload firmware file (signed .swu for RV1106, .bin for STM32) |
 | Checksum | Auto-computed SHA-256 on upload |
 | Release Notes | Markdown text field |
 | Mandatory | Toggle: force-update all devices |
@@ -209,7 +209,7 @@ The recipe editor is the most complex page, featuring a stage-by-stage builder t
 | New Users | Line chart | `users.created_at` by day |
 | Session Outcomes | Donut chart | `cooking_sessions.status` distribution |
 | Avg Cook Duration | Bar chart | `cooking_sessions.total_duration_s` by recipe |
-| Firmware Versions | Pie chart | `appliances.firmware_version_cm5` distribution |
+| Firmware Versions | Pie chart | `appliances.firmware_version_rv1106` distribution |
 
 ---
 
@@ -247,3 +247,5 @@ Admin can send push notifications to:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
+| 1.1 | 2026-11-04 | Manas Pradhan | Device renamed CM5 → RV1106; firmware target/column renamed, RV1106 OTA binary is a signed `.swu` |
+| 1.2 | 2026-11-04 | Manas Pradhan | Ingredient fields updated for FID (¼ tsp doses) / CID (slots) / SLD (ml) |

@@ -12,14 +12,14 @@ The robot resembles a large microwave in size, featuring an induction cooktop ba
     
 - **Robotics**: Single-axis arm with servo motors (e.g., STM32-driven for precision, akin to your medical device work) for rhythmic stirring and timed ingredient drops from 4-6 top-loading compartments.[[posha](https://www.posha.com/)]​
     
-- **Vision and Sensors**: Overhead HD camera with edge AI (e.g., Raspberry Pi CM5 or Nvidia Jetson for color/texture analysis) plus IR thermometer and load cells for portion feedback.[[youtube](https://www.youtube.com/watch?v=yturqqp64Ng)]​[[theverge](https://www.theverge.com/tech/840599/posha-robot-chef-review)]​
+- **Vision and Sensors**: Overhead camera with edge AI (Rockchip RV1106G3 on a Luckfox Pico Zero: hardware ISP + 1 TOPS NPU for color/texture analysis) plus IR thermometer and load cells for portion feedback.[[youtube](https://www.youtube.com/watch?v=yturqqp64Ng)]​[[theverge](https://www.theverge.com/tech/840599/posha-robot-chef-review)]​
     
-- **UI Display**: 10-inch touchscreen or app-paired interface using Kivy for recipe browsing, grocery lists, and progress cams.[[posha](https://www.posha.com/)]​
+- **UI Display**: 4-inch touchscreen or app-paired interface using LVGL for recipe browsing, grocery lists, and progress cams.[[posha](https://www.posha.com/)]​
     
 
 ## Software Architecture
 
-Culinary AI runs on embedded Linux (e.g., Yocto on CM5), processing recipes as state machines: detect stage (via CV), adjust heat/stir, add next ingredient. Supports 100+ recipes initially, with cloud updates for new ones; local fallback for offline use. Custom logic handles imperfections like imprecise measuring. Integrate MISRA C for safety-critical timing, similar to your ventilator/ECG projects.
+Culinary AI runs on embedded Linux (Buildroot on the RV1106), processing recipes as state machines: detect stage (via CV), adjust heat/stir, add next ingredient. Supports 100+ recipes initially, with cloud updates for new ones; local fallback for offline use. Custom logic handles imperfections like imprecise measuring. Integrate MISRA C for safety-critical timing, similar to your ventilator/ECG projects.
 
 ## Key Features Comparison
 
@@ -33,19 +33,19 @@ Culinary AI runs on embedded Linux (e.g., Yocto on CM5), processing recipes as s
 
 ## Prototyping Steps
 
-Start with off-the-shelf: Raspberry Pi CM5 carrier board for AI/compute, ST STM32 for arm control, and a commercial induction hob. Code device UI in Kivy (Python). Test one-pot Indian recipes (e.g., dal tadka) to validate stirring/heat logic. Estimated BOM: $800-1,200 for prototype, scalable for production.
+Start with off-the-shelf: Luckfox Pico Zero (RV1106G3) for AI/compute, ST STM32 for arm control, and a commercial induction hob. Code device UI in LVGL (C). Test one-pot Indian recipes (e.g., dal tadka) to validate stirring/heat logic. Estimated BOM: $800-1,200 for prototype, scalable for production.
 
 ## Documentation
 
-Comprehensive documentation has been organized in the [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README|docs folder]]. See the following detailed specifications:
+Comprehensive documentation has been organized in the [[__Workspaces/Appliance/Epicura/epi-Spec/docs/README|docs folder]]. See the following detailed specifications:
 
 ### Core Documentation
 
 **Overview**
-1. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product definition, features, and target use cases
+1. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product definition, features, and target use cases
 
 **Hardware**
-2. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, sensors, power, and performance specs
+2. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, sensors, power, and performance specs
 3. [[docs/02-Hardware/Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
 4. [[docs/02-Hardware/05-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, load cells, and NTC probes
 5. [[07-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
@@ -68,15 +68,15 @@ Comprehensive documentation has been organized in the [[__Workspaces/Appliance/E
 13. [[06-Safety-Compliance|Safety & Compliance]] - Electrical safety, food contact regulations, and BIS standards
 
 **Development**
-14. [[__Workspaces/Medical/ECG/docs/07-Development/Prototype-Development-Plan|Prototype Development Plan]] - Phased plan from prototype to production
+14. [[__Workspaces/Healthcare/ECG/docs/07-Development/Prototype-Development-Plan|Prototype Development Plan]] - Phased plan from prototype to production
 
 **Components & BOM**
-15. [[01-Compute-Module-Components|Compute Module Components]] - Raspberry Pi CM5, STM32, carrier boards
+15. [[01-Compute-Module-Components|Compute Module Components]] - Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD
 16. [[02-Actuation-Components|Actuation Components]] - Servo motors, induction driver, solenoids
 17. [[03-Sensor-Components|Sensor Components]] - Camera, IR thermometer, NTC probes, load cells
-18. [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
+18. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
 
-**Start here:** [[__Workspaces/Appliance/Epicura/Epicura-Spec/docs/README|Documentation Index]]
+**Start here:** [[__Workspaces/Appliance/Epicura/epi-Spec/docs/README|Documentation Index]]
 
 ---
 
