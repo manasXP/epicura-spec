@@ -73,7 +73,7 @@ A dual-processor architecture splits responsibilities:
 | Processor | Role |
 |-----------|------|
 | **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP) | AI vision, recipe engine, touchscreen UI, cloud sync, heater PID over the isolated CAN bus |
-| **STM32G474** (Cortex-M4F) | Real-time motor/servo drive, dispensers, sensor polling, CAN node, heater off-switch, safety watchdog |
+| **STM32G0B1** (Cortex-M0+) | Real-time motor/servo drive, dispensers, sensor polling, CAN node, heater off-switch, safety watchdog |
 
 The RV1106 runs Buildroot Linux with a single native C application, `epicurad`: SQLite (recipe database), MQTT and REST clients to the cloud, a recipe engine with hierarchical state machine, a hardware ISP + NPU (RKNN) vision pipeline, and an LVGL touchscreen application.
 

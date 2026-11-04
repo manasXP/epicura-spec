@@ -28,7 +28,7 @@ This document details the sensing subsystem components for the Epicura kitchen r
 │  └──────────────┘                                              │
 │                                                                 │
 │  ┌──────────────┐  CAN     ┌──────────────┐                   │
-│  │  Induction   │─────────►│  STM32G474RE │  surface_temp in  │
+│  │  Induction   │─────────►│  STM32G0B1RE │  surface_temp in  │
 │  │  module temp │ (isolated│  + RV1106    │  HEAT_STATUS; no  │
 │  │  sensor      │   port)  │              │  sensor on Epicura│
 │  └──────────────┘          │              │                   │

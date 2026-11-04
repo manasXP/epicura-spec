@@ -85,7 +85,7 @@ AC Mains (220-240V 50Hz)
        │ TXD/RXD (3.3V)             │ TXD/RXD (3.3V)
        ▼                            ▼
 ┌──────────────┐             ┌──────────────┐
-│ STM32G474RE  │             │  MCP2518FD   │ ◄── SPI0 CS1 (Luckfox header)
+│ STM32G0B1RE  │             │  MCP2518FD   │ ◄── SPI0 CS1 (Luckfox header)
 │ FDCAN1       │             │  (SPI CAN)   │
 │ (PB8/PB9)    │             └──────┬───────┘
 │ off-switch   │                    ▼

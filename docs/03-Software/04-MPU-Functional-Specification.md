@@ -376,7 +376,7 @@ The RV1106 is **not** the primary safety controller — the STM32 owns all safet
 
 - Luckfox Pico Zero in the Unified PCB slot J_AP: 5 V power (battery-backed), SPI0 (LCD on CS0 via J_LCD, MCP2518FD CAN controller on CS1), I2C3 (touch via J_LCD), UART2 (service link), GPIO (BOOT0/NRST, CAN INT, touch reset)
 - Isolated CAN bus on the Unified PCB (MCP2518FD + ISO1050DUB #2 for this node, ISO1050DUB #1 for the STM32, J_CAN_HEAT to the induction surface)
-- Controller PCB (STM32) service UART via USART2 (PA2/PA3) at 3.3 V; on a NUCLEO-G474RE prototype PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3); verify against the MB1367-G474RE-C04 schematic before soldering
+- Controller PCB (STM32G0B1RE) service UART via USART2 (PA2/PA3) at 3.3 V; BOOT0 is PA14-BOOT0 on the G0 (option bit nBOOT_SEL = 0 required). On a NUCLEO-G0B1RE (MB1360) prototype PA2/PA3 go to the ST-LINK VCP by default; re-route them via the solder bridges in UM2324 or use the custom controller PCB
 - Unified PCB provides the 5 V buck converter (TPS54531 from VSYS = 24 V or 2S battery) feeding the J_AP slot
 - Camera FPC ≤150 mm; IMX415-98 module on the Pico Zero MIPI CSI connector
 - 74AHCT1G125 level shifter for the LED ring sits on the STM32 side (PB14), not on the AP

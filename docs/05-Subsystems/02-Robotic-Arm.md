@@ -87,7 +87,7 @@ The CAN servo replaces the PWM/EN/DIR BLDC of revision 2.x for the following adv
 
 - **Closed-loop speed and position** — the integrated encoder gives true RPM and shaft angle, so stirring speed, scrape offsets and parking are exact; no FG tachometer or PA3 reservation needed
 - **Stall and over-torque from the source** — the motor reports phase current and temperature; stall detection no longer relies on the INA219 24 V rail heuristic
-- **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA8, PA4 and PA5 and TIM1
+- **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA4 and PA5 (PA8/TIM1_CH1 is reused for the buzzer on the G0B1)
 - **Shared physical layer** — the Unified PCB already has CAN; a second FDCAN controller and a $1 transceiver add the port
 - **Torque headroom** — ≥ 3 N·m continuous for thick Indian gravies, with current limits set in the motor
 - **Safe by default** — motor firmware stops on command timeout; the STM32 also removes 24 V with Q_STIR on E-stop and at boot
@@ -186,8 +186,8 @@ Target Speed
 ### 8.1 Motor Bus (FDCAN2)
 
 ```c
-/* FDCAN2 on PB12 (RX) / PB13 (TX), AF9 — regular (non-isolated) motor bus */
-/* Classic CAN, 1 Mbps nominal bit timing from the 170 MHz kernel clock    */
+/* FDCAN2 on PB12 (RX) / PB13 (TX), AF3 — regular (non-isolated) motor bus */
+/* Classic CAN, 1 Mbps nominal bit timing from the 64 MHz FDCAN kernel clk */
 /* Extended (29-bit) IDs as required by the motor protocol                 */
 /* RX FIFO0 filter: motor feedback IDs only; TX: enable, velocity, position */
 /* Motor Control task (50 Hz): send velocity target, parse feedback,        */

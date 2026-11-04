@@ -13,12 +13,12 @@ Epicura uses a dual-processor architecture: a Rockchip RV1106G3 (Luckfox Pico Ze
 
 The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side is therefore a single native C application on a minimal Buildroot image, not a container stack. Heavy image work is pushed into the chip's hardware blocks (ISP, NPU, RGA, H.264 encoder) and the CPU is left with UI, recipe logic, storage and comms. See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]] for the rationale and the CM5 comparison.
 
-| Aspect | RV1106 (Application) | STM32G4 (Real-Time) |
+| Aspect | RV1106 (Application) | STM32G0 (Real-Time) |
 |--------|----------------------|---------------------|
-| **Processor** | Rockchip RV1106G3, 1x Cortex-A7 (32-bit, NEON, FPU) | STM32G474RE, Cortex-M4F |
-| **Clock** | 1.2 GHz | 170 MHz |
-| **Memory** | 256 MB DDR3L (in-package), 8 GB eMMC | 128 KB SRAM, 512 KB Flash |
-| **Accelerators** | 1 TOPS NPU, 5 MP ISP, RGA 2D, H.264/H.265 encoder | FPU, CMSIS-DSP |
+| **Processor** | Rockchip RV1106G3, 1x Cortex-A7 (32-bit, NEON, FPU) | STM32G0B1RE, Cortex-M0+ |
+| **Clock** | 1.2 GHz | 64 MHz |
+| **Memory** | 256 MB DDR3L (in-package), 8 GB eMMC | 144 KB SRAM (parity), 512 KB Flash (ECC) |
+| **Accelerators** | 1 TOPS NPU, 5 MP ISP, RGA 2D, H.264/H.265 encoder | CMSIS-DSP (fixed point), hardware CRC, 2x FDCAN |
 | **OS** | Buildroot Linux (Luckfox SDK, kernel 5.10) | FreeRTOS 10.x |
 | **Role** | AI/Vision, UI, Recipe Engine, Heater setpoints, Storage, Cloud | Stir motor (CAN), Dispensers, Sensors, Safety |
 | **Languages** | C11 (single application), LVGL | C (MISRA C subset) |
@@ -58,7 +58,7 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
                       CAN 2.0B 500 kbps (isolated bus, shared with the induction surface)
                                     │
 ┌───────────────────────────────────▼─────────────────────────────────────────┐
-│                       STM32G474RE (FreeRTOS)                                │
+│                       STM32G0B1RE (FreeRTOS)                                │
 │                                                                             │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                      FreeRTOS Tasks                                  │    │
@@ -72,7 +72,7 @@ The RV1106 is a 256 MB, single-core, GPU-less vision SoC. The application side i
 │  │  │ PWM  │  │ ADC  │  │ SPI  │  │ I2C  │  │ GPIO │  │ CAN/UART │  │    │
 │  │  └──────┘  └──────┘  └──────┘  └──────┘  └──────┘  └──────────┘  │    │
 │  ├─────────────────────────────────────────────────────────────────────┤    │
-│  │           Hardware: STM32G474RE, Cortex-M4F @ 170 MHz               │    │
+│  │           Hardware: STM32G0B1RE, Cortex-M0+ @ 64 MHz                │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -235,8 +235,8 @@ The Pico Zero exposes one full SPI controller with two chip selects: CS0 drives 
 │  • CMSIS-DSP (signal filtering)                          │
 │  • CMSIS-RTOS2 abstraction                               │
 ├─────────────────────────────────────────────────────────┤
-│     Hardware: STM32G474RE (Cortex-M4F @ 170 MHz)         │
-│     Flash: 512 KB  |  SRAM: 128 KB                       │
+│     Hardware: STM32G0B1RE (Cortex-M0+ @ 64 MHz)          │
+│     Flash: 512 KB  |  SRAM: 144 KB                       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -799,7 +799,7 @@ The RV1106, the STM32 and the induction surface's own MCU share one isolated CAN
 | Node | Controller | Sends | Receives |
 |------|-----------|-------|----------|
 | AP (RV1106) | MCP2518FD on SPI0 CS1 + ISO1050DUB #2 | Commands 0x2xx, HEAT_SET_TEMP / HEAT_ON_OFF / HEAT_QUERY / HEAT_SET_POWER (0x100–0x103), HB_AP 0x010, E_STOP 0x001 | TELEMETRY / LOADCELLS / STATUS / ACK (0x3xx), HEAT_STATUS / HEAT_FAULT / HEAT_ACK (0x18x) |
-| STIR (STM32G474, Unified PCB) | FDCAN1 + ISO1050DUB #1 | TELEMETRY 0x310 (20 Hz), LOADCELLS 0x311, STATUS 0x312, ACK 0x3FF; on faults HEAT_ON_OFF = 0 and E_STOP 0x001 | Commands 0x2xx, HB_AP 0x010, HEAT_STATUS 0x180 (safety monitor), E_STOP 0x001 |
+| STIR (STM32G0B1, Unified PCB) | FDCAN1 + ISO1050DUB #1 | TELEMETRY 0x310 (20 Hz), LOADCELLS 0x311, STATUS 0x312, ACK 0x3FF; on faults HEAT_ON_OFF = 0 and E_STOP 0x001 | Commands 0x2xx, HB_AP 0x010, HEAT_STATUS 0x180 (safety monitor), E_STOP 0x001 |
 | HEAT (induction surface MCU) | Module-internal, vendor firmware; runs its own temperature PID | HEAT_STATUS 0x180 (10 Hz), HEAT_FAULT 0x181, HEAT_ACK 0x182 | HEAT_SET_TEMP 0x100, HEAT_ON_OFF 0x101, HEAT_QUERY 0x102, HEAT_SET_POWER 0x103, E_STOP 0x001 |
 
 Rules: only the AP sends setpoints (temperature or power); the STM32 may only send HEAT_ON_OFF = 0. The module regulates temperature itself and must drop to zero power if no HEAT_SET_TEMP / HEAT_SET_POWER refresh arrives for 1 s (a selection requirement for the commercial module); the AP refreshes at 2 Hz. E_STOP (0x001) is accepted from any node and acted on by all three.
@@ -918,5 +918,6 @@ The RV1106 has one core. The `can` and `heat` threads run at real-time priority 
 | 2.1 | 2026-11-04 | Manas Pradhan | Confirmed: camera sensor is SC3336 (IMX219/IMX477 dropped, no RV1106 ISP tuning); WS2812B LED ring driven by STM32, SET_LED (0x20) added to bridge protocol. |
 | 2.2 | 2026-11-04 | Manas Pradhan | Recipe YAML example and cooking flow updated for servo carousels: ASD → FID (box, qty in ¼ tsp), CID slot whole-slot (mode removed); message table carries the 0x30–0x39 dispensing block |
 | 2.3 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 not compatible with the Pico Zero); §7.2 is now the single source of truth for bridge type codes (arm 0x21–0x25 and dispensing 0x30–0x39 blocks added, SET_STIR gains direction); CAN alternative for the bridge dropped |
+| 3.2 | 2026-11-04 | Manas Pradhan | MCU changed to STM32G0B1RE (Cortex-M0+ @ 64 MHz, 144 KB SRAM, 2x FDCAN); no functional change to tasks, bus roles or the CAN ID map |
 | 3.1 | 2026-11-04 | Manas Pradhan | Temperature loop removed from Epicura: the induction module regulates on its own sensor; `heat` thread now sends HEAT_SET_TEMP (0x100) / HEAT_SET_POWER (0x103) at 2 Hz and relays surface_temp from HEAT_STATUS; TELEMETRY drops ir_temp (motor current, battery flags added); stirring motor is a CAN servo on the STM32's private FDCAN2 bus; battery-backed power-loss fallback added; §5.3.1, §7 and §8 updated |
 | 3.0 | 2026-11-04 | Manas Pradhan | Isolated CAN bus now connects the RV1106 (MCP2518FD on SPI0 CS1, SocketCAN), the STM32 (FDCAN1) and the induction surface MCU; UART2 kept as service link only (flashing/debug); temperature PID moved from the STM32 to the RV1106 `heat` thread, AP commands HEAT_SET_POWER directly, STM32 keeps HEAT_ON_OFF=0 / E_STOP / relay authority; §7 rewritten as the CAN ID map (0x001 E_STOP, 0x010 HB_AP, 0x1xx heater, 0x2xx commands, 0x3xx reports); SET_TEMP retired |

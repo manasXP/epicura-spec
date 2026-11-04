@@ -65,7 +65,7 @@ No IR thermometer. The induction module's under-glass sensor is the only cooking
 
 | Parameter | Value |
 |-----------|-------|
-| Pack voltage | 100k/22k divider → STM32 PC1 (ADC1_IN7), 1 Hz, ±2% |
+| Pack voltage | 100k/22k divider → STM32 PA4 (ADC_IN4), 1 Hz, ±2% |
 | Charger status | TP5100 CHRG / STDBY → PCF8574 #2 P6 / P7 |
 | Pack temperature | 10k NTC on the cells → TP5100 TEMP pin (charge inhibit outside 0-45C) |
 
@@ -131,7 +131,7 @@ A 2-cell Li-ion pack on the Unified PCB replaces the external 12V UPS and the si
 | Charge time | — | 5-6 h from empty | Charges whenever the PSU is on |
 | Runtime | 2 h | > 4 h | ~3W logic load (RV1106 + 4" LCD + STM32 + CAN) |
 | Switch-over | Passive diode-OR | — | No gap: VSYS falls from ~23.5V to the pack voltage; the buck keeps regulating |
-| Monitoring | Pack voltage on STM32 PC1 (1 Hz) | — | Warning at 6.4V, shutdown request at 6.2V, PCM cut-off ~5.6V |
+| Monitoring | Pack voltage on STM32 PA4 (1 Hz) | — | Warning at 6.4V, shutdown request at 6.2V, PCM cut-off ~5.6V |
 | Connector | J_BAT, JST-XH 2.5 mm 3-pin (B+, B−, NTC) | — | Pack in the enclosure's cool zone (< 45C), away from the induction module and PSU |
 
 > [!tip]

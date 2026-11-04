@@ -30,7 +30,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 #### 3.1.1 Objectives
 - Set up Luckfox Pico Zero (RV1106G3) with a Buildroot Linux image
-- Set up STM32G474RE with FreeRTOS
+- Set up STM32G0B1RE with FreeRTOS
 - Bring up the isolated CAN bus between the RV1106 (MCP2518FD on SPI0 CS1), the STM32 and the induction surface
 - Validate basic I/O and power supply
 
@@ -46,7 +46,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Verify IMX415-98 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
 
 **Week 2: STM32 Bring-up**
-- [ ] Acquire NUCLEO-G474RE development board
+- [ ] Acquire NUCLEO-G0B1RE development board
 - [ ] Install STM32CubeIDE and STM32CubeMX
 - [ ] Create FreeRTOS project with basic task structure
 - [ ] Test GPIO output (LED blink)

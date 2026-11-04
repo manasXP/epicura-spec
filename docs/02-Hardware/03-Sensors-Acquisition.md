@@ -13,7 +13,7 @@ status: Draft
 |--------|------|-----------|-------|----------|---------------|--------------|
 | Camera (IMX415-98) | CMOS image sensor, 8 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
 | Cooking surface temperature | Module-internal under-glass sensor (NTC) reported in HEAT_STATUS | Isolated CAN (0x180) | Module-reported, typ. 0-300C | Module accuracy (typ. +/-3-5C) | 10 Hz | Induction surface MCU → RV1106 + STM32 |
-| Battery pack voltage | Resistive divider | ADC (PC1) | 5.5-8.5V | +/-2% | 1 Hz | STM32 ADC1 |
+| Battery pack voltage | Resistive divider | ADC (PA4) | 5.5-8.5V | +/-2% | 1 Hz | STM32 ADC1 |
 | Pot Detection | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 GPIO |
 
 ---

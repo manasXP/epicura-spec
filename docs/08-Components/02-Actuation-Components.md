@@ -18,7 +18,7 @@ This document details the actuation subsystem components for the Epicura kitchen
 │                    Actuation Subsystem                          │
 │                                                                 │
 │  ┌──────────────┐         ┌──────────────┐                     │
-│  │  STM32G474RE │── CAN  ►│  24V CAN     │                     │
+│  │  STM32G0B1RE │── CAN  ►│  24V CAN     │                     │
 │  │  (Controller)│ FDCAN2  │  Servo Motor │                     │
 │  │              │ + 24V sw└──────────────┘                     │
 │  │              │                                               │

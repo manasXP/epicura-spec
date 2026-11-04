@@ -379,7 +379,7 @@ The FID and CID are one electrical block on the Unified PCB:
                                                ▲                            │  1000 µF bulk + 3 A PTC
                                    PCF8574 #2 P4 (rail enable)              │
                                                                             ▼
-  I2C1 (PA15/PB7) ──► PCA9685 (addr 0x41) ──┬── CH0 ──► J_DSB1 ──► C1  CID index servo
+  I2C1 (PB6/PB7)  ──► PCA9685 (addr 0x41) ──┬── CH0 ──► J_DSB1 ──► C1  CID index servo
                                             ├── CH1 ──► J_DSB2 ──► F1  FID index servo
   PB4 (GPIO) ──► PCA9685 OE (active-low)    ├── CH2 ──► J_DSB3 ──► F2  FID dose servo
                                             └── CH3 ──► J_DSB4 ──► F3  FID steam-gate servo

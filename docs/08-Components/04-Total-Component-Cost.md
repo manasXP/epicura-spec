@@ -17,21 +17,21 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Category | Subtotal | % of Total | Details |
 |----------|----------|------------|---------|
-| [[01-Compute-Module-Components|Compute Modules]] | $91.50 | 13% | Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD, RV1106 CAN node (MCP2518FD + ISO1050DUB #2), cables |
+| [[01-Compute-Module-Components|Compute Modules]] | $84.50 | 12% | Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD, RV1106 CAN node (MCP2518FD + ISO1050DUB #2), cables |
 | [[02-Actuation-Components|Actuation]] | $296.18 | 42% | Induction hob, Dispenser Servo Block (4 servos + PCA9685, FID/CID carousels + canisters), PCF8574 #2 GPIO expander, SLD pumps/solenoids/load cells, ISO1050DUB + SN65HVD230 CAN transceivers, 24V CAN servo stirring motor, relays, exhaust fan, filters |
 | [[03-Sensor-Components|Sensors]] | $60.80 | 9% | IMX415-98 camera, reed switch, LED ring + level shifter (no thermometer: module-reported temperature) |
-| **Component Total** | **$448.48** | **63%** | Electronic components only |
+| **Component Total** | **$441.48** | **63%** | Electronic components only |
 
 ---
 
 ## 3. Detailed Component Breakdown
 
-### 3.1 Compute Modules ($91.50)
+### 3.1 Compute Modules ($84.50)
 
 | Item | Cost |
 |------|------|
 | Luckfox Pico Zero (RV1106G3, 256MB, 8GB eMMC) | $47.00 |
-| STM32G474RE Nucleo | $18.00 |
+| STM32G0B1RE Nucleo | $11.00 |
 | 4" ST7796S SPI LCD + FT6336 touch | $15.00 |
 | RV1106 CAN node (MCP2518FD + crystal, ISO1050DUB #2) | $6.50 |
 | Cables | $5.00 |
@@ -89,10 +89,10 @@ This document provides a consolidated view of all component costs for the Epicur
 
 | Category | Cost |
 |----------|------|
-| Electronic Components | $448.48 |
+| Electronic Components | $441.48 |
 | Mechanical / Other | $262.00 |
-| **Total BOM (Prototype)** | **$710.48** |
-| **With Contingency (+20%)** | **~$853** |
+| **Total BOM (Prototype)** | **$703.48** |
+| **With Contingency (+20%)** | **~$844** |
 | **With Tools & Consumables** | **$950-1,250** |
 
 ---
@@ -102,7 +102,7 @@ This document provides a consolidated view of all component costs for the Epicur
 | Item | Prototype | Production (1000 qty) | Notes |
 |------|-----------|----------------------|-------|
 | Luckfox Pico Zero (RV1106G3) | $47.00 | $18.00 | Bare RV1106G3 (QFN128) on custom PCB, or Core1106 SoM, at volume |
-| STM32G474 | $18.00 (Nucleo) | $5.00 (bare chip) | Custom PCB eliminates dev board |
+| STM32G0B1 | $11.00 (Nucleo) | $3.50 (bare chip) | Custom PCB eliminates dev board |
 | Display (4" SPI) | $15.00 | $8.00 | Same ST7796S panel, bulk pricing; stays SPI |
 | Microwave Induction Surface | $60.00 (CAN module) | $40.00 (bulk pricing) | Self-contained module, no custom driver |
 | FID + CID servo carousels (4 servos, PCA9685, rings, canisters) | $86.50 | $45.00 | Bulk servos, injection-molded rings and canisters |
@@ -117,7 +117,7 @@ This document provides a consolidated view of all component costs for the Epicur
 | Wiring / Connectors | $30.00 | $10.00 | Custom harness, bulk connectors |
 | Exhaust + Filters | $22.50 | $8.00 (OEM blower + bulk filters) | Custom blower + injection-molded housing |
 | Other (CAN nodes + stir-bus transceiver, relays, load cells, cables, buzzer) | $80.18 | $22.00 (integrated into PCB + bulk) | Small components absorbed into custom PCB at volume |
-| **Total Unit** | **~$710** | **~$285** | **~60% cost reduction** |
+| **Total Unit** | **~$703** | **~$283** | **~60% cost reduction** |
 
 ---
 
@@ -127,10 +127,10 @@ This document provides a consolidated view of all component costs for the Epicur
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                 Epicura Prototype Component Costs                         │
 │                                                                          │
-│  Compute Modules (13%)  █████████████                                    │
+│  Compute Modules (12%)  ████████████                                     │
 │  └─ RV1106 board (7%)   ███████                                          │
 │  └─ Display (2%)        ██                                               │
-│  └─ STM32 (3%)          ███                                              │
+│  └─ STM32 (2%)          ██                                               │
 │  └─ CAN node+cables (2%)██                                               │
 │                                                                          │
 │  Actuation (42%)        ██████████████████████████████████████████       │
@@ -149,7 +149,7 @@ This document provides a consolidated view of all component costs for the Epicur
 │  └─ Mechanical (7%)     ███████                                          │
 │  └─ PCBs/PSU/battery (10%) ██████████                                    │
 │                                                                          │
-│  Total Prototype BOM: ~$710                                              │
+│  Total Prototype BOM: ~$703                                              │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -242,4 +242,5 @@ This document provides a consolidated view of all component costs for the Epicur
 | 10.0 | 2026-11-04 | Manas Pradhan | Dispensers redesigned as servo carousels (Dispenser Servo Block): Actuation $314.98→$274.98 (−$40); component total $430.98→$390.98; prototype BOM $680.98→$640.98; production unit ~$285→~$261 |
 | 10.1 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 ($54): Sensors $31.00 → $73.00, component total $390.98 → $432.98, prototype BOM $640.98 → $682.98, production ~$273; chart, phases and ranking recomputed |
 | 10.2 | 2026-11-04 | Manas Pradhan | RV1106 CAN node (MCP2518FD + ISO1050DUB #2, $6.50) added to Compute: $85.00 → $91.50; component total $432.98 → $439.48; prototype BOM $682.98 → $689.48; production ~$275 |
+| 10.4 | 2026-11-04 | Manas Pradhan | STM32G474RE → STM32G0B1RE: Nucleo $18 → $11, production chip $5 → $3.50; Compute $91.50 → $84.50; component total $448.48 → $441.48; prototype BOM $710.48 → $703.48; production ~$283 |
 | 10.3 | 2026-11-04 | Manas Pradhan | MLX90614 removed (Sensors $73.00 → $60.80); CAN servo stirring motor + SN65HVD230 port (Actuation $274.98 → $296.18); 2S Li-ion pack added to Power ($30 → $42, replaces the external 12V UPS); component total $439.48 → $448.48; prototype BOM $689.48 → $710.48; production ~$285 |

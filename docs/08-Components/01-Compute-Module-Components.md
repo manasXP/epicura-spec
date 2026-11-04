@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Luckfox Pico Zero (RV1106G3; AI/vision processing), STM32G474RE (motor/safety control), display module, and supporting components.
+This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Luckfox Pico Zero (RV1106G3; AI/vision processing), STM32G0B1RE (IO, CAN and safety control), display module, and supporting components.
 
 ## 2. Compute Architecture
 
@@ -18,7 +18,7 @@ This document details the compute subsystem components for the Epicura kitchen r
 │                    Compute Subsystem                            │
 │                                                                 │
 │  ┌──────────────┐  CAN (iso)  ┌──────────────┐                 │
-│  │  Luckfox     │◄───────────►│  STM32G474RE │                 │
+│  │  Luckfox     │◄───────────►│  STM32G0B1RE │                 │
 │  │  Pico Zero   │   500 kbps  │  Nucleo      │                 │
 │  │  (RV1106G3)  │             │  (FreeRTOS)  │                 │
 │  └──────┬───────┘             └──────┬───────┘                 │
@@ -39,7 +39,7 @@ This document details the compute subsystem components for the Epicura kitchen r
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Luckfox Pico Zero (RV1106G3, 256MB DDR3L, 8GB eMMC) | Luckfox Pico Zero | 1 | $47.00 | $47.00 | Waveshare / Luckfox store (₹3,339 Hubtronics India) | Core compute: NPU inference, ISP vision, LVGL UI, recipe engine, cloud sync; on-board Wi-Fi 6 + BT 5.2; no carrier board needed |
-| STM32G474RE Nucleo | NUCLEO-G474RE | 1 | $18.00 | $18.00 | STMicroelectronics / Mouser | Motor controller dev board; CAN-FD + advanced timers |
+| STM32G0B1RE Nucleo | NUCLEO-G0B1RE | 1 | $11.00 | $11.00 | STMicroelectronics / Mouser | Controller dev board (MB1360); 2x FDCAN, ST-LINK; production part STM32G0B1RET6 ~$3.50 |
 | 4" IPS Display (480x320) with capacitive touch | 4.0" ST7796S + FT6336U SPI module (108 x 60.88 mm incl. header) | 1 | $15.00 | $15.00 | Waveshare / AliExpress | SPI0 display (50 MHz, fbtft) + I2C3 touch (evdev); prototype and production display |
 | IMX415-98 IR-CUT Camera Module (8 MP, MIPI CSI) | IMX415-98 | 1 | - | - | See [[03-Sensor-Components\|Sensor Components]] | Costed under Sensors ($54.00, FPC included); plugs into the Pico Zero MIPI CSI FPC connector |
 | (Storage on eMMC) | - | - | - | - | Included | 8GB eMMC on Pico Zero for A/B OS slots, models and data; microSD slot for expansion only |
@@ -54,12 +54,12 @@ This document details the compute subsystem components for the Epicura kitchen r
 | Item | Cost |
 |------|------|
 | Luckfox Pico Zero (RV1106G3) | $47.00 |
-| STM32G474RE Nucleo | $18.00 |
+| STM32G0B1RE Nucleo | $11.00 |
 | 4" SPI Display with touch | $15.00 |
 | MCP2518FD CAN controller + crystal (RV1106 node) | $3.00 |
 | ISO1050DUB #2 isolated transceiver (RV1106 node) | $3.50 |
 | Cables | $5.00 |
-| **Category Subtotal** | **$91.50** |
+| **Category Subtotal** | **$84.50** |
 
 ---
 
@@ -86,13 +86,14 @@ What it cannot do, and how the stack adapts:
 
 See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]] for datasheet facts and the CM5 comparison, and [[02-Controller-Software-Architecture|Controller & Software Architecture]] for the resulting stack.
 
-### 5.2 STM32G474RE Selection Rationale
-- **Cortex-M4F @ 170 MHz** with FPU for motor control and filtering (the temperature PID runs on the RV1106)
-- **FDCAN1** on the shared isolated CAN bus (host commands from the RV1106, telemetry, heater off-switch)
-- **Advanced timers** (TIM1, TIM8) with complementary PWM for servo control
-- **12-bit ADC** (5 Msps) for analog sensor reading
-- **USART2 (PA2/PA3)** as the service link to the RV1106: ST system-bootloader port for firmware updates and debug; no runtime traffic
-- Nucleo board provides ST-Link debugger and Arduino-compatible headers. Caveat: on the NUCLEO-G474RE (MB1367) PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3), or use the custom controller PCB
+### 5.2 STM32G0B1RE Selection Rationale
+- **No control loop on the MCU**: the induction module regulates its own temperature and the stirring motor is a CAN servo with its own controller, so the MCU is an IO, CAN and safety node. Its fastest task runs at 50 Hz; a Cortex-M0+ @ 64 MHz without FPU is ample. The STM32G474RE (Cortex-M4F @ 170 MHz, ~$8) it replaces was sized for a PID loop and a PWM motor that no longer exist
+- **Two FDCAN controllers**: FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus. The G0B1 is the cheapest ST part with two; the G431/G441 have one
+- **Same toolchain and safety story as the G474**: STM32 HAL + CubeMX, FreeRTOS, ST USART system bootloader (RV1106 flashes it over USART2 with BOOT0/NRST), IWDG on its own LSI clock, SRAM parity, flash ECC, and the VDE-certified X-CUBE-CLASSB library for IEC 60730-1 / IEC 60335-1 Annex R Class B software
+- **Why not an RP2040** (~$1): no CAN peripheral (two external controllers at $2–3 each, or a PIO soft-CAN on the heater kill path), no internal flash, no UART ROM bootloader (RV1106 flashing path would need a redesign), no MISRA/Class B ecosystem. Once the missing parts are added it costs about the same as the G0B1 and carries more certification risk
+- **Pin budget**: LQFP-64 (STM32G0B1RET6) keeps the PC-port GPIOs used by the SLD pumps and HX711; the G0 alternate-function map moves I2C1_SCL to PB6, the ADC inputs to PA0/PA4 and the buzzer to PA8/TIM1_CH1 (see the [[../03-Software/05-MCU-Functional-Specification|MCU Functional Specification]] pin table)
+- **USART2 (PA2/PA3)** as the service link to the RV1106: system-bootloader port for firmware updates and debug; no runtime traffic. On the G0 BOOT0 is PA14-BOOT0 and needs option bit nBOOT_SEL = 0 programmed once at factory
+- Nucleo board NUCLEO-G0B1RE (MB1360, ~$11) provides ST-LINK and Arduino headers. PA2/PA3 go to the ST-LINK VCP by default; re-route via the solder bridges in UM2324 or use the custom controller PCB
 
 ### 5.3 Display Choice
 - 4" 480x320 IPS LCD with ST7796S controller on SPI0 (fbtft, 50 MHz with DMA); the RV1106 has no DSI or HDMI output
@@ -105,7 +106,7 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 | Item | Prototype | Production |
 |------|-----------|------------|
 | Application processor | Luckfox Pico Zero (complete board) | Bare RV1106G3 (QFN128, 12.3 mm, 0.35 mm pitch) on the custom PCB, or Luckfox Core1106 SoM on the PCB |
-| STM32 | Nucleo dev board | Bare STM32G474RE on controller PCB |
+| STM32 | NUCLEO-G0B1RE dev board | Bare STM32G0B1RET6 on the Unified PCB |
 | Display | 4" ST7796S SPI LCD module + FT6336 touch | Same 4" SPI panel, bezel-mounted; stays SPI |
 | Storage | 8GB eMMC on Pico Zero | 8GB eMMC on SoM or on PCB |
 | Software | Buildroot image, `epicurad`, swupdate A/B | Same image; no orchestration layer |
@@ -135,3 +136,4 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 | 1.3 | 2026-11-04 | Manas Pradhan | Replaced Raspberry Pi CM5 + CM5IO + 10.1" HDMI display with Luckfox Pico Zero (RV1106G3) + 4" ST7796S SPI LCD; CSI/HDMI cables removed; subtotal $196.00 → $85.00 |
 | 1.4 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); 4" display module part named; Nucleo SB numbers; CAN alternative removed |
 | 1.5 | 2026-11-04 | Manas Pradhan | RV1106 CAN node added (MCP2518FD $3.00 + ISO1050DUB #2 $3.50 on the Unified PCB, SPI0 CS1); UART2 demoted to STM32 flashing/debug; STM32 notes updated (PID on the RV1106); subtotal $85.00 → $91.50 |
+| 1.6 | 2026-11-04 | Manas Pradhan | STM32G474RE → STM32G0B1RE (NUCLEO-G0B1RE $11, production STM32G0B1RET6 ~$3.50); §5.2 rewritten with the RP2040 comparison; subtotal $91.50 → $84.50 |

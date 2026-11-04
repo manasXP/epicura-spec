@@ -29,7 +29,7 @@
 ## Prototype Hardware
 
 - [ ] Order Luckfox Pico Zero (RV1106G3)
-- [ ] Order STM32G474 Nucleo dev board
+- [ ] Order NUCLEO-G0B1RE dev board
 - [ ] Source a ommercial induction hob for teardown
 - [ ] Order 24V integrated CAN servo motor (≥ 3 N·m, CyberGear/RobStride-class)
 - [ ] Order 2S1P 18650 Li-ion pack with PCM + NTC

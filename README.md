@@ -40,7 +40,7 @@ An autonomous countertop kitchen robot that cooks one-pot meals using AI vision,
 | Component | Part | Purpose |
 |-----------|------|---------|
 | Compute (AI) | Luckfox Pico Zero — RV1106G3 (Cortex-A7 @ 1.2 GHz, 1 TOPS NPU, ISP, 256MB, 8GB eMMC) | Vision, recipe engine, UI, cloud sync |
-| Compute (Control) | STM32G474 (Cortex-M4F, 170 MHz) on the Unified PCB (Pico Zero slot, CID/FID/SLD drivers, 2 CAN ports, 2S battery backup) | Stir motor (CAN), dispensers, sensor polling, heater off-switch, safety |
+| Compute (Control) | STM32G0B1 (Cortex-M0+, 64 MHz) on the Unified PCB (Pico Zero slot, CID/FID/SLD drivers, 2 CAN ports, 2S battery backup) | Stir motor (CAN), dispensers, sensor polling, heater off-switch, safety |
 | Camera | IMX415-98 (8 MP, MIPI CSI) | Food stage detection via ISP + NPU |
 | Cooking Temperature | Induction module's own sensor, reported over CAN | No thermometer in Epicura |
 | Load Cells | 2× strain gauge + HX711 (SLD reservoirs) | Weight-based liquid dispensing |
@@ -84,7 +84,7 @@ See [`docs/README.md`](__Workspaces/Appliance/Epicura/epi-Spec/docs/README.md) f
 | **[epicura-pm](https://github.com/manasXP/epicura-pm)**             | Markdown                       | Project management — epics, sprints, resource allocation              |
 | **[epicura-tcc](https://github.com/manasXP/epicura-tcc)**           | Markdown                       | Testing strategies, compliance/safety, recipe schema & seed data      |
 | **[epicura-ux](https://github.com/manasXP/epicura-ux)**             | Markdown + Vite/React          | UI/UX design documentation and interactive mobile mockups             |
-| **[epicura-firmware](https://github.com/manasXP/epicura-firmware)** | C (FreeRTOS, STM32 HAL)        | STM32G474RE real-time control — servo, sensors, CAN node, dispensers, safety |
+| **[epicura-firmware](https://github.com/manasXP/epicura-firmware)** | C (FreeRTOS, STM32 HAL)        | STM32G0B1RE real-time control — servo, sensors, CAN node, dispensers, safety |
 | **[epicura-rv1106](https://github.com/manasXP/epicura-rv1106)**     | C11 (CMake) + Buildroot        | RV1106 `epicurad` — recipe engine, ISP/NPU CV, LVGL UI, CAN node + heater PID, Buildroot image |
 | **[epicura-api](https://github.com/manasXP/epicura-api)**           | TypeScript (Fastify + Next.js) | Cloud API server and admin portal monorepo                            |
 | **[epicura-ios](https://github.com/manasXP/epicura-ios)**           | Swift (SwiftUI)                | iOS companion app — BLE pairing, recipes, live cooking                |

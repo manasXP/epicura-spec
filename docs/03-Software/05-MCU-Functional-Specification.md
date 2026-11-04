@@ -4,32 +4,33 @@ created: 2026-02-16
 aliases: [STM32 Spec, MCU Spec]
 ---
 
-# MCU Functional Specification — STM32G474RE
+# MCU Functional Specification — STM32G0B1RE
 
 > **Document ID:** EPIC-SW-MCU-001
-> **Processor:** STM32G474RE, Cortex-M4F @ 170 MHz
-> **Flash / SRAM:** 512 KB / 128 KB
+> **Processor:** STM32G0B1RET6, Cortex-M0+ @ 64 MHz
+> **Flash / SRAM:** 512 KB (dual-bank) / 144 KB with parity
 > **Package:** LQFP-64
 > **Related:** [[04-MPU-Functional-Specification]], [[02-Controller-Software-Architecture]], [[01-Unified-PCB-Design]]
-> **Revision:** 2026-11-04 — two CAN ports (FDCAN1 isolated heater/host bus, FDCAN2 regular stir-motor bus); IR thermometer removed (module reports its own temperature); stirring motor is a CAN servo; 2S battery monitoring; host link on the isolated CAN bus, MCU keeps heater off-switch, relay and E-stop authority
+> **Revision:** 2026-11-04 — MCU changed from STM32G474RE to STM32G0B1RE (no control loop on the MCU, so no FPU or 170 MHz needed; two FDCAN controllers kept; same ST HAL, FreeRTOS, system bootloader and X-CUBE-CLASSB); I2C1_SCL PA15 → PB6, VBUS/battery ADC PC0/PC1 → PA0/PA4, buzzer PC7/TIM8 → PA8/TIM1_CH1, FDCAN AF9 → AF3; two CAN ports (FDCAN1 isolated heater/host bus, FDCAN2 regular stir-motor bus); IR thermometer removed (module reports its own temperature); stirring motor is a CAN servo; 2S battery monitoring; host link on the isolated CAN bus, MCU keeps heater off-switch, relay and E-stop authority
 
 ---
 
 ## 1. Overview
 
-The STM32G474RE is the real-time controller and safety guardian for Epicura on the Unified PCB. It is a node on the isolated CAN bus it shares with the RV1106 and the induction surface (FDCAN1), and the sole master of the regular CAN bus to the stirring motor (FDCAN2). It runs FreeRTOS with five primary tasks: motor control over CAN (50 Hz), dispensing (50 Hz while active), sensor polling (10 Hz), host CAN communications (20 Hz) and the safety monitor (10 Hz). There is no temperature loop anywhere in Epicura: the induction module regulates its own temperature and reports it; the STM32 supervises that status and owns all safety-critical paths including the heater off-switch, the AC relay, the stir-motor 24 V switch, E-stop handling and watchdog supervision.
+The STM32G0B1RE is the real-time controller and safety guardian for Epicura on the Unified PCB. It is a node on the isolated CAN bus it shares with the RV1106 and the induction surface (FDCAN1), and the sole master of the regular CAN bus to the stirring motor (FDCAN2). It runs FreeRTOS with five primary tasks: motor control over CAN (50 Hz), dispensing (50 Hz while active), sensor polling (10 Hz), host CAN communications (20 Hz) and the safety monitor (10 Hz). There is no temperature loop anywhere in Epicura: the induction module regulates its own temperature and reports it; the STM32 supervises that status and owns all safety-critical paths including the heater off-switch, the AC relay, the stir-motor 24 V switch, E-stop handling and watchdog supervision.
 
 ### 1.1 Hardware Summary
 
 | Parameter | Value |
 |-----------|-------|
-| Core | Cortex-M4F @ 170 MHz, single-precision FPU |
-| Flash | 512 KB |
-| SRAM | 128 KB |
-| ADC | 5× 12-bit (up to 4 Msps) |
-| Timers | Advanced (TIM1), GP (TIM2/3/4), basic |
-| Comm | 3× UART, 3× SPI, 4× I2C, 3× FDCAN (FDCAN1 = isolated host + heater bus, FDCAN2 = stir-motor bus) |
-| Package | LQFP-64 |
+| Core | Cortex-M0+ @ 64 MHz, no FPU (nothing on the MCU needs one: there is no control loop, and the fastest task runs at 50 Hz) |
+| Flash | 512 KB, dual-bank (STM32G0B1RET6; the 256 KB RCT6 is a drop-in cost-down) |
+| SRAM | 144 KB with hardware parity check |
+| ADC | 1× 12-bit (2.5 Msps, 16 external channels, hardware oversampling) |
+| Timers | Advanced (TIM1), GP (TIM2 32-bit, TIM3/4, TIM14/15/16/17), basic (TIM6/7), LPTIM1/2 |
+| Comm | 6× USART + 2× LPUART, 3× SPI, 3× I2C, USB 2.0 FS, 2× FDCAN (FDCAN1 = isolated host + heater bus, FDCAN2 = stir-motor bus) |
+| Safety | IWDG on its own LSI clock, WWDG, SRAM parity, dual-bank flash with ECC, hardware CRC unit; ST X-CUBE-CLASSB self-test library (IEC 60730-1 Annex H / IEC 60335-1 Annex R Class B) covers the G0 family |
+| Package | LQFP-64 (STM32G0B1RET6; the LQFP-48 CET6 would also fit the pin budget but loses PC0–PC15 and PD2) |
 | Power | 3.3 V via AMS1117-3.3 LDO (from 5 V), ~0.5 W typical |
 
 ---
@@ -76,7 +77,7 @@ The STM32G474RE is the real-time controller and safety guardian for Epicura on t
 | ID | Requirement | Priority | Acceptance Criteria |
 |----|-------------|----------|---------------------|
 | FR-MCU-021 | Read 2× SLD reservoir load cells (oil + water) at 10 Hz during dispensing | Must | Accuracy ±5% for closed-loop liquid dispensing; individual level monitoring with low-level alerts |
-| FR-MCU-022 | Read battery pack voltage on PC1 (ADC1_IN7, 100k/22k divider) at 1 Hz and TP5100 CHRG/STDBY on PCF8574 #2 P6/P7; report `batt_mV`, charging/complete and `on_battery` in STATUS | Must | ±2 % of pack voltage; warning at 6.4 V, shutdown request at 6.2 V; BATTERY_FAULT (0x14) when neither CHRG nor STDBY is active with the pack below 8.0 V for 10 min or the pack is absent at boot |
+| FR-MCU-022 | Read battery pack voltage on PA4 (ADC_IN4, 100k/22k divider) at 1 Hz and TP5100 CHRG/STDBY on PCF8574 #2 P6/P7; report `batt_mV`, charging/complete and `on_battery` in STATUS | Must | ±2 % of pack voltage; warning at 6.4 V, shutdown request at 6.2 V; BATTERY_FAULT (0x14) when neither CHRG nor STDBY is active with the pack below 8.0 V for 10 min or the pack is absent at boot |
 | FR-MCU-023 | Parse coil temperature from CAN HEAT_STATUS | Must | Received at 10 Hz from induction module |
 | FR-MCU-024 | Read INA219 bus current monitor | Should | I2C1 @ address 0x40, 24 V rail monitoring |
 | FR-MCU-025 | Sensor polling task at 10 Hz (100 ms period) | Must | All sensor data available within each cycle |
@@ -161,37 +162,38 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 
 | Pin | Function | Peripheral | Target |
 |-----|----------|------------|--------|
-| **PA0** | — | Available | Freed (P-ASD pump removed; dispensers now on PCA9685) |
-| **PA1** | — | Available | Freed (was P-ASD solenoid V1, now via PCF8574) |
-| **PA2** | USART2_TX | UART 1 Mbps | Service link to RV1106 (→ Luckfox Pico Zero header pin 10, UART2 RX): ST system-bootloader + debug only; runtime traffic is on FDCAN1 |
-| **PA3** | USART2_RX | UART 1 Mbps | Service link from RV1106 (← Luckfox Pico Zero header pin 8, UART2 TX): ST system-bootloader + debug only |
-| **PA4** | — | Available | Freed (stir motor EN; motor is now on FDCAN2) |
+| **PA0** | ADC_IN0 | Analog | USB VBUS detect (100k/100k divider; moved from PC0, which has no ADC input on the G0) |
+| **PA1** | COMP1_INP | Analog comparator | 24 V rail power-fail detect (FR-MCU-056); was undocumented in this table |
+| **PA2** | USART2_TX (AF1) | UART 1 Mbps | Service link to RV1106 (→ Luckfox Pico Zero header pin 10, UART2 RX): ST system-bootloader + debug only; runtime traffic is on FDCAN1 |
+| **PA3** | USART2_RX (AF1) | UART 1 Mbps | Service link from RV1106 (← Luckfox Pico Zero header pin 8, UART2 TX): ST system-bootloader + debug only |
+| **PA4** | ADC_IN4 | Analog | 2S battery pack voltage (100k/22k divider from BAT+; moved from PC1, which has no ADC input on the G0) |
 | **PA5** | — | Available | Freed (stir motor DIR; motor is now on FDCAN2) |
-| **PA6** | TIM3_CH1 | PWM 25 kHz | Exhaust fan 1 |
+| **PA6** | TIM3_CH1 (AF1) | PWM 25 kHz | Exhaust fan 1 |
 | **PA7** | — | Available | Freed (SLD solenoid 1 moved to PCF8574 #2 P0) |
-| **PA8** | — | Available | Freed (stir motor PWM; motor is now on FDCAN2) |
+| **PA8** | TIM1_CH1 (AF2) | PWM | Piezo buzzer (via MOSFET); moved from PC7/TIM8_CH2 — the G0 has no TIM8 and PC7 is TIM3_CH2, shared with fan 1 |
 | **PA9** | — | Available | Freed (SLD solenoid 2 moved to PCF8574 #2 P1) |
 | **PA10** | — | Available | Freed (CID-1 stepper removed) |
 | **PA11** | USB_DM | USB 2.0 FS | USB D- (native USB, DFU+CDC) |
 | **PA13** | SWDIO | Debug | SWD programming |
-| **PA14** | SWCLK | Debug | SWD programming |
+| **PA14** | SWCLK / BOOT0 | Debug + boot | SWD clock; on the G0 this pin is also BOOT0 (sampled at reset) → RV1106 header GPIO 32 for bootloader entry (option bit nBOOT_SEL must be cleared once at factory programming, see §5.1) |
 | **PB0** | GPIO output | Digital | Safety relay (via N-MOSFET) |
 | **PB1** | GPIO input | Digital | Pot detection (from CAN module status, optional hardwire) |
 | **PB2** | EXTI | Interrupt | E-stop button (NC, active-low) |
 | **PB3** | — | Available | Freed (was IRQ to application processor; CAN needs no data-ready line) |
 | **PB4** | GPIO output | Digital | PCA9685 OE (active-low) — DSB servo outputs off when high |
 | **PB5** | — | Available | Freed (CID-2 linear actuator removed) |
-| **PA15** | I2C1_SCL | I2C @ 100 kHz | PCA9685 + PCF8574 #2 + INA219 (shared bus) |
-| **PB7** | I2C1_SDA | I2C @ 100 kHz | PCA9685 + PCF8574 #2 + INA219 (shared bus) |
-| **PB8** | FDCAN1_RX | CAN 500 kbps | Isolated 3-node bus (RV1106 + induction surface) via ISO1050DUB #1 |
-| **PB9** | FDCAN1_TX | CAN 500 kbps | Isolated 3-node bus (RV1106 + induction surface) via ISO1050DUB #1 |
+| **PB6** | I2C1_SCL (AF6) | I2C @ 100 kHz | PCA9685 + PCF8574 #2 + INA219 (shared bus); moved back from PA15, which has no I2C1_SCL on the G0 |
+| **PB7** | I2C1_SDA (AF6) | I2C @ 100 kHz | PCA9685 + PCF8574 #2 + INA219 (shared bus) |
+| **PA15** | — | Available | Freed (was I2C1_SCL on the G474) |
+| **PB8** | FDCAN1_RX (AF3) | CAN 500 kbps | Isolated 3-node bus (RV1106 + induction surface) via ISO1050DUB #1 |
+| **PB9** | FDCAN1_TX (AF3) | CAN 500 kbps | Isolated 3-node bus (RV1106 + induction surface) via ISO1050DUB #1 |
 | **PB10** | GPIO output | Software PWM 25 kHz | Exhaust fan 2 |
-| **PB12** | FDCAN2_RX (AF9) | CAN 1 Mbps | Regular (non-isolated) stir-motor bus via SN65HVD230 → J_CAN_STIR |
-| **PB13** | FDCAN2_TX (AF9) | CAN 1 Mbps | Regular (non-isolated) stir-motor bus via SN65HVD230 → J_CAN_STIR |
-| **PB14** | TIM15_CH1 | PWM + DMA, 800 kHz | WS2812B LED ring data (via 74AHCT1G125 3.3 → 5 V level shifter to J_LED pin 2) |
+| **PB12** | FDCAN2_RX (AF3) | CAN 1 Mbps | Regular (non-isolated) stir-motor bus via SN65HVD230 → J_CAN_STIR |
+| **PB13** | FDCAN2_TX (AF3) | CAN 1 Mbps | Regular (non-isolated) stir-motor bus via SN65HVD230 → J_CAN_STIR |
+| **PB14** | TIM15_CH1 (AF5) | PWM + DMA (DMAMUX), 800 kHz | WS2812B LED ring data (via 74AHCT1G125 3.3 → 5 V level shifter to J_LED pin 2) |
 | **PB15** | — | Available | Freed (was SPI2_MOSI; host link now on FDCAN1, USART2 is the service link) |
-| **PC0** | ADC | Analog | USB VBUS detect (100k/100k divider; moved from PA3, which is now USART2_RX) |
-| **PC1** | ADC1_IN7 | Analog | 2S battery pack voltage (100k/22k divider from BAT+) |
+| **PC0** | — | Available | Freed (VBUS detect moved to PA0; no ADC on PC0 in the G0) |
+| **PC1** | — | Available | Freed (battery sense moved to PA4; no ADC on PC1 in the G0) |
 | **PC2** | — | Available | Freed (CID-2 linear actuator removed) |
 | **PC3** | GPIO output | PWM (software) | SLD pump 1 PWM (TB6612) |
 | **PC4** | GPIO output | Digital | SLD pump 1 DIR (TB6612) |
@@ -200,10 +202,9 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 | **PC7** | — | Available | Freed (was P-ASD solenoid V3, now via PCF8574) |
 | **PD2** | — | Available | Freed (was P-ASD solenoid V4, now via PCF8574) |
 | **PB11** | — | Available | Freed (was CID-1 full-extend limit) |
-| **PC7** | TIM8_CH2 | PWM | Piezo buzzer (via MOSFET) |
 | **PC8** | — | Available | Freed (status LED moved to PCF8574 #2 P2) |
 
-### 3.2 I2C1 Bus (PA15/PB7)
+### 3.2 I2C1 Bus (PB6/PB7)
 
 | Address | Device | Data |
 |---------|--------|------|
@@ -221,7 +222,7 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 - Traffic: host commands 0x2xx and reports 0x3xx (RV1106 ↔ STM32), heater control 0x1xx (RV1106 → module; STM32 sends HEAT_ON_OFF = 0 only), E_STOP 0x001 and HB_AP 0x010 — see §5.2
 
 **FDCAN2 — regular stir-motor bus (J_CAN_STIR)**
-- Transceiver: SN65HVD230 (3.3 V, non-isolated); PB12 RX / PB13 TX (AF9)
+- Transceiver: SN65HVD230 (3.3 V, non-isolated); PB12 RX / PB13 TX (AF3)
 - Bit rate: 1 Mbps (CAN 2.0B, 29-bit IDs per the motor protocol)
 - Nodes: STM32 (master) and the stirring motor's integrated controller; 120 Ω at J_CAN_STIR and at the motor
 - Traffic: enable/disable, velocity and position commands at 50 Hz; motor feedback (velocity, position, current, temperature, faults); wrapped in `stir_motor.c`
@@ -244,7 +245,8 @@ The camera LED ring is driven by the STM32, not the application processor: WS281
 
 - **RTOS:** FreeRTOS 10.x
 - **Language:** C (MISRA C subset for safety-critical paths)
-- **DSP:** CMSIS-DSP library for signal filtering (no PID on the MCU; the temperature loop runs on the RV1106)
+- **DSP:** CMSIS-DSP (fixed-point q15/q31 kernels) for signal filtering; no control loop on the MCU — the induction module regulates its own temperature
+- **Class B:** X-CUBE-CLASSB self-tests (CPU registers, RAM march, flash CRC, clock and program-flow monitors) at boot and in the safety monitor's background slot
 - **Heap:** heap_4 (coalescing), ~64 KB allocated
 - **Tick rate:** 1 kHz (1 ms)
 
@@ -280,7 +282,7 @@ CRITICAL ──[condition cleared within timeout]──→ WARNING
 
 ### 4.4 Boot Sequence
 
-1. **Reset** → SystemInit (clock to 170 MHz HSE + PLL)
+1. **Reset** → SystemInit (8 MHz HSE + PLL → 64 MHz SYSCLK; FDCAN kernel clock from PLLQ); Class B start-up self-tests
 2. **HAL_Init** → SysTick, NVIC priorities
 3. **Peripheral init** → GPIO (all outputs LOW/safe, Q_STIR and DSB rail off), ADC (VBUS, battery), TIM (incl. TIM15 + DMA for WS2812B), FDCAN1 (filters for 0x001, 0x010, 0x18x, 0x2xx), FDCAN2 (motor feedback filter, 1 Mbps), I2C, USART2 (service link)
 4. **Safety check** → Verify E-stop not pressed, relay OFF, battery pack voltage 5.5–8.5 V, self-test I2C devices (0x21, 0x40, 0x41)
@@ -297,7 +299,8 @@ CRITICAL ──[condition cleared within timeout]──→ WARNING
 - Link: USART2 (PA2 TX / PA3 RX) ↔ Luckfox Pico Zero UART2 (header pins 10 / 8), 3.3 V. It carries **no runtime protocol**: host commands and telemetry are on the CAN bus (§5.2).
 - Firmware update: USART2 is the ST system-bootloader UART; the RV1106 drives BOOT0 (header GPIO 32) / NRST (GPIO 38) and streams the `.bin` over these wires, verifying the CRC before reset
 - Debug: optional console at 1,000,000 baud, 8N1
-- NUCLEO-G474RE prototype caveat: PA2/PA3 are tied to the ST-LINK VCP through SB17 and SB23 (ON by default, UM2505 rev 4); remove SB17/SB23 and fit SB18/SB22 to route them to Arduino D1/D0 on CN9, or take them from morpho CN10 pins 35 (PA2) and 37 (PA3); verify against the MB1367-G474RE-C04 schematic before soldering, or use the custom Controller PCB
+- BOOT0 on the G0 is multiplexed on PA14 (PA14-BOOT0, shared with SWCLK) and is ignored unless option bit `nBOOT_SEL` = 0; program `nBOOT_SEL` = 0 (keep `nBOOT1` = 1) over SWD once at factory programming so the RV1106 can force the system bootloader by driving BOOT0 high and pulsing NRST. A blank part boots the system bootloader anyway (empty-flash check), so first-time programming works over USART2 or USB DFU without this step
+- NUCLEO-G0B1RE prototype caveat: PA2/PA3 are routed to the ST-LINK VCP by default on the MB1360 board; re-route them to the Arduino D1/D0 header via the solder bridges listed in UM2324, or use the custom Controller PCB
 
 ### 5.2 CAN Bus Protocol (shared bus: RV1106, STM32, induction module)
 
@@ -339,9 +342,9 @@ Identifiers are owned by [[02-Controller-Software-Architecture#7.2 Message Types
 
 - Input: 5V_MAIN from the Unified PCB TPS54531 (VSYS = 24 V rail or 2S battery via diode-OR), OR'd with USB-C 5 V for bench programming
 - LDO: AMS1117-3.3 (SOT-223), 5 V → 3.3 V @ 800 mA max
-- Battery backup: the 2S pack keeps the MCU, the RV1106 and the LCD running through an outage; the MCU monitors pack voltage (PC1) and charger status (PCF8574 #2 P6/P7)
+- Battery backup: the 2S pack keeps the MCU, the RV1106 and the LCD running through an outage; the MCU monitors pack voltage (PA4) and charger status (PCF8574 #2 P6/P7)
 - Decoupling: 10 µF input, 10 µF output, 100 nF per VDD pin
-- Typical consumption: ~0.5 W (170 MHz, all peripherals active)
+- Typical consumption: ~0.15 W (64 MHz, all peripherals active)
 
 ### 6.2 Power States
 
@@ -363,6 +366,7 @@ Identifiers are owned by [[02-Controller-Software-Architecture#7.2 Message Types
 | E-stop button | PB2 EXTI interrupt (highest NVIC priority) | <1 ms |
 | Safety relay | PB0 → N-MOSFET → relay coil (NC relay, fail-safe open) | <5 ms |
 | Hardware watchdog (IWDG) | 5 s timeout, kicked in safety monitor task | 5 s (worst case) |
+| Class B self-tests | X-CUBE-CLASSB: CPU/RAM/flash/clock/program-flow checks at boot; RAM and flash CRC re-checked periodically | Fault → safe state at next safety tick |
 | Thermal cutoff (surface) | HEAT_STATUS surface_temp > 270 °C → E_STOP | ≤200 ms (status interval + poll) |
 | Thermal cutoff (CAN coil) | CAN coil over-temp → E_STOP | ≤500 ms (CAN status interval) |
 | Stir motor | Motor disable on FDCAN2 + Q_STIR 24 V switch off on E-stop / heartbeat loss / FDCAN2 fault | ≤10 ms |
@@ -417,9 +421,9 @@ Identifiers are owned by [[02-Controller-Software-Architecture#7.2 Message Types
 | Stir speed accuracy | ±5 RPM | Motor-reported vs. external tachometer |
 | Dispensing accuracy (FID) | ±10% per ¼ tsp dose | Volumetric measure wheel, weighed over 10 doses |
 | Dispensing accuracy (SLD) | ±5% | Load cell vs target weight |
-| FreeRTOS CPU utilization | <70% | Idle task runtime measurement |
+| FreeRTOS CPU utilization | <70% at 64 MHz | Idle task runtime measurement |
 | Flash usage | <256 KB | Linker map |
-| SRAM usage | <96 KB | Stack + heap analysis |
+| SRAM usage | <96 KB (of 144 KB) | Stack + heap analysis |
 
 ---
 
@@ -432,13 +436,14 @@ Identifiers are owned by [[02-Controller-Software-Architecture#7.2 Message Types
 - Regular CAN port on the Unified PCB (SN65HVD230 on FDCAN2, J_CAN_STIR) and switched 24 V (Q_STIR, J_STIR_PWR) to the stirring motor
 - Luckfox Pico Zero in the J_AP slot: header pins 8/10 (UART2) connect to USART2 PA2/PA3 at 3.3 V as the service link (bootloader/debug only)
 - 74AHCT1G125 level shifter on the Unified PCB between PB14 and J_LED (WS2812B 5 V data)
-- 2S Li-ion pack on J_BAT with TP5100 charger; pack voltage divider to PC1
+- 2S Li-ion pack on J_BAT with TP5100 charger; pack voltage divider to PA4
 
 ### 9.2 Firmware Dependencies
 
-- STM32 HAL drivers (STM32CubeMX generated): GPIO, ADC, TIM, USART, I2C, FDCAN
-- FreeRTOS 10.x kernel + CMSIS-RTOS2 wrapper
-- CMSIS-DSP library (filtering)
+- STM32G0xx HAL drivers (STM32CubeMX generated): GPIO, ADC, TIM, USART, I2C, FDCAN, DMAMUX
+- FreeRTOS 10.x kernel (Cortex-M0 port) + CMSIS-RTOS2 wrapper
+- X-CUBE-CLASSB self-test library
+- CMSIS-DSP library (fixed-point filtering)
 - Custom HX711 bit-bang driver
 - CRC-16/CCITT lookup table
 - CAN message codec (ID map, payload packing, seq/ACK) and TIM15 + DMA WS2812B driver
@@ -448,7 +453,7 @@ Identifiers are owned by [[02-Controller-Software-Architecture#7.2 Message Types
 
 - MISRA C compliance for safety-critical tasks (safety monitor, E-stop handler, CAN command dispatcher, heater off-switch)
 - No dynamic memory allocation after boot (all FreeRTOS objects static)
-- No floating-point in ISRs (FPU context save overhead)
+- No floating-point in control or safety paths (the Cortex-M0+ has no FPU; float is software-emulated), use q15/q31 fixed point
 - Both CAN buses require 120 Ω termination at both ends; FDCAN1 (isolated) and FDCAN2 (regular) share nothing
 - I2C bus: 3 devices (INA219 + PCA9685 + PCF8574 #2), total bus capacitance must stay under 400 pF
 

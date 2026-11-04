@@ -27,7 +27,7 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 7. **[[03-Main-Loop-State-Machine|Main Loop State Machine]]** - Cooking state diagram, state-layer impact matrix, sequence diagrams, and transition triggers
 8. **[[01-Tech-Stack|Tech Stack]]** - Hardware platforms, software frameworks, and development tools
 9. **[[04-MPU-Functional-Specification|MPU Functional Specification]]** - RV1106G3 (Cortex-A7 + NPU/ISP) functional requirements, interfaces, and software architecture
-10. **[[05-MCU-Functional-Specification|MCU Functional Specification]]** - STM32G474RE functional requirements, pin assignments, and FreeRTOS tasks
+10. **[[05-MCU-Functional-Specification|MCU Functional Specification]]** - STM32G0B1RE functional requirements, pin assignments, and FreeRTOS tasks
 
 #### 1.1.4 User Interface
 > [!note] Moved to [[__Workspaces/Appliance/Epicura/epi-UX/__init|epi-UX]] workspace

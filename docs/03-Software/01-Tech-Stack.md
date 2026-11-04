@@ -9,11 +9,11 @@ status: Draft
 
 ## 1. Architecture Overview
 
-Epicura uses a dual-processor architecture with clearly separated responsibilities. The RV1106 handles high-level application logic and AI, while the STM32G4 manages real-time control and safety-critical operations.
+Epicura uses a dual-processor architecture with clearly separated responsibilities. The RV1106 handles high-level application logic and AI, while the STM32G0 manages real-time control and safety-critical operations.
 
-| Layer | RV1106 (Application) | STM32G4 (Real-Time) |
+| Layer | RV1106 (Application) | STM32G0 (Real-Time) |
 |-------|----------------------|---------------------|
-| **Hardware** | Rockchip RV1106G3 (Luckfox Pico Zero), 1x Cortex-A7 @ 1.2 GHz, 256 MB DDR3L, 8 GB eMMC, 1 TOPS NPU, 5 MP ISP | STM32G474RE, Cortex-M4F @ 170 MHz, 512 KB Flash, 128 KB SRAM |
+| **Hardware** | Rockchip RV1106G3 (Luckfox Pico Zero), 1x Cortex-A7 @ 1.2 GHz, 256 MB DDR3L, 8 GB eMMC, 1 TOPS NPU, 5 MP ISP | STM32G0B1RE, Cortex-M0+ @ 64 MHz, 512 KB Flash, 144 KB SRAM |
 | **OS** | Buildroot Linux (Luckfox SDK, kernel 5.10), busybox init | FreeRTOS 10.x |
 | **UI Framework** | LVGL 9 (C, software rendered) on 4" 480x320 SPI LCD | None |
 | **AI/ML** | Hardware ISP + NPU via `rockit` / `rknn_api` (RKNN INT8) | None |
@@ -237,7 +237,7 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction 
       ═══════════╪════════ isolated CAN bus ════════════════════
                  │                              │
        ┌─────────▼─────────┐          ┌─────────▼─────────┐
-       │ STM32G474RE       │          │ Induction surface │
+       │ STM32G0B1RE       │          │ Induction surface │
        │ FDCAN1 + ISO1050  │          │ MCU (onboard CAN, │
        │ stir (FDCAN2),    │          │ own PID)          │
        │ dispense, off-sw  │          │ HEAT_STATUS,      │
@@ -277,7 +277,22 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction 
 
 ### 4.1 Hardware Platform
 
-#### 4.1.1 Primary Choice: STM32G474RE
+#### 4.1.1 Primary Choice: STM32G0B1RE
+
+| Specification | Value |
+|--------------|-------|
+| Core | ARM Cortex-M0+ @ 64 MHz |
+| Flash | 512 KB, dual-bank, ECC (STM32G0B1RET6; 256 KB RCT6 as cost-down) |
+| SRAM | 144 KB with parity |
+| FPU | None (not needed: no control loop on the MCU, fastest task 50 Hz) |
+| ADC | 1x 12-bit ADC (2.5 Msps, 16 channels, hardware oversampling) |
+| Timers | TIM1 advanced, TIM2/3/4, TIM14–17, LPTIM1/2 |
+| Comm | 6x USART + 2x LPUART, 3x SPI, 3x I2C, USB FS, 2x FDCAN |
+| Safety | IWDG, WWDG, SRAM parity, flash ECC, CRC; X-CUBE-CLASSB (IEC 60730-1 Class B) |
+| Package | LQFP-64 (LQFP-48 also fits the pin budget) |
+| Dev board | NUCLEO-G0B1RE (MB1360), ~$11 |
+
+#### 4.1.2 Previous Choice: STM32G474RE
 
 | Specification | Value |
 |--------------|-------|
@@ -286,24 +301,11 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction 
 | SRAM | 128 KB |
 | FPU | Single-precision hardware FPU |
 | ADC | 5x 12-bit ADC (up to 4 Msps) |
-| Timers | Advanced PWM timers (HRTIM for induction) |
-| Comm | 3x UART, 3x SPI, 4x I2C, FDCAN |
+| Timers | Advanced PWM timers, HRTIM |
+| Comm | 3x UART, 3x SPI, 4x I2C, 3x FDCAN |
 | Package | LQFP-64 or LQFP-100 |
 
-#### 4.1.2 Alternative: STM32F446RE
-
-| Specification | Value |
-|--------------|-------|
-| Core | ARM Cortex-M4F @ 180 MHz |
-| Flash | 512 KB |
-| SRAM | 128 KB |
-| FPU | Single-precision hardware FPU |
-| ADC | 3x 12-bit ADC |
-| Timers | Standard PWM timers |
-| Comm | 4x UART, 4x SPI, 3x I2C, 2x CAN |
-| Package | LQFP-64 |
-
-**Recommendation:** STM32G474RE preferred for its three FDCAN peripherals (FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus) and HRTIM.
+**Recommendation:** STM32G0B1RE. It is the cheapest ST part with two FDCAN controllers (FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus) and keeps the same HAL, FreeRTOS, USART system bootloader and Class B library as the G474. The G474's FPU, 170 MHz and HRTIM were only needed while the MCU ran the temperature PID and a PWM motor; both have left the MCU. An RP2040 was rejected: no CAN peripheral (two external controllers or a PIO soft-CAN on the heater kill path), no internal flash, no UART ROM bootloader and no certified Class B library erase the price gap.
 
 ### 4.2 RTOS
 
@@ -481,7 +483,7 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction 
 | Stirring Motor Interface | CAN servo on STM32 FDCAN2 (regular, non-isolated port) | PWM + EN/DIR BLDC | Encoder feedback (rpm, angle, current, temperature) over two wires; stall detection from the motor itself; separate bus keeps the 1 Mbps motor protocol off the isolated heater bus |
 | Temperature Control | Module-internal PID (induction surface's own sensor), RV1106 sends setpoints | IR thermometer + PID on the RV1106 / STM32 | No sensor, emissivity calibration or tuning in Epicura; the pre-certified module already regulates; camera covers food-state decisions |
 | Backup Power | 2S Li-ion pack + TP5100 charger on the Unified PCB, VSYS diode-OR | External 12 V UPS, single-cell micro-UPS | One board, no external UPS; whole 5 V logic domain survives outages for > 4 h |
-| STM32 Variant | STM32G474RE | STM32F446RE | G474 has three FDCAN controllers (heater bus + motor bus) and HRTIM; F446's bxCAN is viable but lacks FDCAN |
+| STM32 Variant | STM32G0B1RE | STM32G474RE, RP2040 | Two FDCAN controllers at about half the G474's price; nothing on the MCU needs the G474's FPU or 170 MHz any more; RP2040 has no CAN, no internal flash and no Class B library, so its saving disappears once those are added |
 | CV Model | MobileNetV2 INT8 (RKNN) | Custom CNN | MobileNetV2 converts cleanly with RKNN-Toolkit2, runs in 5-10 ms on the RV1106 NPU, proven on ARM |
 | Database | SQLite 3 (in-process) | PostgreSQL (Docker), MongoDB | Zero-server embedded DB fits 256 MB; JSON1 + FTS5 mirror the cloud PostgreSQL schema table-for-table so sync is a row copy |
 | Firmware Update | swupdate (A/B) | Manual SD card | A/B partitions enable safe OTA with automatic rollback; SD card update requires physical access |
@@ -511,4 +513,5 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the induction 
 | 1.2 | 2026-11-04 | Manas Pradhan | GPIO row updated for the Dispenser Servo Block (PCA9685 OE; stepper/linear-actuator and limit-switch lines removed) |
 | 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98; CAN alternative for the STM32 link removed |
 | 1.4 | 2026-11-04 | Manas Pradhan | RV1106 joins the isolated CAN bus (MCP2518FD on SPI0 CS1, SocketCAN); bridge thread replaced by can + heat threads (heater PID on the RV1106); UART2 demoted to STM32 flashing/debug; §3 rewritten, STM32 stack and decision table updated |
+| 1.6 | 2026-11-04 | Manas Pradhan | STM32G474RE replaced by STM32G0B1RE (Cortex-M0+ @ 64 MHz, 2x FDCAN): §4.1 and the decision table updated with the RP2040 comparison |
 | 1.5 | 2026-11-04 | Manas Pradhan | Heater PID removed from Epicura (module-internal control, heat thread = 2 Hz setpoint keep-alive); FDCAN2 added for the CAN servo stirring motor; HAL table corrected (no IR thermometer / thermocouple); decisions for motor interface, temperature control and 2S battery backup added |
