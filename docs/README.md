@@ -30,7 +30,7 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 10. **[[05-MCU-Functional-Specification|MCU Functional Specification]]** - STM32G0B1RE functional requirements, pin assignments, and FreeRTOS tasks
 
 #### 1.1.4 User Interface
-> [!note] Moved to [[__Workspaces/Appliance/Epicura/epi-UX/__init|epi-UX]] workspace
+> [!note] Moved to [[__Workspaces/Appliance/Epicura/epi-Design/UX/__init|epi-Design/UX]] workspace
 
 #### 1.1.5 Subsystems
 9. **[[01-Induction-Heating|Induction Heating]]** - 1,800W microwave induction surface on the isolated CAN port, module-internal temperature control, and power management
@@ -100,7 +100,7 @@ docs/
 │   ├── 03-Main-Loop-State-Machine.md            Cooking state machine & layer impacts
 │   ├── 04-MPU-Functional-Specification.md       RV1106 functional spec
 │   └── 05-MCU-Functional-Specification.md       STM32 functional spec
-├── (04-UserInterface → moved to epi-UX workspace)
+├── (04-UserInterface → moved to epi-Design/UX workspace)
 ├── 05-Subsystems/
 │   ├── 01-Induction-Heating.md                  Induction heater subsystem
 │   ├── 02-Robotic-Arm.md                        Stirring arm subsystem
@@ -158,7 +158,7 @@ Start with:
 Start with:
 1. [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor design and recipe state machine
 2. [[01-Tech-Stack|Tech Stack]] - Development environment and tools
-3. UI/UX Design - See [[__Workspaces/Appliance/Epicura/epi-UX/__init|epi-UX]] workspace
+3. UI/UX Design - See [[__Workspaces/Appliance/Epicura/epi-Design/UX/__init|epi-Design/UX]] workspace
 
 ### 3.4 For Backend Engineers
 Start with:
@@ -177,7 +177,7 @@ Start with:
 ### 3.6 For Industrial Designers
 Start with:
 1. [[04-Mechanical-Design|Mechanical Design]] - Enclosure form factor and material selection
-2. UI/UX Design - See [[__Workspaces/Appliance/Epicura/epi-UX/__init|epi-UX]] workspace
+2. UI/UX Design - See [[__Workspaces/Appliance/Epicura/epi-Design/UX/__init|epi-Design/UX]] workspace
 3. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product vision and target user profile
 
 ## 4. Key Features Summary
