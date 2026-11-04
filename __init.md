@@ -4,11 +4,11 @@ Epicura is an autonomous countertop kitchen robot that cooks full meals like a h
 
 ## Core Design Overview
 
-The robot resembles a large microwave in size, featuring an induction cooktop base, proprietary non-stick pot, overhead camera for real-time food monitoring, and a single robotic arm for stirring and ingredient dispensing. It supports one-pot recipes (e.g., curries, pasta, stir-fries) with customization for diets, spices, or swaps. Power draw stays under 2kW for standard outlets, with a companion app for recipe selection and live viewing.
+The robot resembles a large microwave in size, featuring an electric heating base, non-stick pot, overhead camera for real-time food monitoring, and a single robotic arm for stirring and ingredient dispensing. It supports one-pot recipes (e.g., curries, pasta, stir-fries) with customization for diets, spices, or swaps. Power draw stays under 2kW for standard outlets, with a companion app for recipe selection and live viewing.
 
 ## Hardware Components
 
-- **Base and Heating**: Commercial microwave induction surface (1,800W) with CAN bus control, temperature sensors for dynamic adjustment (e.g., sear at 200°C, simmer at 90°C).[[theverge](https://www.theverge.com/tech/840599/posha-robot-chef-review)]​
+- **Base and Heating**: Commercial electric heating unit of the rice-cooker class (1,300W assumed) with CAN bus control and its own centre temperature sensor for dynamic adjustment (e.g., sear at 200°C, simmer at 90°C).[[theverge](https://www.theverge.com/tech/840599/posha-robot-chef-review)]​
     
 - **Robotics**: Single-axis arm with servo motors (e.g., STM32-driven for precision, akin to your medical device work) for rhythmic stirring and timed ingredient drops from 4-6 top-loading compartments.[[posha](https://www.posha.com/)]​
     
@@ -33,7 +33,7 @@ Culinary AI runs on embedded Linux (Buildroot on the RV1106), processing recipes
 
 ## Prototyping Steps
 
-Start with off-the-shelf: Luckfox Pico Zero (RV1106G3) for AI/compute, ST STM32 for arm control, and a commercial induction hob. Code device UI in LVGL (C). Test one-pot Indian recipes (e.g., dal tadka) to validate stirring/heat logic. Estimated BOM: $800-1,200 for prototype, scalable for production.
+Start with off-the-shelf: Luckfox Pico Zero (RV1106G3) for AI/compute, ST STM32 for arm control, and a commercial rice-cooker-class electric heating unit. Code device UI in LVGL (C). Test one-pot Indian recipes (e.g., dal tadka) to validate stirring/heat logic. Estimated BOM: $800-1,200 for prototype, scalable for production.
 
 ## Documentation
 
@@ -45,7 +45,7 @@ Comprehensive documentation has been organized in the [[__Workspaces/Appliance/E
 1. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]] - Product definition, features, and target use cases
 
 **Hardware**
-2. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Induction, sensors, power, and performance specs
+2. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Heating, sensors, power, and performance specs
 3. [[docs/02-Hardware/Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
 4. [[docs/02-Hardware/05-Sensors-Acquisition|Sensors & Acquisition]] - Camera, IR thermometer, load cells, and NTC probes
 5. [[07-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
@@ -58,7 +58,7 @@ Comprehensive documentation has been organized in the [[__Workspaces/Appliance/E
 8. [[03-UI-UX-Design|UI/UX Design]] - Touchscreen interface, companion app, and multi-language support
 
 **Subsystems**
-9. [[docs/05-Subsystems/09-Induction-Heating|Induction Heating]] - 1,800W microwave induction surface (CAN bus), PID control, and power management
+9. [[docs/05-Subsystems/01-Electric-Heating|Electric Heating]] - 1,300W (assumed) electric heating unit of the rice-cooker class (CAN bus), unit-internal temperature control, and power management
 10. [[docs/05-Subsystems/10-Robotic-Arm|Robotic Arm]] - Single-axis servo arm, stirring patterns, and motor control
 11. [[docs/05-Subsystems/11-Ingredient-Dispensing|Ingredient Dispensing]] - Multi-compartment hopper system and timed dispensing
 12. [[docs/05-Subsystems/12-Vision-System|Vision System]] - HD camera, edge AI inference, and cooking stage detection
@@ -72,7 +72,7 @@ Comprehensive documentation has been organized in the [[__Workspaces/Appliance/E
 
 **Components & BOM**
 15. [[01-Compute-Module-Components|Compute Module Components]] - Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD
-16. [[02-Actuation-Components|Actuation Components]] - Servo motors, induction driver, solenoids
+16. [[02-Actuation-Components|Actuation Components]] - Servo motors, heating unit, solenoids
 17. [[03-Sensor-Components|Sensor Components]] - Camera, IR thermometer, NTC probes, load cells
 18. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]] - Full BOM and cost analysis
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 ---
 
@@ -35,46 +35,50 @@ The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero: the
 
 ### 3.1 Camera Position
 
+The camera and LED ring are on the **underside of the Dispensing Unit (DU)**, centred over the pot and looking straight down, behind a sealed borosilicate window. They lift off with the unit (no cable to the base) and the window is exposed for cleaning whenever the unit is lifted.
+
 ```
 ┌──────────────────────────────────────────────────┐
-│                  ENCLOSURE LID                    │
+│          DISPENSING UNIT (underside)              │
 │                                                   │
 │     ┌───────────┐   ┌──────────────┐              │
 │     │ LED Ring  │   │  Camera      │              │
-│     │ (WS2812B) │   │  Module      │              │
+│     │ (5000 K)  │   │  Module      │              │
 │     │  ┌─────┐  │   │  ┌───────┐  │              │
 │     │  │ O O │  │   │  │ Lens  │  │              │
 │     │  │O   O│  │   │  │ (down)│  │              │
 │     │  │ O O │  │   │  └───┬───┘  │              │
 │     │  └─────┘  │   │      │      │              │
 │     └───────────┘   └──────┼──────┘              │
-│                            │                      │
-│                     20-30cm distance               │
-│                            │                      │
-│                            ▼                      │
-│     ┌──────────────────────────────────────┐      │
-│     │           COOKING POT                │      │
-│     │         (field of view)              │      │
-│     └──────────────────────────────────────┘      │
-└──────────────────────────────────────────────────┘
+│ ═══ borosilicate window + silicone seal ═══       │
+└────────────────────────────┼──────────────────────┘
+                             │
+                      20-30cm distance
+                             │
+                             ▼
+      ┌──────────────────────────────────────┐
+      │           COOKING POT                │
+      │         (field of view)              │
+      └──────────────────────────────────────┘
 ```
 
 ### 3.2 Mounting Specifications
 
 | Parameter | Value |
 |-----------|-------|
-| Position | Overhead, centered above pot |
-| Distance to Pot | 20-30 cm (adjustable bracket) |
+| Position | Underside of the Dispensing Unit, centred over the pot, looking straight down |
+| Distance to Pot | 20-30 cm from the pot rim (fixed by the DU height on the dock) |
 | Field of View | Covers entire pot opening plus 2 cm margin |
-| Mounting | Gantry bracket, stainless steel |
-| Angle Adjustment | +/- 10 degrees tilt (set screw) |
+| Mounting | Bracket on the DU underside behind a sealed borosilicate window (silicone seal); lifts off with the unit |
+| Angle Adjustment | None — fixed straight down; the dock seats the DU one way only |
 | Vibration Isolation | Rubber dampers (2x M3 silicone grommets) |
+| Cleaning Access | Window reachable from below whenever the DU is lifted off the dock |
 
 ### 3.3 Steam Protection Measures
 
 | Measure | Implementation | Effectiveness |
 |---------|---------------|---------------|
-| Glass Lens Cover | Borosilicate glass disc, anti-fog hydrophilic coating | Primary barrier, prevents condensation buildup |
+| Sealed Window | Borosilicate glass window in the DU underside, silicone seal, anti-fog hydrophilic coating | Primary barrier, prevents condensation buildup and keeps steam out of the DU |
 | Air Curtain | Small 5V fan (25mm) blowing across lens surface | Diverts rising steam, keeps lens clear |
 | Hydrophobic Coating | RainX or nano-coating on glass cover (reapply monthly) | Beads water, reduces fogging |
 | ISP Dehazing | Hardware dehaze + 3D noise reduction in the RV1106 ISP (IMX415-98 tuning profile), zero CPU cost | Compensates for mild haze when physical measures insufficient |
@@ -87,7 +91,7 @@ The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero: the
 ```
          ┌───────────────────────┐
          │     LED Ring          │
-         │   (12-16 WS2812B)    │
+         │  (12-16 white LEDs)  │
          │                       │
          │    O  O  O  O         │
          │  O            O       │
@@ -105,26 +109,24 @@ The IMX415-98 IR-CUT is the colour camera Luckfox supports on the Pico Zero: the
 
 | Parameter | Value |
 |-----------|-------|
-| LED Type | WS2812B (addressable RGB) |
+| LED Type | White LEDs, 5000 K, CRI ≥ 90 (plain, non-addressable; WS2812B dropped) |
 | LED Count | 12-16 on ring PCB |
 | Color Temperature | 5000K daylight white (for accurate food color) |
-| Brightness | 60 mA per LED at max, ~960 mA total ring |
-| Control Interface | Single-wire 800 kHz protocol driven by the STM32 (PB14, TIM15_CH1 + DMA) through a 74AHCT1G125 3.3 V to 5 V level shifter; the RV1106 only requests modes via SET_LED (CAN 0x220) |
+| Brightness | ≤ 1 A total ring at 100 % duty |
+| Control Interface | Q_LED (IRLML6344 low-side MOSFET) on the Unified PCB, driven by an RV1106 PWM channel at 1 kHz (`pwm-rockchip`); J_LED 2-pin (5V_MAIN / LED_RET). No STM32, no serial protocol, no colour control |
 | Diffuser | Frosted polycarbonate ring (reduces specular glare on liquids) |
-| Power | 5V, max 1A (from 5V rail, switched by PCF8574 #2 P3) |
-| Mounting | Co-axial with camera, 5mm offset below lens plane |
+| Power | 5V_MAIN, max 1A (switched/PWM by Q_LED) |
+| Mounting | Co-axial with camera on the DU underside, 5mm offset below lens plane, behind the sealed window |
 
 ### 4.3 Illumination Modes
 
-| Mode | RGB Value | Brightness | SET_LED Request (RV1106 to STM32) | Use Case |
-|------|-----------|------------|-----------------------------------|----------|
-| Cooking (default) | Warm white (255, 220, 180) | 80% | mode=CAPTURE, rgb=(255,220,180), brightness=80 | Standard cooking illumination |
-| Capture (inference) | Daylight white (255, 255, 255) | 100% | mode=CAPTURE, rgb=(255,255,255), brightness=100 | Brief flash during frame capture for CV |
-| Night Mode | Dim warm (128, 110, 90) | 30% | mode=NIGHT, rgb=(128,110,90), brightness=30 | Low ambient light, reduced eye strain |
-| Off | (0, 0, 0) | 0% | mode=OFF | Standby, lid open, cleaning |
-| Alert | Red pulse (255, 0, 0) | 100% pulsing | mode=CAPTURE, rgb=(255,0,0), toggled by the RV1106 at 2 Hz | Anomaly detected (burning, boil-over) |
+| Mode | PWM Duty | Use Case |
+|------|----------|----------|
+| OFF | 0% | Standby, unit lifted, cleaning |
+| CAPTURE | 100% | Cooking illumination and frame capture for CV |
+| NIGHT | 30% | Low ambient light, reduced eye strain |
 
-The SET_LED message carries `mode (OFF/CAPTURE/NIGHT), r, g, b, brightness_pct`; the STM32 holds the last requested colour until the next message. See [[../03-Software/05-MCU-Functional-Specification|MCU Functional Specification]] section 2.8 for the driver requirements.
+The ring is white only; there is no colour or pulse mode (anomalies are signalled on the UI and by the buzzer). The `cv` thread of `epicurad` sets the duty directly through the RV1106 PWM; the former SET_LED request (CAN 0x220) is retired. See [[../03-Software/04-MPU-Functional-Specification|MPU Functional Specification]] for the driver requirements.
 
 ## 5. Image Processing Pipeline
 
@@ -418,7 +420,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 
 | Layer | Solution | Maintenance | Effectiveness |
 |-------|----------|-------------|---------------|
-| 1. Physical Barrier | Borosilicate glass lens cover | Replace if cracked | Blocks direct steam contact |
+| 1. Physical Barrier | Sealed borosilicate window in the DU underside (silicone seal) | Replace if cracked | Blocks direct steam contact; cleaned from below with the DU lifted |
 | 2. Anti-Fog Coating | Hydrophilic coating on glass (Cat Crap or similar) | Reapply monthly | Prevents condensation droplets |
 | 3. Air Curtain | 25mm 5V fan blowing across lens | Clean fan quarterly | Diverts rising steam column |
 | 4. ISP Dehaze | Hardware dehaze block in the RV1106 ISP, always on (strength from IMX415-98 tuning) | None | Recovers detail in slightly foggy frames at zero CPU cost |
@@ -431,7 +433,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 | Calibration | Method | Frequency |
 |-------------|--------|-----------|
 | Color Reference | X-Rite ColorChecker Mini placed in pot, capture reference image | Per-unit (factory) |
-| White Balance | Capture under LED ring CAPTURE mode, store ISP AWB gains as a fixed illuminant preset in `/userdata` | Per-unit (factory) |
+| White Balance | Capture under LED ring CAPTURE mode (RV1106 PWM 100 %), store ISP AWB gains as a fixed illuminant preset in `/userdata` | Per-unit (factory) |
 | Focus Distance | Set focus to pot depth (20-30cm), lock focus ring | Per-unit (factory) |
 | LED Uniformity | Capture white reference surface, measure brightness variance | Per-unit (factory) |
 
@@ -439,7 +441,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 
 | Calibration | Method | Frequency |
 |-------------|--------|-----------|
-| Auto White Balance | ISP AWB with the LED ring (CAPTURE mode, 5000K) as the known illuminant | Every capture session |
+| Auto White Balance | ISP AWB with the LED ring (CAPTURE mode, PWM 100 %, 5000K) as the known illuminant | Every capture session |
 | Exposure Compensation | ISP AE with metering ROI set to pot center | Continuous |
 | Steam Compensation | ISP dehaze strength raised when the ISP's contrast statistic drops below threshold | Per-frame |
 
@@ -467,7 +469,8 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 - [ ] IMX415-98 enumerates on the Pico Zero MIPI CSI port and the SDK ISP tuning file loads
 - [ ] ISP main path delivers clear 1280x720 NV12 frames at 30 fps from the mounted position
 - [ ] ISP self-path delivers 224x224 RGB888 frames at 2 fps into a DMA buffer (zero copy)
-- [ ] LED ring responds to SET_LED (OFF/CAPTURE/NIGHT) from the RV1106 and provides uniform illumination (no hot spots on liquid surface)
+- [ ] LED ring follows the RV1106 PWM duty (OFF 0 % / CAPTURE 100 % / NIGHT 30 %, 1 kHz via Q_LED) and provides uniform illumination (no hot spots on liquid surface); ring current ≤ 1 A at 100 %
+- [ ] Camera window on the DU underside stays sealed (no condensation inside) over a 2-hour cook and is reachable for wiping with the DU lifted
 - [ ] `.rknn` model loads and runs inference on the RV1106 NPU within 20ms
 - [ ] Classification correctly identifies at least 6 of 8 stages on real cooking data
 - [ ] Steam protection (physical + ISP dehaze) keeps frames usable for 30-minute continuous cooking
@@ -486,7 +489,7 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 - [[02-Controller-Software-Architecture|Controller & Software Architecture]]
 - [[../03-Software/05-MCU-Functional-Specification|MCU Functional Specification]]
 - [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]]
-- [[01-Induction-Heating|Induction Heating System]]
+- [[01-Electric-Heating|Electric Heating System]]
 - [[02-Robotic-Arm|Robotic Arm System]]
 - [[03-Ingredient-Dispensing|Ingredient Dispensing System]]
 - [[01-Safety-Compliance|Safety & Compliance]]
@@ -503,3 +506,4 @@ Phone app ◄──(RTSP/RTP over Wi-Fi LAN, or cloud relay)──────�
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor changed to RV1106 (Luckfox Pico Zero): camera is SC3336 at 1280x720 @ 30 fps (IMX219/IMX477 dropped, no ISP tuning); pipeline is hardware ISP (dehaze/3DNR/AWB) → ISP self-path 224x224 → NPU via RKNN (5-10 ms, INT8 from RKNN-Toolkit2); OpenCV/CLAHE/libcamera removed; MJPEG server replaced by on-demand H.264 RTSP; LED ring driven by STM32 via SET_LED; calibration uses ISP AWB/AE; validation checklist updated. Stage classes, transitions and training pipeline unchanged |
 | 1.2 | 2026-11-04 | Manas Pradhan | Camera changed to IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); sensor table and rationale updated |
 | 1.3 | 2026-11-04 | Manas Pradhan | LED ring mode requests now travel as CAN frame 0x220 |
+| 1.4 | 2026-11-04 | Manas Pradhan | Three-unit architecture: camera and LED ring move to the underside of the Dispensing Unit (centred over the pot, straight down, 20–30 cm above the rim, sealed borosilicate window with silicone seal, lifts off with the unit); LED ring is a white 5000 K CRI ≥ 90 ring (12–16 LEDs, ≤ 1 A on 5V_MAIN) driven by Q_LED from an RV1106 PWM at 1 kHz with OFF/CAPTURE/NIGHT duties — WS2812B, SET_LED (0x220), STM32 driver and colour modes removed; calibration and checklist updated |

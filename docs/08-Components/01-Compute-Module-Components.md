@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.5
+version: 1.8
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Luckfox Pico Zero (RV1106G3; AI/vision processing), STM32G0B1RE (IO, CAN and safety control), display module, and supporting components.
+This document details the compute subsystem components for the Epicura kitchen robot prototype, including the Luckfox Pico Zero (RV1106G3; AI/vision processing), STM32G0B1RE (IO, CAN and safety control), display module, and supporting components. The two processors live in different units: the Pico Zero sits in J_AP on the Unified PCB v4.0 inside the battery-powered Dispensing Unit (DU), the STM32G0B1RE on the Cooking Surface Controller (CSC) PCB in the mains-powered Cooking Surface (CS). They meet only on the isolated CAN bus, which crosses the 8-pin magnetic pogo dock (J_DOCK) together with the DU's 24 V charge feed.
 
 ## 2. Compute Architecture
 
@@ -17,18 +17,26 @@ This document details the compute subsystem components for the Epicura kitchen r
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Compute Subsystem                            │
 │                                                                 │
-│  ┌──────────────┐  CAN (iso)  ┌──────────────┐                 │
-│  │  Luckfox     │◄───────────►│  STM32G0B1RE │                 │
-│  │  Pico Zero   │   500 kbps  │  Nucleo      │                 │
-│  │  (RV1106G3)  │             │  (FreeRTOS)  │                 │
-│  └──────┬───────┘             └──────┬───────┘                 │
-│         │                            │                         │
-│ MIPI CSI│  SPI0/I2C3             PWM │  ADC  I2C              │
-│         │    │                    │  │    │    │               │
-│         ▼    ▼                    ▼  ▼    ▼    ▼               │
-│      Camera Display           Servos Load MLX                 │
-│      IMX415 4" LCD            Arm   Cell  90614               │
-│             480x320           Gates       HX711               │
+│  DISPENSING UNIT (DU) — Unified PCB v4.0, battery-powered       │
+│  ┌──────────────┐  SPI0 CS1  ┌──────────────┐                   │
+│  │  Luckfox     │───────────►│  MCP2518FD + │──┐  CAN (iso)     │
+│  │  Pico Zero   │            │  ISO1050 #2  │  │  500 kbps      │
+│  │  (RV1106G3)  │            └──────────────┘  │                │
+│  └──┬───┬───┬───┘                              │                │
+│ CSI │   │   │ I2C3 / PWM / GPIO                │                │
+│     ▼   ▼   ▼                                  │                │
+│  Camera LCD PCA9685 · PCF8574 #2 · NAU7802 ×2  │                │
+│  IMX415 4"  INA219 ×2 · LED ring · buzzer      │                │
+│             DOCK_SENSE_A · DOCK_PWR_OK         │                │
+│ ═════════ J_DOCK (8-pin pogo: DOCK_24V + CAN) ═╪═════════════   │
+│  COOKING SURFACE (CS) — CSC PCB, mains         │                │
+│  ┌──────────────┐  FDCAN1    ┌──────────────┐  │  ┌──────────┐  │
+│  │  STM32G0B1RE │◄──────────►│  ISO1050 #1  │◄─┴─►│ Heating  │  │
+│  │  (CSC,       │            │  + B0505S    │     │ unit     │  │
+│  │   FreeRTOS)  │            └──────────────┘     └──────────┘  │
+│  └──────┬───────┘                                               │
+│  FDCAN2 │ SN65HVD230 + Q_STIR 24 V ──► J_SU ──► Stir servo (SU) │
+│  GPIO   │ Q_RLY relay · E-stop · pot reed · fans ×2 · Q_DOCK    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -39,13 +47,15 @@ This document details the compute subsystem components for the Epicura kitchen r
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Luckfox Pico Zero (RV1106G3, 256MB DDR3L, 8GB eMMC) | Luckfox Pico Zero | 1 | $47.00 | $47.00 | Waveshare / Luckfox store (₹3,339 Hubtronics India) | Core compute: NPU inference, ISP vision, LVGL UI, recipe engine, cloud sync; on-board Wi-Fi 6 + BT 5.2; no carrier board needed |
-| STM32G0B1RE Nucleo | NUCLEO-G0B1RE | 1 | $11.00 | $11.00 | STMicroelectronics / Mouser | Controller dev board (MB1360); 2x FDCAN, ST-LINK; production part STM32G0B1RET6 ~$3.50 |
+| STM32G0B1RE Nucleo | NUCLEO-G0B1RE | 1 | $11.00 | $11.00 | STMicroelectronics / Mouser | Controller dev board (MB1360); 2x FDCAN, ST-LINK; stands in for the Cooking Surface Controller (CSC) in the CS base; production part STM32G0B1RET6 ~$3.50 on the CSC PCB (costed under [[04-Total-Component-Cost\|Additional Costs]]) |
 | 4" IPS Display (480x320) with capacitive touch | 4.0" ST7796S + FT6336U SPI module (108 x 60.88 mm incl. header) | 1 | $15.00 | $15.00 | Waveshare / AliExpress | SPI0 display (50 MHz, fbtft) + I2C3 touch (evdev); prototype and production display |
 | IMX415-98 IR-CUT Camera Module (8 MP, MIPI CSI) | IMX415-98 | 1 | - | - | See [[03-Sensor-Components\|Sensor Components]] | Costed under Sensors ($54.00, FPC included); plugs into the Pico Zero MIPI CSI FPC connector |
 | (Storage on eMMC) | - | - | - | - | Included | 8GB eMMC on Pico Zero for A/B OS slots, models and data; microSD slot for expansion only |
-| MCP2518FD CAN Controller (RV1106 node) | MCP2518FD-E/SL + 40 MHz crystal | 1 | $3.00 | $3.00 | Microchip / Mouser | On the Unified PCB, SPI0 CS1 of the Pico Zero header (≤ 20 MHz); kernel `mcp251xfd`, SocketCAN `can0` |
-| ISO1050DUB Isolated CAN Transceiver #2 (RV1106 node) | ISO1050DUBR | 1 | $3.50 | $3.50 | TI / Mouser | Shares the isolated 5 V_ISO domain (B0505S-1WR3) and J_CAN with the STM32's ISO1050DUB #1 (costed under Actuation) |
-| USB-C Cable (debug/power) | - | 1 | $5.00 | $5.00 | Generic | Pico Zero power, eMMC flashing and USB debug |
+| MCP2518FD CAN Controller (RV1106 node) | MCP2518FD-E/SL + 40 MHz crystal | 1 | $3.00 | $3.00 | Microchip / Mouser | On the Unified PCB v4.0 (DU), SPI0 CS1 of the Pico Zero header (≤ 20 MHz); kernel `mcp251xfd`, SocketCAN `can0` |
+| ISO1050DUB Isolated CAN Transceiver #2 (RV1106 node) | ISO1050DUBR | 1 | $3.50 | $3.50 | TI / Mouser | On the Unified PCB v4.0 behind the J_DOCK pads; its bus side is powered from dock 5V_ISO / GND_ISO (the single isolated domain generated by the B0505S-1WR3 on the CSC), pairing with the STM32's ISO1050DUB #1 on the CSC (costed under Actuation) |
+| Dock Connector (J_DOCK) | 8-pin magnetic pogo pair, 2.54 mm pitch, spring pins 2 A each + flat gold pad plate | 1 pair | $6.00 | $6.00 | AliExpress / Mouser | Keyed recess on the CS left pillar (pins) and the DU underside (pads): DOCK_24V charge, GND, CAN_H/CAN_L, GND_ISO, 5V_ISO, DOCK_SENSE_A/B; pads de-energised by Q_DOCK on the CSC when the DU is lifted |
+| INA219 #2 Battery Monitor | INA219AIDCNR + 10 mΩ shunt | 1 | $1.00 | $1.00 | TI / LCSC | On the Unified PCB v4.0 in the BAT+ path (I2C3, addr 0x44): pack voltage + current → state of charge for the RV1106 power/dock monitor (warning 6.4 V, checkpoint + halt 6.2 V) |
+| USB-C Cable (debug/power) | - | 1 | $5.00 | $5.00 | Generic | Pico Zero power, eMMC flashing and USB debug; also the CSC's bench USB-C DFU port |
 
 ---
 
@@ -58,8 +68,10 @@ This document details the compute subsystem components for the Epicura kitchen r
 | 4" SPI Display with touch | $15.00 |
 | MCP2518FD CAN controller + crystal (RV1106 node) | $3.00 |
 | ISO1050DUB #2 isolated transceiver (RV1106 node) | $3.50 |
+| Dock connector J_DOCK (8-pin magnetic pogo pair) | $6.00 |
+| INA219 #2 battery monitor + shunt | $1.00 |
 | Cables | $5.00 |
-| **Category Subtotal** | **$84.50** |
+| **Category Subtotal** | **$91.50** |
 
 ---
 
@@ -70,16 +82,16 @@ This document details the compute subsystem components for the Epicura kitchen r
 Why the RV1106G3:
 - **1 TOPS INT8 NPU** runs MobileNetV2 INT8 in 5-10 ms via `rknn_api` (target < 20 ms), against 100+ ms for CPU inference; the CPU never touches pixels
 - **5 MP hardware ISP** (3A, 2D/3D noise reduction, dehaze, LSC, sharpening) handles steam and haze over the pot in hardware; no OpenCV on the CPU
-- **~1 W class**, no heatsink or fan, -20 to +85°C ambient; suited to an enclosure next to an induction surface
+- **~1 W class**, no heatsink or fan, -20 to +85°C ambient; suited to an enclosure next to an electric heating unit
 - **$47 complete board** with 256MB DDR3L in-package, 8GB eMMC, Wi-Fi 6 + BT 5.2 and antenna; replaces $85 of CM5 + CM5IO with no carrier board
 - **H.264/H.265 hardware encoder** gives the on-demand phone live view (RTSP, 720p @ 15 fps) for free
-- 40-pin RPi-style header (28 GPIO, 3.3 V): SPI0 CS0 for the display and CS1 for the MCP2518FD CAN controller, I2C3 for touch, UART2 as the STM32 service link (flashing/debug), GPIO 32/38 for STM32 BOOT0/NRST
+- 40-pin RPi-style header (28 GPIO, 3.3 V): SPI0 CS0 for the display and CS1 for the MCP2518FD CAN controller; I2C3 as the single DU bus (FT6336 touch, PCA9685, PCF8574 #2, NAU7802 ×2 behind the TCA9543A, INA219 ×2); four PWM outputs (oil pump, water pump, LED ring, buzzer); GPIO for PCA9685 OE, DOCK_SENSE_A and DOCK_PWR_OK. UART2 (pins 8/10) and GPIO 32/38 are freed: the STM32 is on the CSC in another unit and no service link exists
 
 What it cannot do, and how the stack adapts:
 - **256MB RAM, one Cortex-A7 @ 1.2 GHz:** no Docker, PostgreSQL, Node.js or Python on the device. One native C11 application (`epicurad`) with SQLite, libmosquitto and libcurl; steady state ~80MB, peak ~95MB
 - **No 3D GPU:** no Kivy. LVGL 9, software rendered at 20 Hz on a 480x320 framebuffer
 - **No DSI/HDMI output, and the Pico Zero does not break out the RGB LCD pins:** the 10.1" 1280x800 panel is dropped for a 4" 480x320 SPI LCD
-- **No CAN peripheral and one SPI controller:** the display takes SPI0 CS0; an MCP2518FD on SPI0 CS1 (+ ISO1050DUB #2) puts the RV1106 on the isolated CAN bus it shares with the STM32 and the induction surface, where it also runs the heater PID; UART2 is kept only to flash the STM32
+- **No CAN peripheral and one SPI controller:** the display takes SPI0 CS0; an MCP2518FD on SPI0 CS1 (+ ISO1050DUB #2) puts the RV1106 on the isolated CAN bus it shares with the STM32 (on the CSC) and the electric heating unit (which runs its own PID); the bus reaches the DU over dock pins 3–6, and the STM32 firmware image is streamed over the same bus (0x7E0/0x7E8) in place of the former UART2 + BOOT0/NRST link
 - **Narrow camera driver list:** the IMX415-98 IR-CUT is the only colour camera Luckfox supports on the Pico Zero (the SC3336 module is marked incompatible with the Zero); IMX219/IMX477 are dropped
 - **2.4 GHz Wi-Fi only, no Ethernet on the board:** cloud sync and SSH go over Wi-Fi; UART0 is the debug console
 - **8GB eMMC:** A/B boot + rootfs slots (2x32MB + 2x256MB), 64MB `oem` (models, ISP tuning, LVGL assets), ~6GB `data`
@@ -87,13 +99,13 @@ What it cannot do, and how the stack adapts:
 See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability Assessment]] for datasheet facts and the CM5 comparison, and [[02-Controller-Software-Architecture|Controller & Software Architecture]] for the resulting stack.
 
 ### 5.2 STM32G0B1RE Selection Rationale
-- **No control loop on the MCU**: the induction module regulates its own temperature and the stirring motor is a CAN servo with its own controller, so the MCU is an IO, CAN and safety node. Its fastest task runs at 50 Hz; a Cortex-M0+ @ 64 MHz without FPU is ample. The STM32G474RE (Cortex-M4F @ 170 MHz, ~$8) it replaces was sized for a PID loop and a PWM motor that no longer exist
-- **Two FDCAN controllers**: FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus. The G0B1 is the cheapest ST part with two; the G431/G441 have one
-- **Same toolchain and safety story as the G474**: STM32 HAL + CubeMX, FreeRTOS, ST USART system bootloader (RV1106 flashes it over USART2 with BOOT0/NRST), IWDG on its own LSI clock, SRAM parity, flash ECC, and the VDE-certified X-CUBE-CLASSB library for IEC 60730-1 / IEC 60335-1 Annex R Class B software
-- **Why not an RP2040** (~$1): no CAN peripheral (two external controllers at $2–3 each, or a PIO soft-CAN on the heater kill path), no internal flash, no UART ROM bootloader (RV1106 flashing path would need a redesign), no MISRA/Class B ecosystem. Once the missing parts are added it costs about the same as the G0B1 and carries more certification risk
-- **Pin budget**: LQFP-64 (STM32G0B1RET6) keeps the PC-port GPIOs used by the SLD pumps and HX711; the G0 alternate-function map moves I2C1_SCL to PB6, the ADC inputs to PA0/PA4 and the buzzer to PA8/TIM1_CH1 (see the [[../03-Software/05-MCU-Functional-Specification|MCU Functional Specification]] pin table)
-- **USART2 (PA2/PA3)** as the service link to the RV1106: system-bootloader port for firmware updates and debug; no runtime traffic. On the G0 BOOT0 is PA14-BOOT0 and needs option bit nBOOT_SEL = 0 programmed once at factory
-- Nucleo board NUCLEO-G0B1RE (MB1360, ~$11) provides ST-LINK and Arduino headers. PA2/PA3 go to the ST-LINK VCP by default; re-route via the solder bridges in UM2324 or use the custom controller PCB
+- **No control loop on the MCU**: the heating unit regulates its own temperature and the stirring motor is a CAN servo with its own controller, so the MCU is an IO, CAN and safety node. Its fastest task runs at 50 Hz; a Cortex-M0+ @ 64 MHz without FPU is ample. The STM32G474RE (Cortex-M4F @ 170 MHz, ~$8) it replaces was sized for a PID loop and a PWM motor that no longer exist
+- **Two FDCAN controllers**: FDCAN1 on the isolated host/heater bus (ISO1050DUB #1 + B0505S on the CSC, extended to the DU over the dock), FDCAN2 on the regular stir-motor bus (SN65HVD230 → J_CAN_STIR → J_SU in the right pillar). The G0B1 is the cheapest ST part with two; the G431/G441 have one
+- **Same toolchain and safety story as the G474**: STM32 HAL + CubeMX, FreeRTOS, an in-application CAN bootloader (the RV1106 streams the image over the isolated bus, IDs 0x7E0/0x7E8; USB-C DFU on the CSC is the bench fallback, SWD for factory), IWDG on its own LSI clock, SRAM parity, flash ECC, and the VDE-certified X-CUBE-CLASSB library for IEC 60730-1 / IEC 60335-1 Annex R Class B software
+- **Why not an RP2040** (~$1): no CAN peripheral (two external controllers at $2–3 each, or a PIO soft-CAN on the heater kill path), no internal flash, no ROM DFU bootloader (bench recovery path would need a redesign), no MISRA/Class B ecosystem. Once the missing parts are added it costs about the same as the G0B1 and carries more certification risk
+- **Pin budget**: LQFP-64 (STM32G0B1RET6) on the CSC. With dispensing, load cells, LED ring and buzzer moved to the RV1106, the CSC uses only PA0 (VBUS), PA2/PA3 (debug console), PA6 (fan PWM), PB0–PB5 (relay, pot reed, E-stop, DOCK_SENSE_B, Q_STIR, Q_DOCK), PB8/PB9 (FDCAN1), PB10 (fan 2), PB12/PB13 (FDCAN2) and PC7 (status LED); PA1, PA4, PA5, PA7–PA10, PA15, PB6/PB7, PB11, PB14, PB15, PC0–PC6, PC8–PC12 and PD2 are free (see the [[../03-Software/05-MCU-Functional-Specification|MCU Functional Specification]] pin table)
+- **USART2 (PA2/PA3)** goes only to J_DBG, a 3-pin debug console header on the CSC; there is no host link to the RV1106 (different unit, no cable). On the G0 BOOT0 is PA14-BOOT0 and needs option bit nBOOT_SEL = 0 programmed once at factory for SW_BOOT DFU entry
+- Nucleo board NUCLEO-G0B1RE (MB1360, ~$11) provides ST-LINK and Arduino headers. PA2/PA3 go to the ST-LINK VCP by default; re-route via the solder bridges in UM2324 or use the CSC PCB
 
 ### 5.3 Display Choice
 - 4" 480x320 IPS LCD with ST7796S controller on SPI0 (fbtft, 50 MHz with DMA); the RV1106 has no DSI or HDMI output
@@ -106,7 +118,7 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 | Item | Prototype | Production |
 |------|-----------|------------|
 | Application processor | Luckfox Pico Zero (complete board) | Bare RV1106G3 (QFN128, 12.3 mm, 0.35 mm pitch) on the custom PCB, or Luckfox Core1106 SoM on the PCB |
-| STM32 | NUCLEO-G0B1RE dev board | Bare STM32G0B1RET6 on the Unified PCB |
+| STM32 | NUCLEO-G0B1RE dev board | Bare STM32G0B1RET6 on the Cooking Surface Controller (CSC) PCB in the CS |
 | Display | 4" ST7796S SPI LCD module + FT6336 touch | Same 4" SPI panel, bezel-mounted; stays SPI |
 | Storage | 8GB eMMC on Pico Zero | 8GB eMMC on SoM or on PCB |
 | Software | Buildroot image, `epicurad`, swupdate A/B | Same image; no orchestration layer |
@@ -137,3 +149,5 @@ See [[../../research/04-RV1106-Luckfox-Pico-Zero-Suitability|RV1106 Suitability 
 | 1.4 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 IR-CUT (SC3336 incompatible with the Pico Zero); 4" display module part named; Nucleo SB numbers; CAN alternative removed |
 | 1.5 | 2026-11-04 | Manas Pradhan | RV1106 CAN node added (MCP2518FD $3.00 + ISO1050DUB #2 $3.50 on the Unified PCB, SPI0 CS1); UART2 demoted to STM32 flashing/debug; STM32 notes updated (PID on the RV1106); subtotal $85.00 → $91.50 |
 | 1.6 | 2026-11-04 | Manas Pradhan | STM32G474RE → STM32G0B1RE (NUCLEO-G0B1RE $11, production STM32G0B1RET6 ~$3.50); §5.2 rewritten with the RP2040 comparison; subtotal $91.50 → $84.50 |
+| 1.7 | 2026-11-04 | Manas Pradhan | Three-unit split: STM32G0B1RE moves to the Cooking Surface Controller (CSC) in the CS; the Unified PCB v4.0 is the Dispensing Unit board (Pico Zero, battery, dispenser drivers, RV1106 CAN node); J_DOCK 8-pin magnetic pogo pair (+$6.00) and INA219 #2 battery monitor (+$1.00) added; UART2/BOOT0/NRST service link replaced by the CAN bootloader; diagram redrawn; subtotal $84.50 → $91.50 |
+| 1.8 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, same CAN contract): diagram and notes reworded; subtotal unchanged ($91.50) |

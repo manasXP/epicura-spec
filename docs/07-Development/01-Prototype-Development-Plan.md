@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.4
+version: 1.7
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-This document outlines the comprehensive plan for building a functional Epicura prototype capable of cooking 3-5 Indian recipes autonomously. The prototype will validate core subsystems: induction heating, robotic stirring, computer vision, and recipe state machine execution.
+This document outlines the comprehensive plan for building a functional Epicura prototype capable of cooking 3-5 Indian recipes autonomously. The prototype will validate core subsystems: electric heating, robotic stirring, computer vision, and recipe state machine execution.
 
 **Target Timeline:** 20-24 weeks
 **Goal:** Working prototype demonstrating autonomous one-pot cooking with CV-guided stage detection
@@ -31,7 +31,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.1.1 Objectives
 - Set up Luckfox Pico Zero (RV1106G3) with a Buildroot Linux image
 - Set up STM32G0B1RE with FreeRTOS
-- Bring up the isolated CAN bus between the RV1106 (MCP2518FD on SPI0 CS1), the STM32 and the induction surface
+- Bring up the isolated CAN bus between the RV1106 (MCP2518FD on SPI0 CS1), the STM32 and the electric heating unit
 - Validate basic I/O and power supply
 
 #### 3.1.2 Tasks
@@ -41,7 +41,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Build Buildroot image from the Luckfox SDK inside the `luckfoxtech/luckfox_pico:1.0` Docker image (kernel 5.10, busybox init, squashfs rootfs; packages: sqlite, libyaml, cjson, libmosquitto, libcurl, mbedtls, lvgl, swupdate, wpa_supplicant, bluez5, rockit, rknn)
 - [ ] Flash image to eMMC over USB-C, verify boot
 - [ ] Establish SSH access over Wi-Fi (no Ethernet on the Pico Zero); UART0 debug console as fallback
-- [ ] Test GPIO, I2C3, SPI0 (LCD on CS0, MCP2518FD on CS1 → `can0`), UART2 from Linux userspace
+- [ ] Test GPIO, I2C3 (touch + dispenser/power ICs: PCA9685, PCF8574 #2, INA219 ×2, TCA9543A → NAU7802 ×2), PWM ×4, SPI0 (LCD on CS0, MCP2518FD on CS1 → `can0`) from Linux userspace
 - [ ] Bring up the 4" LCD on fbtft (SPI0, 50 MHz, DMA) and FT6336 touch on I2C3 (evdev)
 - [ ] Verify IMX415-98 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
 
@@ -50,8 +50,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Install STM32CubeIDE and STM32CubeMX
 - [ ] Create FreeRTOS project with basic task structure
 - [ ] Test GPIO output (LED blink)
-- [ ] Test the USART2 service link (ST bootloader flash from the RV1106, serial echo)
-- [ ] Test FDCAN1 on the shared bus (receive induction module HEAT_STATUS and RV1106 HB_AP)
+- [ ] Test USB-C DFU and the J_DBG console on the NUCLEO; later verify the CAN bootloader (0x7E0/0x7E8) once FDCAN1 is up
+- [ ] Test FDCAN1 on the shared bus (receive heating unit HEAT_STATUS and RV1106 HB_AP)
 - [ ] Test PWM output (servo signal generation)
 
 **Week 3: Inter-Processor Communication (CAN)**
@@ -80,23 +80,23 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Risks:**
 - Luckfox SDK / Buildroot build issues → Fallback: start from the prebuilt Luckfox Pico Zero image and add packages incrementally
-- SPI0 contention between the LCD and the MCP2518FD → Fallback: cap fbtft transfer chunks, keep the can thread at SCHED_FIFO; last resort is UART2 as the STM32 link
+- SPI0 contention between the LCD and the MCP2518FD → Fallback: cap fbtft transfer chunks, keep the can thread at SCHED_FIFO (there is no UART fallback: the STM32 is in another unit and only the CAN bus crosses the dock)
 
 ---
 
-### 3.2 Phase 2: Induction Integration (Weeks 5-7)
+### 3.2 Phase 2: Heater Integration (Weeks 5-7)
 
 #### 3.2.1 Objectives
-- Integrate and control a commercial induction hob
-- Drive the module's own temperature controller from the RV1106 (`heat` thread: HEAT_SET_TEMP keep-alive, HEAT_STATUS surface_temp); no IR thermometer
-- Validate the module's temperature accuracy and step response
+- Integrate and control a commercial electric heating unit (rice-cooker class, CAN port)
+- Drive the unit's own temperature controller from the RV1106 (`heat` thread: HEAT_SET_TEMP keep-alive, HEAT_STATUS surface_temp); no IR thermometer
+- Validate the unit's temperature accuracy and step response
 
 #### 3.2.2 Tasks
 
-**Week 5: Microwave Surface Module Setup**
-- [ ] Acquire commercial microwave induction surface with CAN bus port
-- [ ] Review module CAN protocol documentation
-- [ ] Connect the module CAN port to J_CAN_HEAT (the Unified PCB's isolated CAN port; RV1106 and STM32 nodes already up)
+**Week 5: Heating Unit Setup**
+- [ ] Acquire commercial electric heating unit (rice-cooker class, ~1,300 W assumed) with CAN bus port
+- [ ] Review the unit's CAN protocol documentation
+- [ ] Connect the unit's CAN port to J_CAN_HEAT on the Cooking Surface Controller (the RV1106 node reaches the same bus over the dock contacts; both nodes already up)
 - [ ] Verify CAN communication from the RV1106: send HEAT_QUERY, receive HEAT_STATUS on `can0`; confirm the STM32 sees the same frames
 - [ ] Wire safety relay on AC mains to module (STM32 GPIO control)
 
@@ -105,31 +105,31 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Verify all power levels (warm, simmer, medium, boil, sear)
 - [ ] Measure power delivery at different CAN power levels (25%, 50%, 75%, 100%)
 - [ ] Log temperature ramp rates for water (1L, 2L, 3L)
-- [ ] Test safety relay disconnect, STM32 HEAT_ON_OFF=0 / E_STOP broadcast, and the module's 1 s command watchdog (kill `epicurad`)
+- [ ] Test safety relay disconnect, STM32 HEAT_ON_OFF=0 / E_STOP broadcast, and the unit's 1 s command watchdog (kill `epicurad`)
 
 **Week 7: Temperature Control & Sensors**
-- [ ] Verify surface_temp and coil temperature reporting in HEAT_STATUS from the induction module (10 Hz)
-- [ ] Calibrate module surface_temp against a thermocouple on the pot bottom (0-250°C range)
+- [ ] Verify surface_temp and element temperature reporting in HEAT_STATUS from the heating unit (10 Hz)
+- [ ] Calibrate the unit's surface_temp against a thermocouple on the pot bottom (0-250°C range)
 - [ ] Implement the `heat` thread on the RV1106 (SCHED_FIFO): HEAT_SET_TEMP / HEAT_SET_POWER keep-alive at 2 Hz, HEAT_STATUS parsing, 500 ms watchdog
-- [ ] Characterise the module's own loop: step response (ambient → 100°C, 100°C → simmer at 85°C); derive pot-bottom `temp_target` values for the recipe schema
+- [ ] Characterise the unit's own loop: step response (ambient → 100°C, 100°C → simmer at 85°C); derive pot-bottom `temp_target` values for the recipe schema
 - [ ] Validate accuracy: ±10°C at target (prototype), ±5°C goal
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│          Induction Control (loop inside the module)      │
+│          Heater Control (loop inside the heating unit)   │
 │                                                         │
 │  Recipe Target ──► heat thread ──► CAN 0x100 HEAT_SET_TEMP │
 │  (RV1106)          2 Hz keep-alive        │             │
 │                                           ▼             │
 │                              ┌───────────────────────┐  │
-│                              │ Induction Module      │  │
-│                              │  PID ──► Coil ──► Pot │  │
+│                              │ Heating Unit          │  │
+│                              │  PID ──► Plate ──► Pot│  │
 │                              │   ▲                   │  │
-│                              │   └── under-glass NTC │  │
+│                              │   └── centre NTC      │  │
 │                              └──────────┬────────────┘  │
 │                                         │ CAN 0x180     │
 │  Stage transitions ◄── surface_temp ◄───┘ HEAT_STATUS   │
-│  STM32 cut-off      ◄── surface/coil temp, faults       │
+│  STM32 cut-off      ◄── surface/element temp, faults    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -137,10 +137,10 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Deliverable | Success Criteria |
 |-------------|-----------------|
-| Induction control | RV1106 can set power 0-100% in 10% steps over CAN; STM32 off-switch verified |
-| Temperature sensing | Module surface_temp (HEAT_STATUS) within ±5°C of a pot-bottom thermocouple |
-| Temperature mode (module PID, RV1106 setpoint) | Reach 100°C in < 8 min (1L water), hold ±10°C |
-| Safety cutoff | Auto-off at 200°C coil temp or 240°C thermal fuse |
+| Heater control | RV1106 can set power 0-100% in 10% steps over CAN; STM32 off-switch verified |
+| Temperature sensing | Unit surface_temp (HEAT_STATUS) within ±5°C of a pot-bottom thermocouple |
+| Temperature mode (unit PID, RV1106 setpoint) | Reach 100°C in < 10 min (1L water, 1,300 W plate), hold ±10°C |
+| Safety cutoff | Unit's own element over-temp cut-off and thermal fuse verified; STM32 E_STOP at element temp > 250°C |
 
 ---
 
@@ -187,8 +187,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 │     └──────────────┘                     │
 │            │                             │
 │     ┌──────────────┐   ┌─────────────┐   │
-│     │     Pot      │   │ Induction   │   │
-│     │  (3-4L SS)   │   │ module temp │   │
+│     │     Pot      │   │ Heating unit│   │
+│     │  (3-4L SS)   │   │ centre temp │   │
 │     └──────┬───────┘   └─────────────┘   │
 │            │                             │
 │  ┌─────┐┌─────┐┌─────┐┌─────┐            │
@@ -198,7 +198,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 │         └──────┬──────┘                  │
 │                ▼                         │
 │          ┌──────────┐                    │
-│          │  HX711   │ 24-bit ADC         │
+│          │ NAU7802  │ 24-bit I2C ADC     │
 │          └──────────┘                    │
 └──────────────────────────────────────────┘
 ```
@@ -223,8 +223,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.4.2 Tasks
 
 **Week 11: Camera Setup**
-- [ ] Mount IMX415-98 camera module above pot (overhead view)
-- [ ] Install LED ring (WS2812B, 12-LED NeoPixel) around camera; wire data to STM32 PB14 via 74AHCT1G125 and implement SET_LED (CAN 0x220)
+- [ ] Mount IMX415-98 camera module on the Dispensing Unit underside, centred over the pot behind the sealed window (overhead view)
+- [ ] Install the white LED ring (12–16 LEDs, 5000 K) around the camera window; drive it from an RV1106 PWM via Q_LED and implement the OFF / CAPTURE / NIGHT duty modes in `epicurad`
 - [ ] Configure rockit VI/ISP on the RV1106 for 1280x720 @ 30fps capture (main path NV12) plus a 224x224 RGB888 self-path
 - [ ] ISP tuning check: load the IMX415-98 tuning file from the Luckfox SDK; verify AWB/AE, dehaze and 3DNR behaviour over a steaming pot
 - [ ] Test image quality under LED illumination (consistent lighting)
@@ -325,8 +325,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Build FID: 6-canister carousel (Ø170 mm ring, 4:3 index gear) with per-canister ¼ tsp measure wheels, dosing station (F2 blade coupling) and steam-gate flap (F3)
 - [ ] Build CID: 5-slot + cover carousel (Ø230 mm lift-off ring, thin-section bearing) on fixed base plate with rear aperture and chute, index servo (C1) via 4:3 gear
 - [ ] Build SLD: 2 liquid channels (peristaltic pumps + solenoid valves + silicone tubing)
-- [ ] Install 2× SLD dedicated load cells (2 kg each) + HX711 under oil and water reservoirs
-- [ ] Assemble the Dispenser Servo Block: PCA9685 @ 0x41 on I2C1, OE to PB4, MP1584EN #2 set to 6.5 V with P-MOSFET rail switch on PCF8574 #2 P4, servo leads to J_DSB1-4
+- [ ] Install 2× SLD dedicated load cells (2 kg each) under the oil and water reservoirs, each on a NAU7802 behind the TCA9543A mux (I2C3)
+- [ ] Assemble the Dispenser Servo Block: PCA9685 @ 0x41 on RV1106 I2C3, OE on an RV1106 GPIO, MP1584EN #2 set to 6.0 V with P-MOSFET rail switch on PCF8574 #2 P4, servo leads to J_DSB1-4; implement the `epicurad` dispense thread (FID/CID/SLD sequences, INA219 stall window)
 - [ ] Calibrate FID dosing: weigh 10 doses per spice, store g per ¼ tsp; verify jiggle clears packed powder; verify CID ascending-order NACK and stall detection
 - [ ] Calibrate SLD dispensing per channel: start pump, monitor individual reservoir weight loss, stop at target
 - [ ] Test SLD low-level alert: verify alert fires when reservoir drops below threshold
@@ -353,7 +353,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 │        └──────────────────────┘                  │
 │   CID carousel (front): 5 slots + cover sector   │
 │                                                  │
-│   DSB: 4 servos ── PCA9685 (0x41) ── 6.5 V rail  │
+│   DSB: 4 servos ── PCA9685 (0x41) ── 6.0 V rail  │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -437,7 +437,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 21: Full System Integration**
 - [ ] Connect all subsystems into single enclosure/frame
-- [ ] Verify wiring: power, both CAN buses (isolated heater, regular stir motor), battery pack, UART (service), I2C, SPI, servo, relay
+- [ ] Verify wiring per unit: CS (PSU, CSC, relay, fans, J_CAN_HEAT, stir harness to J_SU), DU (battery pack, I2C3, SPI, servos, pumps, LED ring), dock contacts (DOCK_24V, CAN, sense pins) with the DU seated and lifted
 - [ ] Run system self-test sequence (each subsystem checks in)
 - [ ] End-to-end test: select recipe on UI → cook → complete notification
 
@@ -450,7 +450,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 23: Safety Validation**
 - [ ] Test all interlocks:
-  - Pot removed during cooking → induction off
+  - Pot removed during cooking → heater off
   - Lid opened → arm stops
   - Overtemperature → auto shutoff
   - Emergency stop button → all off
@@ -485,8 +485,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Category | Items | Estimated Cost |
 |----------|-------|----------------|
 | Compute | Luckfox Pico Zero (RV1106G3) + STM32 Nucleo dev board | $65-80 |
-| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + induction hob | $220-320 |
-| Sensors | IMX415-98 camera + reed switch + LED ring + level shifter (no thermometer) | $65-80 |
+| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + electric heating unit | $205-305 |
+| Sensors | IMX415-98 camera + reed switch + white LED ring + NAU7802 ×2 + INA219 ×2 (no thermometer) | $65-80 |
 | Mechanical | 3D printing (PETG filament) + stainless steel shaft + fasteners + brackets | $100-200 |
 | Display | 4" ST7796S SPI IPS touchscreen (FT6336 I2C touch) | $15-20 |
 | Power | Bench PSU + prototype PSU board + cables + connectors | $50-80 |
@@ -503,7 +503,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 | Risk | Probability | Impact | Mitigation |
 |------|------------|--------|------------|
-| Induction control difficulty | Medium | High | Start with relay on/off, upgrade to PWM injection; worst case: use commercial hob with manual power setting |
+| Heater control difficulty (CAN protocol of the chosen unit) | Medium | High | Start with relay on/off (HEAT_ON_OFF), then the unit's temperature and power modes; worst case: use a unit with manual power setting plus relay on/off |
 | CV accuracy insufficient | Medium | Medium | Rule-based fallback (color + temperature thresholds); collect more training data; use ensemble of simple classifiers |
 | Mechanical assembly issues | Low | Medium | Iterate 3D prints rapidly; consult maker community; use off-the-shelf brackets where possible |
 | RV1106 resource limits (256 MB RAM, single Cortex-A7) | Medium | Medium | Keep all image work in the ISP/NPU/RGA/VENC hardware blocks; verify the ~95 MB peak memory budget on hardware; phone streaming on demand only; memory-pressure fallback kills `rtsp-stream` |
@@ -572,7 +572,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 ### 8.2 Production Planning
 - Finalize component selection for long-term availability
-- Design custom induction driver board (replace teardown hob)
+- Design a custom heater power stage (replace the commercial heating unit)
 - Establish supplier relationships (volume pricing)
 - Target production unit cost: $200-250
 
@@ -605,3 +605,5 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | 1.3 | 2026-11-04 | Manas Pradhan | Camera IMX415-98 ($54): sensors line $75-95, total $835-1,465, BOM $473; Nucleo SB numbers |
 | 1.5 | 2026-11-04 | Manas Pradhan | Week 7 rewritten: no IR thermometer or PID in Epicura (module-internal temperature control, HEAT_SET_TEMP keep-alive); arm weeks and diagrams updated for the CAN servo motor on FDCAN2; integration wiring and budget rows updated |
 | 1.4 | 2026-11-04 | Manas Pradhan | Phases 1–2 rewritten for the isolated 3-node CAN bus (RV1106 MCP2518FD node, STM32 FDCAN1, induction surface) and the RV1106 heat thread PID; UART2 is a service link only |
+| 1.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 on the Cooking Surface Controller (no UART service link, CAN bootloader), dispensers driven by the RV1106 dispense thread on I2C3 (NAU7802 load cells, 6.0 V rail), white PWM LED ring on the Dispensing Unit underside, per-unit wiring check with the dock |
+| 1.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, ~1,300 W assumed, own PID, CAN port; same CAN contract): Phase 2 renamed Heater Integration, week 5/7 tasks, control diagram (plate, centre NTC, element temp), deliverables (boil < 10 min, element over-temp cut-off), budget row ($205-305), risk and production rows reworded |

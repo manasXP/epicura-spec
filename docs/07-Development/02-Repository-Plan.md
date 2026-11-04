@@ -10,6 +10,8 @@ aliases: [Repository Plan, Repo Plan]
 > | 2026-02-16 | Manas Pradhan | Initial version — 6 repositories |
 > | 2026-11-04 | Manas Pradhan | `epicura-cm5` renamed `epicura-rv1106` (C11/CMake, Buildroot external tree, LVGL, RKNN, swupdate); UART bridge protocol replaces the SPI protocol as a cross-repo contract |
 > | 2026-11-04 | Manas Pradhan | CAN ID map (isolated bus shared by RV1106, STM32 and the induction surface) replaces the UART bridge protocol as the contract; heater PID moves to `epicura-rv1106`; UART2 kept for STM32 flashing |
+> | 2026-11-04 | Manas Pradhan | Three-unit architecture: `epicura-firmware` targets the Cooking Surface Controller (stir, safety, fans, dock, CAN bootloader); dispensing, power/dock monitoring and the LED ring move into `epicura-rv1106` (`dispense/`, `power/`); STM32 flashing over CAN, no UART2 |
+> | 2026-11-04 | Manas Pradhan | Heater is a commercial electric heating unit (rice-cooker class) instead of the induction surface; the CAN ID map contract is unchanged, third party renamed in the shared-contracts list |
 
 # Repository Plan
 
@@ -83,7 +85,7 @@ epicura/
 
 ### 2.2 epicura-firmware
 
-**Purpose:** STM32G0B1RE real-time control firmware — servo, sensors, CAN bus node (commands, telemetry, heater off-switch), dispensers, safety.
+**Purpose:** STM32G0B1RE real-time control firmware for the Cooking Surface Controller — stir motor (FDCAN2), CAN bus node (commands, telemetry, heater off-switch), exhaust fans, dock power switch, safety. Dispensing, load cells, LED ring and battery are on the RV1106 (`epicura-rv1106`).
 
 ```
 epicura-firmware/
@@ -93,10 +95,9 @@ epicura-firmware/
 │   │   ├── heater_guard.h              # HEAT_STATUS monitor, HEAT_ON_OFF=0 / E_STOP off-switch
 │   │   ├── servo_driver.h
 │   │   ├── can_interface.h
-│   │   ├── dispenser_fid.h
-│   │   ├── dispenser_cid.h
-│   │   ├── dispenser_sld.h
-│   │   ├── sensor_manager.h
+│   │   ├── exhaust.h                   # Fan PWM, FAN_STALL flags, 0x260–0x262
+│   │   ├── dock.h                      # DOCK_SENSE_B safe hold, Q_DOCK interlock
+│   │   ├── can_bootloader.h            # In-application firmware update over FDCAN1 (0x7E0/0x7E8)
 │   │   ├── safety_manager.h
 │   │   ├── can_protocol.h              # ID map, seq/ACK, payload packing
 │   │   └── calibration.h
@@ -132,10 +133,12 @@ epicura-rv1106/
 │   ├── main.c                         # epicurad entry: init, thread start, /dev/watchdog
 │   ├── ui/                            # LVGL 9 screens (home, recipe, cooking, settings, history); fbtft + evdev glue
 │   ├── engine/                        # libyaml recipe parser, cooking state machine, dispensing orchestrator
+│   ├── dispense/                      # dispense thread: PCA9685 servos, TB6612 pumps, solenoids, NAU7802 closed loop, INA219 stall window
+│   ├── power/                         # Battery/dock monitor: INA219 #2, DOCK_SENSE_A, DOCK_PWR_OK, charger status, UNIT_LIFTED
 │   ├── cv/                            # rockit VI/ISP setup, rknn_api inference, 3-frame vote, VENC/RGA control
 │   ├── can/                           # SocketCAN can0: ID map, seq/ACK/retry, HB_AP heartbeat, telemetry ring buffer
-│   ├── heat/                          # 10 Hz PID → HEAT_SET_POWER; HEAT_STATUS limits
-│   ├── stm32_flash/                   # BOOT0/NRST GPIO + ST USART bootloader flasher over UART2
+│   ├── heat/                          # 2 Hz HEAT_SET_TEMP / HEAT_SET_POWER keep-alive; HEAT_STATUS limits
+│   ├── stm32_flash/                   # STM32 image streamed over CAN to the CSC bootloader (0x7E0/0x7E8)
 │   ├── sync/                          # libcurl REST client, libmosquitto MQTT client, sync_outbox drain
 │   ├── db/                            # SQLite schema, migrations, data access
 │   └── rtsp-stream/                   # On-demand child process: VENC H.264 → RTSP :554
@@ -143,7 +146,7 @@ epicura-rv1106/
 │   ├── Config.in
 │   ├── external.mk
 │   ├── external.desc
-│   ├── board/epicura-pico-zero/       # defconfig, DT overlay (SPI0 LCD + MCP2518FD CAN, I2C3 touch, UART2 service link), eMMC partition table, rootfs overlay (/etc/init.d)
+│   ├── board/epicura-pico-zero/       # defconfig, DT overlay (SPI0 LCD + MCP2518FD CAN, I2C3 touch + PCA9685 + PCF8574 + INA219 ×2 + TCA9543A/NAU7802, PWM ×4, dock GPIOs), eMMC partition table, rootfs overlay (/etc/init.d)
 │   └── package/
 │       ├── epicurad/                  # Builds app/ into the image
 │       └── epicura-assets/            # LVGL fonts/icons, default recipes, ISP tuning → /oem
@@ -392,7 +395,7 @@ epicura-api            (cloud API + admin portal monorepo)
 ```
 
 **Shared contracts** (no code sharing, contracts defined in `epicura` docs):
-- CAN ID map (E_STOP, HB_AP, heater 0x1xx, commands 0x2xx incl. SET_LED, reports 0x3xx) → between `epicura-firmware`, `epicura-rv1106` and the induction surface module
+- CAN ID map (E_STOP, HB_AP, heater 0x1xx, commands 0x2xx incl. the exhaust block 0x260–0x262, reports 0x3xx, firmware update 0x7E0/0x7E8) → between `epicura-firmware`, `epicura-rv1106` and the electric heating unit
 - MQTT topic definitions → between `epicura-rv1106` and `epicura-api`
 - REST API OpenAPI spec → between `epicura-api` and all frontend repos
 - BLE service/characteristic UUIDs → between `epicura-firmware` and mobile repos

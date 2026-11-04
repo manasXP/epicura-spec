@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.3
+version: 1.4
 status: Draft
 ---
 
@@ -82,11 +82,11 @@ Periodic sensor readings published every 10 seconds during cooking, every 60 sec
   "cv_confidence": 0.81,
   "power_pct": 45,
   "ambient_temp": 28.3,
-  "coil_temp": 142.0
+  "element_temp": 142.0
 }
 ```
 
-This extends the telemetry payload format from [[02-Controller-Software-Architecture#5.6.2 MQTT Telemetry|Controller Software Architecture]] with additional fields (`target_temperature`, `stir_pattern`, `stir_rpm`, `weight_g`, `cv_class`, `cv_confidence`, `power_pct`, `coil_temp`).
+This extends the telemetry payload format from [[02-Controller-Software-Architecture#5.6.2 MQTT Telemetry|Controller Software Architecture]] with additional fields (`target_temperature`, `stir_pattern`, `stir_rpm`, `weight_g`, `cv_class`, `cv_confidence`, `power_pct`, `element_temp`).
 
 ---
 
@@ -219,9 +219,9 @@ Device alerts that require backend processing or user notification.
   "timestamp": "2026-02-14T12:29:00Z",
   "alert_type": "sensor_degraded",
   "severity": "warning",
-  "message": "Induction module surface temperature unstable — holding power mode with timers",
+  "message": "Heating unit surface temperature unstable — holding power mode with timers",
   "details": {
-    "sensor": "induction_surface_temp",
+    "sensor": "heater_surface_temp",
     "error_count": 5,
     "last_valid_reading": 145.2
   }
@@ -465,3 +465,4 @@ The wildcard `+` in subscriptions matches any device ID, so the server handles a
 | 1.1 | 2026-11-04 | Manas Pradhan | Device changed from CM5 to RV1106: single `cmd` topic with `command` field (`live_view_start`, `live_view_stop`, `recipe_sync_now`, `ota_check`, plus `cook`/`stop`/`config`); telemetry QoS 1 with `sync_outbox` offline spool; no on-device broker; status payload `firmware_rv1106`, `lan_ip` |
 | 1.2 | 2026-11-04 | Manas Pradhan | live_view_start now references POST /appliances/:id/live-view |
 | 1.3 | 2026-11-04 | Manas Pradhan | Remote stop now broadcasts E_STOP on the CAN bus |
+| 1.4 | 2026-11-04 | Manas Pradhan | Heater is an electric heating unit: telemetry field `coil_temp` → `element_temp`, sensor-degraded alert example reworded (`heater_surface_temp`) |

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-16
 modified: 2026-11-04
-version: 1.1
+version: 1.2
 status: Draft
 tags: [epicura, market-research, business-case]
 ---
@@ -114,7 +114,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 | **Autonomous One-Pot Cooking** | Load ingredients, select recipe, walk away. AI vision + PID control handle the rest |
 | **100+ Indian Recipes** | Curated library: curries, dal, rice, biryani, stir-fries, soups with regional variations |
 | **AI Vision Monitoring** | Overhead camera with NPU edge AI (RKNN) detects cooking stages (raw → browning → simmering → done) |
-| **PID Induction Control** | 1,800W with ±5°C accuracy; sear at 250°C, simmer at 60°C |
+| **Closed-Loop Heat Control** | 1,300W (assumed) rice-cooker-class electric heating unit with its own PID, ±5°C accuracy; sear at 200–230°C, simmer at 60°C |
 | **Robotic Stirring** | Single-axis servo arm with multiple stir patterns and auto-scraping |
 | **Three-Subsystem Dispensing** | FID (6 sealed seasoning canisters on a servo carousel), CID (5-slot servo carousel), SLD (2 liquid reservoirs with load cells) |
 | **4" Touchscreen** | LVGL-based UI for recipe browsing, cooking status, on-demand pot preview |
@@ -138,7 +138,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 |---|---|
 | **Hardware Watchdog** | STM32 safety watchdog with automatic shutdown |
 | **Thermal Cutoffs** | NTC + IR dual temperature monitoring with hard cutoff limits |
-| **E-Stop Relay** | Emergency power disconnect for induction module |
+| **E-Stop Relay** | Emergency power disconnect for the heating unit |
 | **Lid Interlock** | Reed switch prevents operation with open lid |
 | **Anomaly Detection** | CV-based detection of burning, boil-over, and ingredient issues |
 | **IEC 60335 Compliance** | Designed to meet international household appliance safety standards |
@@ -153,7 +153,7 @@ Epicura resolves this tension by delivering **fresh, home-style Indian meals aut
 |---|---|---|---|
 | **Epicura Standard** | $499 | ₹42,000 | Full 3-subsystem dispensing; 100+ recipes |
 | **Epicura Pro** | $599 | ₹50,000 | Standard + premium pot, extra cartridges, extended warranty |
-| **Epicura Pro Multipot** | $799 | ₹67,000 | 2× induction cooktops, 2× pots + stirrers, simultaneous cooking (e.g., rice + curry); full dispensing |
+| **Epicura Pro Multipot** | $799 | ₹67,000 | 2× heating units, 2× pots + stirrers, simultaneous cooking (e.g., rice + curry); full dispensing |
 
 ### 5.2 Subscription Revenue (Optional)
 
@@ -232,7 +232,7 @@ At 10,000 units: BOM drops to ~$280, COGS to ~$345, gross margin improves to **3
 | Enabler | Relevance |
 |---|---|
 | **Edge AI (NPU on a $47 SoC board)** | Real-time cooking vision on the 1 TOPS NPU of a $47 Luckfox Pico Zero (RV1106G3) — was impossible 3 years ago |
-| **Commodity Induction Modules** | CAN-controlled induction surfaces available off-shelf for $40–60 |
+| **Commodity Heating Units** | CAN-controlled rice-cooker-class electric heating units available off-shelf for $30–45 |
 | **Connected Appliance Infrastructure** | MQTT, BLE, WiFi stack is mature and low-cost |
 | **OTA Update Ecosystem** | swupdate + A/B partitions enable continuous improvement post-sale |
 

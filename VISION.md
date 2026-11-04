@@ -39,7 +39,7 @@ Epicura targets one-pot recipes that represent the daily cooking reality of Indi
 The core promise. Once ingredients are in and a recipe is selected, the user's job is done. No stirring, no checking, no adjusting. The machine handles timing, temperature, sequencing, and anomaly detection autonomously.
 
 ### 2. Safety Is Non-Negotiable
-A 1,800W heating element and moving parts in a home kitchen demand rigorous safety engineering. Epicura implements defense-in-depth: a hardware e-stop relay that cuts AC power independent of firmware, an independent watchdog timer, thermal runaway detection, pan-presence sensing, and torque-limited stirring. The system is designed to be safe even if any single component fails. Certification targets: IEC 60335 (international), BIS IS 302 (India).
+A 1,300W (assumed) heating plate and moving parts in a home kitchen demand rigorous safety engineering. Epicura implements defense-in-depth: a hardware e-stop relay that cuts AC power independent of firmware, an independent watchdog timer, thermal runaway detection, pan-presence sensing, and torque-limited stirring. The system is designed to be safe even if any single component fails. Certification targets: IEC 60335 (international), BIS IS 302 (India).
 
 ### 3. Three Taps to Cooking
 The touchscreen and companion app follow a rule: recipe selection to cooking start in three taps or fewer. Home screen shows favorites and recent recipes. One tap opens detail. One tap starts the guided loading flow. One tap begins cooking.
@@ -48,7 +48,7 @@ The touchscreen and companion app follow a rule: recipe selection to cooking sta
 Every recipe, UI asset, and control algorithm runs locally on the device. Cloud connectivity enables recipe updates, remote monitoring, and OTA firmware upgrades — but the machine cooks a full meal with WiFi unplugged.
 
 ### 5. Affordable for India
-Target retail price of $300-400 USD, roughly quarter of the price of comparable international products. Achieved through commodity ARM processors (Rockchip RV1106G3 on a Luckfox Pico Zero), off-the-shelf induction surfaces, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
+Target retail price of $300-400 USD, roughly quarter of the price of comparable international products. Achieved through commodity ARM processors (Rockchip RV1106G3 on a Luckfox Pico Zero), off-the-shelf rice-cooker-class heating units, and JLCPCB-fabricated custom PCBs with LCSC-sourced components.
 
 ## How It Works
 
@@ -56,7 +56,7 @@ Target retail price of $300-400 USD, roughly quarter of the price of comparable 
 
 A compact countertop unit (50 x 40 x 30 cm, ~12-15 kg) with:
 
-- **1,800W induction surface** — Commercial module with CAN bus interface. No custom power electronics; pre-certified for electrical safety.
+- **1,300W (assumed) electric heating unit** — Commercial rice-cooker-class unit with its own PID and a CAN bus interface. No custom mains electronics; pre-certified for electrical safety; any flat-bottomed pot.
 - **Robotic stirring arm** — 24V BLDC motor, 360-degree continuous rotation, removable food-safe silicone paddle. Stirs, scrapes, and folds per recipe instructions.
 - **Three dispensing subsystems:**
   - **Liquids (SLD)** — 2 peristaltic pumps for oil and water, closed-loop weight verification via load cells
@@ -77,7 +77,7 @@ A dual-processor architecture splits responsibilities:
 
 The RV1106 runs Buildroot Linux with a single native C application, `epicurad`: SQLite (recipe database), MQTT and REST clients to the cloud, a recipe engine with hierarchical state machine, a hardware ISP + NPU (RKNN) vision pipeline, and an LVGL touchscreen application.
 
-The STM32 runs FreeRTOS with priority-scheduled tasks for motor control at 50 Hz, CAN communication, sensors and dispensing, and a safety monitor that operates independently of all application logic. The temperature loop runs on the RV1106, which shares one isolated CAN bus with the STM32 and the induction surface's own controller.
+The STM32 runs FreeRTOS with priority-scheduled tasks for motor control at 50 Hz, CAN communication, sensors and dispensing, and a safety monitor that operates independently of all application logic. The heating unit runs its own temperature loop; the RV1106 sends setpoints over one isolated CAN bus shared with the STM32 and the heating unit's own controller.
 
 ### Software Ecosystem
 

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 1.2
+version: 1.4
 status: Draft
 ---
 
@@ -39,7 +39,7 @@ Indian one-pot cooking — especially tadka (tempering), searing, and deep-fryin
 │                                       ┌──────┴───────┐          │
 │                                       │  Exhaust Fan │          │
 │                                       │  60mm, PWM   │          │
-│                                       │  (12V, STM32)│          │
+│                                       │  (12V, CSC)  │          │
 │                                       └──────┬───────┘          │
 │                                              ▲                   │
 │                              ┌───────────────┴────────┐         │
@@ -79,20 +79,21 @@ Indian one-pot cooking — especially tadka (tempering), searing, and deep-fryin
 | Parameter | Value |
 |-----------|-------|
 | **Type** | Axial fan, brushless DC |
+| **Quantity** | 2 (fan 1 and fan 2) in the rear of the Cooking Surface, beside the CSC and PSU |
 | **Size** | 60x60x25mm (prototype) |
-| **Voltage** | 12V DC |
-| **Current** | 0.15-0.25A |
+| **Voltage** | 12V DC from the CSC's MP1584EN #1 (24 → 12 V) |
+| **Current** | 0.15-0.25A each |
 | **Airflow** | 15-25 CFM (at full speed) |
 | **Static Pressure** | 2-4 mm H2O (sufficient for filter resistance) |
 | **Noise** | <35 dB at 50% speed, <45 dB at 100% |
-| **Control** | 4-pin PWM (25 kHz) from STM32 TIM channel |
-| **Connector** | Standard 4-pin fan header |
+| **Control** | 4-pin PWM (25 kHz) from the STM32 on the Cooking Surface Controller: fan 1 on PA6 (TIM3_CH1), fan 2 on PB10 (software PWM); IRLML6344 low-side MOSFETs + SS14 flyback on the CSC |
+| **Connector** | J_FAN on the CSC (12 V, two PWM channels, optional tach) |
 | **Bearing** | Sleeve or dual ball-bearing (kitchen humidity tolerance) |
-| **Mounting** | Rear-top panel, rubber anti-vibration grommets |
+| **Mounting** | Rear panel of the Cooking Surface, rubber anti-vibration grommets |
 
 ### 3.2 Speed Control Profiles
 
-The STM32 modulates fan speed based on the current cooking stage commanded by the recipe engine:
+The STM32 on the Cooking Surface Controller modulates fan speed based on the current cooking stage commanded by the recipe engine:
 
 | Cooking Stage | Fan PWM Duty | Speed | Rationale |
 |---------------|-------------|-------|-----------|
@@ -106,12 +107,13 @@ The STM32 modulates fan speed based on the current cooking stage commanded by th
 ### 3.3 STM32 Control Interface
 
 ```c
-// Exhaust fan PWM configuration
-// TIM4 CH3, 25 kHz PWM, 12V fan via MOSFET
-#define EXHAUST_FAN_TIM        TIM4
-#define EXHAUST_FAN_CHANNEL    TIM_CHANNEL_3
-#define EXHAUST_FAN_GPIO       GPIOB
-#define EXHAUST_FAN_PIN        GPIO_PIN_8
+// Exhaust fan 1 PWM configuration (STM32G0B1RE on the Cooking Surface Controller)
+// TIM3 CH1 on PA6, 25 kHz PWM, 12V fan via IRLML6344 MOSFET (J_FAN)
+// Fan 2 is driven on PB10 by software PWM from the Thermal/Fan task
+#define EXHAUST_FAN_TIM        TIM3
+#define EXHAUST_FAN_CHANNEL    TIM_CHANNEL_1
+#define EXHAUST_FAN_GPIO       GPIOA
+#define EXHAUST_FAN_PIN        GPIO_PIN_6
 
 typedef struct {
     uint8_t  duty_percent;    // 0-100%
@@ -125,15 +127,15 @@ void exhaust_set_speed(uint8_t duty_percent) {
 }
 ```
 
-### 3.4 RV1106-STM32 Command Integration
+### 3.4 RV1106-STM32 Command Integration (CAN IDs 0x260–0x262)
 
-| Command | Code | Payload | Description |
-|---------|------|---------|-------------|
-| `SET_EXHAUST` | `0x60` | `uint8_t duty` | Set fan speed (0-100%) |
-| `GET_EXHAUST` | `0x61` | — | Query current speed + RPM |
-| `EXHAUST_AUTO` | `0x62` | `uint8_t stage_id` | Auto-select speed for cooking stage |
+| Command | CAN ID | Code | Payload | Description |
+|---------|--------|------|---------|-------------|
+| `SET_EXHAUST` | `0x260` | `0x60` | `seq`, `uint8_t duty_pct` | Set fan speed (0-100%) |
+| `GET_EXHAUST` | `0x261` | `0x61` | `seq` → ACK data: `duty_pct`, `rpm1`, `rpm2` | Query current speed + RPM of both fans |
+| `EXHAUST_AUTO` | `0x262` | `0x62` | `seq`, `uint8_t stage_id` | Auto-select speed for cooking stage |
 
-The recipe engine sends `EXHAUST_AUTO` at each cooking stage transition. Manual override via `SET_EXHAUST` is available for recipes that need custom fume management (e.g., dry-roasting spices).
+The codes are the low byte of the CAN ID (0x200 + code); frames carry a sequence byte first and responses arrive in ACK/NAK 0x3FF, as listed in [[../03-Software/02-Controller-Software-Architecture#7.2 Message Types|Controller Software Architecture §7.2]]. The recipe engine sends `EXHAUST_AUTO` at each cooking stage transition. Manual override via `SET_EXHAUST` is available for recipes that need custom fume management (e.g., dry-roasting spices).
 
 ---
 
@@ -198,16 +200,17 @@ The recipe engine sends `EXHAUST_AUTO` at each cooking stage transition. Manual 
 
 ### 5.1 Design
 
-The fume collection hood sits above the pot opening, integrated into the overhead gantry that already holds the camera and LED ring. It uses the natural upward convection of hot cooking fumes combined with exhaust fan suction.
+The fume collection hood sits above the pot opening, integrated into the Stirring Unit gantry between the rear pillars. The camera and LED ring are no longer on the gantry: they are on the underside of the Dispensing Unit above it and look down through the hood opening. The hood uses the natural upward convection of hot cooking fumes combined with exhaust fan suction.
 
 ```
 ┌───────────────────────────────────────┐
-│          Gantry (Top View)            │
+│     Stirring Unit Gantry (Top View)   │
 │                                       │
 │   ┌───────────────────────────────┐   │
 │   │         Hood Opening          │   │
 │   │   ┌───────────────────────┐   │   │
-│   │   │   Camera + LED Ring   │   │   │
+│   │   │ (DU camera window     │   │   │
+│   │   │  + LED ring above)    │   │   │
 │   │   └───────────────────────┘   │   │
 │   │                               │   │
 │   │   Angled baffles direct fumes │   │
@@ -260,12 +263,12 @@ For heavy-steam recipes (boiling, covered simmering), reducing steam volume befo
 |--------|-----------|
 | Grease buildup in filter | Washable SS mesh; cleaning reminder in app every 2-4 weeks |
 | Carbon filter ignition | Carbon is downstream of grease mesh (minimal oil exposure); max air temp at filter <80C during normal operation |
-| Fan failure during high-heat cooking | STM32 monitors fan RPM via tachometer; if fan stalls during sear/tadka, flags FAN_STALL in TELEMETRY on the CAN bus; the RV1106 heat thread reduces power to simmer (the STM32 never sends power levels) and alerts user |
+| Fan failure during high-heat cooking | The STM32 on the CSC monitors fan RPM via tachometer; if a fan stalls during sear/tadka, it clears the fan1_ok / fan2_ok flag in TELEMETRY (0x310) on the CAN bus; the RV1106 heat thread reduces power to simmer (the STM32 never sends power levels) and alerts user |
 | Blocked exhaust (clogged filter) | Pressure drop sensor (optional) or timer-based replacement reminder |
 
-### 7.2 Fan-Induction Interlock
+### 7.2 Fan-Heater Interlock
 
-The exhaust fan is interlocked with the microwave induction surface for safety:
+The exhaust fan is interlocked with the electric heating unit for safety:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -274,7 +277,7 @@ The exhaust fan is interlocked with the microwave induction surface for safety:
 │   Heating ON ──► Fan must be running              │
 │                  (minimum 20% duty)               │
 │                                                   │
-│   Fan stall detected ──► FAN_STALL flag on CAN    │
+│   Fan stall detected ──► fan1_ok/fan2_ok cleared  │
 │                          RV1106 reduces to simmer  │
 │                          (400W) + alerts user      │
 │                                                   │
@@ -299,24 +302,24 @@ The exhaust fan is interlocked with the microwave induction surface for safety:
 
 | Component | Part | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|------|-----|------------|----------|----------|-------|
-| Exhaust Fan (60mm, PWM) | Noctua NF-A6x25 or generic | 1 | $8.00 | $8.00 | Amazon / AliExpress | 4-pin PWM, 12V, ball-bearing |
+| Exhaust Fan (60mm, PWM) | Noctua NF-A6x25 or generic | 2 | $8.00 | $16.00 | Amazon / AliExpress | 4-pin PWM, 12V, ball-bearing; fan 1 PA6, fan 2 PB10 on the CSC |
 | Grease Mesh Filter | 304 SS woven, 40-mesh | 1 | $3.00 | $3.00 | AliExpress | Cut to 80x80mm, reusable |
 | Activated Carbon Cartridge | Coconut shell granular | 1 | $5.00 | $5.00 | Amazon | ~100g, refillable frame |
 | Filter Frame (3D printed) | ABS or PP, snap-fit | 1 | $2.00 | $2.00 | Self-fabricated | Holds both filter stages |
 | Exhaust Duct (60mm) | Sheet metal or PP tube | 1 | $3.00 | $3.00 | Hardware store | Hood-to-fan channel |
 | Silicone Gasket (filter seal) | Food-grade silicone strip | 1 | $1.00 | $1.00 | Amazon | Prevents fume bypass |
-| Fan MOSFET (PWM driver) | IRLZ44N or AO3400 | 1 | $0.50 | $0.50 | DigiKey / LCSC | Logic-level gate, STM32 PWM |
-| **Category Subtotal** | | | | **$22.50** | | |
+| Fan MOSFET (PWM driver) | IRLML6344 + SS14 (on the CSC) | 2 | $0.50 | $1.00 | DigiKey / LCSC | Logic-level gate, STM32 PWM |
+| **Category Subtotal** | | | | **$31.00** | | |
 
 ### 8.1 Production Cost Projection
 
 | Item | Prototype | Production (1000 qty) | Savings |
 |------|-----------|----------------------|---------|
-| Exhaust fan | $8.00 | $3.00 (OEM blower) | 63% |
+| Exhaust fans (×2) | $16.00 | $6.00 (OEM blowers) | 63% |
 | Filters (mesh + carbon) | $8.00 | $3.00 | 63% |
 | Duct + housing + gasket | $6.00 | $2.00 (injection molded) | 67% |
-| MOSFET + wiring | $0.50 | $0.20 | 60% |
-| **Total** | **$22.50** | **~$8.20** | **64%** |
+| MOSFETs + wiring | $1.00 | $0.40 | 60% |
+| **Total** | **$31.00** | **~$11.40** | **63%** |
 
 ---
 
@@ -343,7 +346,7 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 - [ ] Grease capture: cook tadka (oil + mustard seeds), inspect mesh for oil residue
 - [ ] Odor reduction: cook onion-garlic base, compare exhaust smell with/without carbon filter
 - [ ] Steam handling: boil 2L water for 10 min, check camera lens for fogging
-- [ ] Fan interlock: simulate fan stall during sear mode, verify the RV1106 reduces heater power (FAN_STALL flag → HEAT_SET_POWER)
+- [ ] Fan interlock: simulate fan stall during sear mode, verify the RV1106 reduces heater power (fan1_ok / fan2_ok cleared in TELEMETRY → HEAT_SET_POWER)
 - [ ] Post-cook purge: verify fan runs 2 min after heating off
 - [ ] Filter replacement: verify tool-less cartridge removal and reinsertion
 - [ ] Long-duration: run 20+ cook cycles, inspect duct for grease accumulation
@@ -362,7 +365,7 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 
 ## 11. Related Documentation
 
-- [[01-Induction-Heating|Induction Heating]] - Heat source and PID control (fan speed tracks cooking stage)
+- [[01-Electric-Heating|Electric Heating]] - Heat source (unit-internal temperature loop) (fan speed tracks cooking stage)
 - [[04-Vision-System|Vision System]] - Camera anti-fog measures and steam protection
 - [[04-Mechanical-Design|Mechanical Design]] - Enclosure airflow, pot lid design, vent placement
 - [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - Power budget and communication interfaces
@@ -383,3 +386,5 @@ The companion app tracks filter usage hours and sends maintenance reminders.
 | 1.0 | 2026-02-15 | Manas Pradhan | Initial document creation |
 | 1.1 | 2026-11-04 | Manas Pradhan | Application processor renamed from Raspberry Pi CM5 to RV1106 (Luckfox Pico Zero); exhaust control and command codes unchanged |
 | 1.2 | 2026-11-04 | Manas Pradhan | Fan-heater interlock routed through the RV1106 heat thread (STM32 flags FAN_STALL on CAN; it no longer sends power commands) |
+| 1.3 | 2026-11-04 | Manas Pradhan | Three-unit architecture: two exhaust fans in the Cooking Surface rear, driven by the STM32 on the Cooking Surface Controller (fan 1 PA6 TIM3_CH1, fan 2 PB10 software PWM, 12 V from the CSC's MP1584EN #1, J_FAN); §3.3 constants corrected to TIM3_CH1/PA6; §3.4 commands listed as CAN IDs 0x260 SET_EXHAUST / 0x261 GET_EXHAUST / 0x262 EXHAUST_AUTO (codes 0x60–0x62 unchanged); stall reported via TELEMETRY fan1_ok/fan2_ok flags; hood is on the Stirring Unit gantry, camera on the Dispensing Unit underside; BOM updated for two fans |
+| 1.4 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, same CAN contract): §7.2 interlock and related-docs wording updated |

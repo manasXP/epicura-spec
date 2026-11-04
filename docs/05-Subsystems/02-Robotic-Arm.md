@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 3.0
+version: 3.1
 status: Draft
 ---
 
@@ -9,28 +9,29 @@ status: Draft
 
 ## 1. Overview
 
-The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V integrated BLDC servo motor with a **CAN bus interface**, commanded by the STM32 over the Unified PCB's regular (non-isolated) CAN port (FDCAN2, J_CAN_STIR) with velocity and position commands, and powered from a switched 24 V output (J_STIR_PWR). The RV1106 application processor selects patterns and speeds over the isolated host CAN bus; the STM32 translates them into motor commands.
+The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame: the **Stirring Unit (SU)**, a bridge between the two rear pillars of the Cooking Surface. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V integrated BLDC servo motor with a **CAN bus interface**, commanded by the STM32 on the **Cooking Surface Controller (CSC)** in the base over the CSC's regular (non-isolated) CAN port (FDCAN2, J_CAN_STIR) with velocity and position commands, and powered from a switched 24 V output (J_STIR_PWR). Both are bundled into one harness that runs inside the right pillar to the Stirring Unit's single port **J_SU** (Molex Micro-Fit 3.0, 5-way: 24V_STIR, GND, CAN_H, CAN_L, SHIELD) — the only cable between any two units. The RV1106 application processor (in the Dispensing Unit) selects patterns and speeds over the isolated host CAN bus; the STM32 translates them into motor commands.
 
 ## 2. Arm Assembly Design
 
 ### 2.1 Mechanical Configuration
 
-- **Type:** Single-axis rotary arm, gantry-mounted above pot center
+- **Type:** Single-axis rotary arm, gantry-mounted above pot center (Stirring Unit bridge between the rear pillars; also carries the fume hood)
 - **Motion:** 360-degree continuous rotation around the vertical axis
 - **Depth:** Fixed paddle depth in V1 (adjustable via manual set screw during setup)
 - **Paddle:** Removable silicone or nylon blade, heat-resistant, food-safe
 - **Drive:** 24V BLDC motor at top of gantry, coupled to a vertical drive shaft through a bearing and seal
+- **Camera:** None on the gantry — the camera and LED ring are on the underside of the Dispensing Unit above it (see [[04-Vision-System|Vision System]])
 
 ### 2.2 Assembly Diagram
 
 ```
 ┌─────────────────────────────────────────────┐
-│                 GANTRY TOP                  │
+│           STIRRING UNIT (GANTRY)            │
 │                                             │
 │            ┌──────────────┐                 │
 │            │ CAN Servo    │ ◄── CAN (FDCAN2) + 24 V
-│            │ Motor (24V,  │     from the Unified PCB
-│            │ integ. drive)│                 │
+│            │ Motor (24V,  │     from the CSC via J_SU
+│            │ integ. drive)│     (harness in right pillar)
 │            └──────┬───────┘                 │
 │                   │                         │
 │            ┌──────┴───────┐                 │
@@ -70,7 +71,7 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 | Parameter | Value |
 |-----------|-------|
 | Motor Type | 24V integrated BLDC servo (motor + planetary gearbox + encoder + driver in one housing) with CAN bus interface — CyberGear/RobStride-class actuator or an industrial 24 V BLDC gearmotor with a CAN driver (model TBD) |
-| Supply Voltage | 24V DC from the Unified PCB switched rail (J_STIR_PWR, 5 A fuse, Q_STIR high-side switch) |
+| Supply Voltage | 24V DC from the CSC switched rail (J_STIR_PWR → pillar harness → J_SU; F_STIR 5 A fuse, Q_STIR AO4407A high-side switch enabled by STM32 PB4) |
 | Continuous / Peak Torque | ≥ 3 N·m (30 kg-cm) continuous, ≥ 5 N·m peak |
 | Speed Range | 0-300 RPM at the output shaft |
 | Control Interface | CAN 2.0B, 1 Mbps, 29-bit IDs (motor protocol); velocity mode for stirring, position mode for homing/parking; enable/disable, zero-set and parameter frames |
@@ -87,8 +88,8 @@ The CAN servo replaces the PWM/EN/DIR BLDC of revision 2.x for the following adv
 
 - **Closed-loop speed and position** — the integrated encoder gives true RPM and shaft angle, so stirring speed, scrape offsets and parking are exact; no FG tachometer or PA3 reservation needed
 - **Stall and over-torque from the source** — the motor reports phase current and temperature; stall detection no longer relies on the INA219 24 V rail heuristic
-- **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA4 and PA5 (PA8/TIM1_CH1 is reused for the buzzer on the G0B1)
-- **Shared physical layer** — the Unified PCB already has CAN; a second FDCAN controller and a $1 transceiver add the port
+- **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA4, PA5 and PA8 (the buzzer is now on the RV1106 in the Dispensing Unit)
+- **Shared physical layer** — the CSC already has CAN (FDCAN1 to the isolated bus); a second FDCAN controller and a $1 transceiver add the port
 - **Torque headroom** — ≥ 3 N·m continuous for thick Indian gravies, with current limits set in the motor
 - **Safe by default** — motor firmware stops on command timeout; the STM32 also removes 24 V with Q_STIR on E-stop and at boot
 
@@ -143,12 +144,12 @@ Reverse:     ┌────CW────┐┌───CCW────┐┌�
 
 | Parameter | Value |
 |-----------|-------|
-| Bus | STM32 FDCAN2 (PB12 RX / PB13 TX) → SN65HVD230 → J_CAN_STIR, 1 Mbps |
+| Bus | STM32 FDCAN2 (PB12 RX / PB13 TX) on the CSC → SN65HVD230 → J_CAN_STIR → pillar harness → J_SU, 1 Mbps; 120 Ω at J_CAN_STIR and in the motor |
 | Command rate | 50 Hz (Motor Control task) |
 | Velocity command | Signed target in rad/s (motor protocol units); sign = direction (positive = CW) |
 | Speed range | 0–300 RPM at the shaft; current limit set in the motor to the stall threshold |
-| Enable / disable | Motor enable frame on pattern start; disable frame on ARM_STOP, E-stop and heartbeat loss |
-| Power | 24V_STIR switched on by PCF8574 #2 P5 before the enable frame; off when the arm is parked for > 60 s |
+| Enable / disable | Motor enable frame on pattern start; disable frame on ARM_STOP, E-stop, heartbeat loss and DU undock (DOCK_SENSE_B open) |
+| Power | 24V_STIR switched on by Q_STIR (STM32 PB4 via 2N7002) before the enable frame; off when the arm is parked for > 60 s |
 | Feedback | Velocity, position, current, temperature parsed every cycle; `motor_rpm` published in TELEMETRY (0x310) |
 
 ### 6.2 Speed Ramping
@@ -186,13 +187,15 @@ Target Speed
 ### 8.1 Motor Bus (FDCAN2)
 
 ```c
+/* STM32G0B1RE on the Cooking Surface Controller (CSC), Cooking Surface base */
 /* FDCAN2 on PB12 (RX) / PB13 (TX), AF3 — regular (non-isolated) motor bus */
 /* Classic CAN, 1 Mbps nominal bit timing from the 64 MHz FDCAN kernel clk */
 /* Extended (29-bit) IDs as required by the motor protocol                 */
 /* RX FIFO0 filter: motor feedback IDs only; TX: enable, velocity, position */
 /* Motor Control task (50 Hz): send velocity target, parse feedback,        */
 /* ramp-limit, detect stall from reported current                           */
-/* Boot-safe: PCF8574 #2 P5 (24V_STIR) low until the first SET_STIR         */
+/* Boot-safe: Q_STIR (PB4, 24V_STIR) off until the first SET_STIR;          */
+/* also off while DOCK_SENSE_B (PB3) is high (Dispensing Unit lifted)       */
 ```
 
 The motor's own protocol (frame layout, units, parameter IDs) is wrapped in `stir_motor.c`; the rest of the firmware sees `stir_set_velocity()`, `stir_set_position()`, `stir_enable()` and a `stir_feedback_t` struct.
@@ -201,7 +204,7 @@ The motor's own protocol (frame layout, units, parameter IDs) is wrapped in `sti
 
 | Command | Code | Parameters | Response | Description |
 |---------|------|------------|----------|-------------|
-| SET_STIR | 0x02 | pattern_id (1 byte), speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Set stirring pattern, speed, and direction (was SET_PATTERN 0x20; 0x20 is now SET_LED) |
+| SET_STIR | 0x02 | pattern_id (1 byte), speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Set stirring pattern, speed, and direction (was SET_PATTERN 0x20; 0x220 SET_LED briefly took that code and is now retired — the LED ring is driven directly by the RV1106) |
 | SET_SPEED | 0x21 | speed (2 bytes, RPM), direction (1 byte: 0=CW, 1=CCW) | ACK/NAK | Direct speed and direction override |
 | ARM_STOP | 0x22 | none | ACK | Immediately stop arm (with decel ramp) |
 | ARM_HOME | 0x23 | none | ACK | Return to home position |
@@ -216,7 +219,7 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 |------|----------|------------|-------------|-------------|
 | Motor Control | 3 (high) | 256 words | 50 Hz (20ms) | FDCAN2 velocity/position commands, feedback parsing, speed ramping, pattern execution |
 | Home / Park | 2 (medium) | 128 words | On-demand | Position-mode move to the stored home angle (ARM_HOME, end of cook) |
-| Stall Monitor | 3 (high) | 128 words | 50 Hz | Motor-reported current and temperature window; INA219 as plausibility check |
+| Stall Monitor | 3 (high) | 128 words | 50 Hz | Motor-reported current and temperature window (the CSC has no board-level current sense; the servo reports its own current) |
 
 ## 9. Safety
 
@@ -227,7 +230,8 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | Stall Detection | Motor-reported phase current with velocity error (commanded vs. measured) | Current above the configured limit with < 20 % of commanded speed for 500 ms | Disable motor, retry up to 3 times, then error |
 | Over-Torque | Motor current limit (set in the motor) + STM32 check of reported current | > configured peak (≈ 5 N·m equivalent) | Motor limits current itself; STM32 disables and logs |
 | Thermal Protection | Motor-reported driver/winding temperature | > 80 °C | Reduce speed 50%, alert; disable at 95 °C |
-| Power Isolation | Q_STIR high-side switch on 24V_STIR (PCF8574 #2 P5) | E-stop, heartbeat loss, boot | 24 V removed from the motor independently of CAN |
+| Power Isolation | Q_STIR high-side switch on 24V_STIR (STM32 PB4 via 2N7002, AO4407A, F_STIR 5 A) | E-stop, heartbeat loss, boot, DU undocked | 24 V removed from the motor independently of CAN |
+| DU-Undocked Safe Hold | DOCK_SENSE_B (STM32 PB3, 10k pull-up) opens when the Dispensing Unit is lifted off the dock | Immediate | Stir disable frame + Q_STIR off; STATUS reports DU_UNDOCKED (0x17). Not an E_STOP: stirring stays disabled until DOCK_SENSE_B is low again, HB_AP has returned and the RV1106 sends a new SET_STIR after the user resumes |
 | Mechanical Guard | Physical shroud above pot rim | - | Prevents finger access to paddle zone |
 
 ### 9.2 Stall Recovery Sequence
@@ -299,6 +303,8 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 
 - [ ] CAN servo motor drives paddle through 360-degree rotation smoothly; feedback RPM matches commanded within ±5 RPM
 - [ ] Motor stops within 500 ms when CAN commands cease (command timeout) and when Q_STIR removes 24 V
+- [ ] Lifting the Dispensing Unit mid-stir disables the motor and drops 24V_STIR (DOCK_SENSE_B safe hold); stirring does not restart on re-dock without a user resume
+- [ ] J_SU harness (24V_STIR, GND, CAN_H, CAN_L, SHIELD) through the right pillar carries 1 Mbps CAN and 5 A without errors or voltage sag at stall
 - [ ] Twist-lock paddle attachment holds securely during vigorous stirring
 - [ ] Stall detection triggers within 500ms of blockage
 - [ ] Speed ramping prevents visible splashing at all pattern transitions
@@ -312,7 +318,7 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 - [[__Workspaces/Appliance/Epicura/epi-Spec/docs/01-Overview/01-Project-Overview|Project Overview]]
 - [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]
 - [[01-Epicura-Architecture|Hardware Architecture]]
-- [[01-Induction-Heating|Induction Heating System]]
+- [[01-Electric-Heating|Electric Heating System]]
 - [[03-Ingredient-Dispensing|Ingredient Dispensing System]]
 - [[04-Vision-System|Vision System]]
 - [[01-Safety-Compliance|Safety & Compliance]]
@@ -331,3 +337,4 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | 2.2 | 2026-11-04 | Manas Pradhan | Bridge codes aligned to the software doc: SET_PATTERN 0x20 → SET_STIR 0x02; STOP/HOME/STATUS renamed ARM_STOP/ARM_HOME/ARM_STATUS |
 | 2.3 | 2026-11-04 | Manas Pradhan | Command protocol mapped onto the shared CAN bus (IDs 0x202, 0x221–0x225) |
 | 3.0 | 2026-11-04 | Manas Pradhan | Stirring motor changed to a 24 V integrated CAN servo on the Unified PCB's regular (non-isolated) CAN port (STM32 FDCAN2, PB12/PB13, SN65HVD230, 1 Mbps, J_CAN_STIR) with switched 24 V (J_STIR_PWR, Q_STIR); PWM/EN/DIR on PA8/PA4/PA5 retired; encoder feedback replaces FG tachometer and Hall homing (Hall kept as optional backup); stall/over-torque from motor-reported current; motor specs, control interface, tasks, safety and tests updated |
+| 3.1 | 2026-11-04 | Manas Pradhan | Three-unit architecture: the arm is the Stirring Unit (gantry between the rear pillars); the STM32, FDCAN2, SN65HVD230, Q_STIR, J_CAN_STIR and J_STIR_PWR move to the Cooking Surface Controller in the base, harness inside the right pillar to the SU port J_SU (Micro-Fit 3.0, 5-way); Q_STIR enable is STM32 PB4 (was PCF8574 #2 P5); SET_LED retired; DU-undocked safe hold (DOCK_SENSE_B → stir disabled, DU_UNDOCKED) added to safety; the gantry no longer carries the camera; INA219 plausibility check dropped (no current sense on the CSC) |

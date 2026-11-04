@@ -1,12 +1,12 @@
 ---
 name: pid-control
-description: Use when implementing PID controllers, closed-loop temperature control, CAN bus induction interfaces, or thermal management systems. Invoke for PID tuning, thermal safety interlocks, sensor fusion, CMSIS-DSP filtering. Keywords: PID, temperature control, CAN bus, induction, thermal, FDCAN, MLX90614.
+description: Use when implementing PID controllers, closed-loop temperature control, CAN bus heater interfaces, or thermal management systems. Invoke for PID tuning, thermal safety interlocks, sensor fusion, CMSIS-DSP filtering. Keywords: PID, temperature control, CAN bus, electric heating, thermal, FDCAN, MLX90614.
 triggers:
   - PID controller
   - temperature control
   - CAN bus
   - FDCAN
-  - induction heating
+  - electric heating
   - thermal management
   - MLX90614
   - IR thermometer
@@ -19,7 +19,7 @@ output-format: code
 
 # PID & Thermal Control Engineer
 
-Senior control systems engineer specializing in PID temperature control, CAN bus communication for induction heating, and thermal safety interlocks in embedded appliance systems.
+Senior control systems engineer specializing in PID temperature control, CAN bus communication with the electric heating unit, and thermal safety interlocks in embedded appliance systems.
 
 ## Role Definition
 
@@ -28,7 +28,7 @@ You are a senior control systems engineer with deep expertise in discrete PID co
 ## When to Use This Skill
 
 - Implementing PID temperature controllers on STM32 (CMSIS-DSP `arm_pid_instance_f32`)
-- Writing CAN bus (FDCAN) drivers for commercial induction surface communication
+- Writing CAN bus (FDCAN) drivers for commercial heating unit communication
 - Integrating IR thermometers (MLX90614) or thermocouples (MAX31855) via I2C/SPI
 - Designing thermal safety interlocks (runaway detection, overtemp cutoff, pan detection)
 - Tuning PID gains (Kp, Ki, Kd) with anti-windup and output clamping
@@ -41,7 +41,7 @@ You are a senior control systems engineer with deep expertise in discrete PID co
 2. **Implement sensor drivers** - I2C (MLX90614), SPI (MAX31855), ADC (NTC thermistors), with filtering (moving average, EMA, or IIR)
 3. **Implement CAN interface** - FDCAN init, TX power command frames, RX status/fault parsing, bus-off recovery
 4. **Build PID controller** - CMSIS-DSP PID or manual discrete PID with derivative-on-measurement, integral anti-windup, output clamping
-5. **Add safety interlocks** - Thermal runaway (rate-of-rise), absolute overtemp, coil overtemp via CAN, pan detection, e-stop relay
+5. **Add safety interlocks** - Thermal runaway (rate-of-rise), absolute overtemp, element overtemp via CAN, pan detection, e-stop relay
 6. **Tune and validate** - Step response, setpoint tracking, disturbance rejection, steady-state error, overshoot limits
 7. **Report telemetry** - Pack temperature, power, stage, error codes into SPI/UART frames for host processor
 
@@ -50,7 +50,7 @@ You are a senior control systems engineer with deep expertise in discrete PID co
 ### MUST DO
 - Use derivative-on-measurement (not derivative-on-error) to avoid setpoint kick
 - Implement integral anti-windup (clamping or back-calculation)
-- Clamp PID output to actuator physical range (e.g., 0-1800W)
+- Clamp PID output to actuator physical range (e.g., 0-1300W)
 - Filter sensor readings before PID input (reject noise spikes)
 - Implement independent safety monitor task (separate from PID task)
 - Handle CAN bus-off recovery with automatic re-init and retry

@@ -1,7 +1,7 @@
 ---
 created: 2026-02-16
-modified: 2026-02-16
-version: 1.0
+modified: 2026-11-04
+version: 1.1
 status: Draft
 tags: [epicura, warranty, support, service, installation]
 ---
@@ -80,7 +80,7 @@ flowchart LR
 | Covered | Not Covered |
 |---|---|
 | Manufacturing defects in electronics, motors, sensors | Physical damage from drops, water immersion, misuse |
-| Induction module failure | Damage from use with non-compatible pots |
+| Heating unit failure | Damage from running the heating unit without a pot or with a warped, non-flat pot |
 | Display defects (dead pixels >5, touch failure) | Cosmetic wear (scratches, discoloration) |
 | Servo arm mechanical failure | Consumable wear (cartridges, filters, pot coating) |
 | Software/firmware bugs (OTA fixes) | Damage from unauthorized modifications or third-party repairs |
@@ -108,7 +108,7 @@ Every Epicura unit reports health telemetry via MQTT (when connected to WiFi):
 
 | Diagnostic | Data Collected | Action |
 |---|---|---|
-| **Induction health** | Coil temperature trends, power draw anomalies, CAN error count | Proactive alert if degradation detected |
+| **Heater health** | Element temperature trends, power draw anomalies, CAN error count | Proactive alert if degradation detected |
 | **Servo arm** | Stall count, position accuracy drift, current draw | Flag maintenance before failure |
 | **Camera** | Image quality score, lens obstruction detection | Prompt user to clean lens; escalate if hardware fault |
 | **Sensor drift** | IR thermometer vs NTC delta, load cell calibration offset | Auto-recalibrate or prompt service visit |
@@ -135,7 +135,7 @@ Support agents can (with customer permission) remotely view device diagnostics d
 |---|---|---|---|
 | **Warranty Repair** | In-warranty hardware failure | Free | 48 hours in metro; 5 days in Tier-2 |
 | **Out-of-Warranty Repair** | Post-warranty hardware fix | Parts at cost + ₹500 labor ($6) | 48–72 hours in metro |
-| **Annual Maintenance** | Preventive checkup: recalibrate sensors, clean internals, inspect arm/induction, firmware update | ₹1,499/visit ($18) or included in AMC | Scheduled appointment |
+| **Annual Maintenance** | Preventive checkup: recalibrate sensors, clean internals, inspect arm/heating unit, firmware update | ₹1,499/visit ($18) or included in AMC | Scheduled appointment |
 | **Consumable Replacement** | Replace filters, cartridges, pot coating inspection | Consumable cost only (self-service) | N/A (shipped to customer) |
 | **Unit Replacement** | DOA or irreparable unit within warranty | Free replacement | 5–7 days |
 
@@ -143,7 +143,7 @@ Support agents can (with customer permission) remotely view device diagnostics d
 
 | Approach | Details |
 |---|---|
-| **Modular design** | Key assemblies (servo arm, induction module, display, camera, FID dosing station) are field-replaceable in <30 min |
+| **Modular design** | Key assemblies (servo arm, heating unit, display, camera, FID dosing station) are field-replaceable in <30 min |
 | **Spare parts inventory** | Top 10 failure-prone parts stocked at regional hubs (Mumbai, Delhi, Bangalore) |
 | **Parts pricing** | Published spare parts price list on website; customers can order directly |
 | **Right to repair** | Service manual and wiring diagrams available to authorized partners; open-source STM32 firmware for community repairs |
