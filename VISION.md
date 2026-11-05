@@ -68,16 +68,17 @@ A compact countertop unit (50 x 40 x 30 cm, ~12-15 kg) with:
 
 ### Intelligence
 
-A dual-processor architecture splits responsibilities:
+Three controllers split responsibilities:
 
 | Processor | Role |
 |-----------|------|
-| **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP) | AI vision, recipe engine, touchscreen UI, cloud sync, heater PID over the isolated CAN bus |
-| **STM32G0B1** (Cortex-M0+) | Real-time motor/servo drive, dispensers, sensor polling, CAN node, heater off-switch, safety watchdog |
+| **Rockchip RV1106G3** (Luckfox Pico Zero; Cortex-A7 + 1 TOPS NPU + ISP, in the Dispensing Unit) | AI vision, recipe engine, touchscreen UI, cloud sync, heater setpoints |
+| **STM32G0B1** (Cortex-M0+, Dispensing Unit) | Dispensers, LED ring, buzzer, battery monitor; the RV1106's CAN node over a UART host link |
+| **STM32G0B1** (Cortex-M0+, Cooking Surface) | Real-time stir-motor drive, heater off-switch, safety watchdog |
 
 The RV1106 runs Buildroot Linux with a single native C application, `epicurad`: SQLite (recipe database), MQTT and REST clients to the cloud, a recipe engine with hierarchical state machine, a hardware ISP + NPU (RKNN) vision pipeline, and an LVGL touchscreen application.
 
-The STM32 runs FreeRTOS with priority-scheduled tasks for motor control at 50 Hz, CAN communication, sensors and dispensing, and a safety monitor that operates independently of all application logic. The heating unit runs its own temperature loop; the RV1106 sends setpoints over one isolated CAN bus shared with the STM32 and the heating unit's own controller.
+Both STM32s run FreeRTOS from one firmware tree: the Cooking Surface one with motor control at 50 Hz and a safety monitor that operates independently of all application logic, the Dispensing Unit one with the dispensing tasks and the CAN gateway. The heating unit runs its own temperature loop; the RV1106 sends setpoints over one isolated CAN bus shared with both STM32s and the heating unit's own controller.
 
 ### Software Ecosystem
 

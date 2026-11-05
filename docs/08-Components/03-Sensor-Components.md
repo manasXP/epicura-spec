@@ -17,7 +17,7 @@ This document details the sensing subsystem components for the Epicura kitchen r
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Sensor Subsystem                             │
 │                                                                 │
-│  DISPENSING UNIT (DU) — Unified PCB v4.0                        │
+│  DISPENSING UNIT (DU) — Unified PCB v5.0                        │
 │  ┌──────────────┐ MIPI CSI ┌──────────────┐                     │
 │  │  IMX415-98   │─────────►│  RV1106      │                     │
 │  │  Camera      │          │  (Luckfox    │                     │
@@ -60,7 +60,7 @@ None. The MLX90614 IR thermometer is removed: the commercial electric heating un
 | Component | Part Number | Qty | Unit Price | Subtotal | Supplier | Notes |
 |-----------|-------------|-----|------------|----------|----------|-------|
 | Reed Switch | MKA-14103 | 1 | $1.00 | $1.00 | Amazon | Pot detection (magnet in pot base); in the CS, read by the CSC on STM32 PB1 via J_SAFE as an optional backup to the module's own pot detection |
-| White LED Ring | 12–16 LED ring, 5000 K, CRI ≥ 90, 5 V | 1 | $4.00 | $4.00 | AliExpress / Adafruit | Camera illumination, consistent lighting; on the DU underside around the camera window; 5V_MAIN ≤ 1 A, switched/dimmed by Q_LED (IRLML6344 low-side) from an RV1106 PWM at 1 kHz (OFF 0 %, CAPTURE 100 %, NIGHT 30 %) via J_LED 2-pin; no colour control, no CAN SET_LED |
+| White LED Ring | 12–16 LED ring, 5000 K, CRI ≥ 90, 5 V | 1 | $4.00 | $4.00 | AliExpress / Adafruit | Camera illumination, consistent lighting; on the DU underside around the camera window; 5V_MAIN ≤ 1 A, switched/dimmed by Q_LED (IRLML6344 low-side) from an DU STM32 PWM (TIM1) at 1 kHz (OFF 0 %, CAPTURE 100 %, NIGHT 30 %) via J_LED 2-pin; no colour control, no CAN SET_LED |
 
 ### 3.4 Passive Components
 
@@ -76,7 +76,7 @@ None. The MLX90614 IR thermometer is removed: the commercial electric heating un
 |------|------|
 | IMX415-98 Camera | $54.00 |
 | Reed Switch | $1.00 |
-| White LED Ring (5000 K, RV1106 PWM) | $4.00 |
+| White LED Ring (5000 K, DU STM32 PWM) | $4.00 |
 | Passive Components | $0.50 |
 | **Category Subtotal** | **$59.50** |
 
@@ -90,7 +90,7 @@ None. The MLX90614 IR thermometer is removed: the commercial electric heating un
 - Runs at 1280x720 @ 30 fps (not 1080p). ISP main path 1280x720 NV12 for the on-demand phone stream and LCD preview; ISP self-path 224x224 RGB888 sampled at 2 fps straight into the NPU.
 - Dehaze, 2D/3D noise reduction, LSC, sharpening, AWB and AE run in the ISP, so steam over the pot is handled in hardware.
 - Fixed focus simplifies mounting. 3 MP is more than sufficient for food stage classification (model input is 224x224 pixels).
-- Same module for prototype and production; the FPC plugs directly into the Pico Zero MIPI CSI connector on the Unified PCB v4.0.
+- Same module for prototype and production; the FPC plugs directly into the Pico Zero MIPI CSI connector on the Unified PCB v5.0.
 - Mounted on the DU underside, centred over the pot and looking straight down behind a sealed borosilicate window, 20–30 cm above the pot rim; the white LED ring surrounds the window. The whole assembly lifts off with the DU, so there is no camera cable between units.
 
 ### 5.2 Cooking Temperature Without a Thermometer

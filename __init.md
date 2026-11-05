@@ -51,7 +51,7 @@ Comprehensive documentation has been organized in the [[__Workspaces/Appliance/E
 5. [[07-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and industrial design
 
 **Software**
-6. [[04-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
+6. [[04-Controller-Software-Architecture|Controller & Software Architecture]] - Three-controller (RV1106 + two STM32G0B1) software modules and recipe state machine
 7. [[08-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and development tools
 
 **User Interface**

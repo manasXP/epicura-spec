@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-11-04
-version: 1.7
+modified: 2026-11-05
+version: 1.9
 status: Draft
 ---
 
@@ -13,11 +13,11 @@ status: Draft
 |--------|------|-----------|-------|----------|---------------|--------------|
 | Camera (IMX415-98) | CMOS image sensor, 8 MP | MIPI CSI-2 (4-lane FPC) | 1280x720 @ 30fps | N/A (pixel-level) | 2 Hz (CV frames) | Pico Zero CSI connector → RV1106 ISP |
 | Cooking surface temperature | Heating-unit-internal spring-loaded centre sensor (NTC, pot-bottom) reported in HEAT_STATUS | Isolated CAN (0x180) | 60-200C operating (unit ceiling 200C; sensor range typ. 0-300C) | Unit accuracy (typ. +/-3-5C) | 10 Hz | Heating unit MCU → RV1106 + STM32 |
-| Battery pack voltage + current | INA219 #2 (0x44), 10 mΩ shunt in the BAT+ path | I2C3 | 0-26 V, ±3.2 A | +/-1% | 1 Hz | RV1106 I2C3 (Unified PCB v4.0, Dispensing Unit) → state of charge |
-| SLD load cells (×2) | Strain-gauge 2 kg, one per reservoir | I2C (NAU7802 24-bit ADC, 0x2A, behind TCA9543A 0x71) | 0-2 kg | +/-5% dispense | 10 Hz | RV1106 I2C3 (`dispense` thread) |
+| Battery pack voltage + current | INA219 #2 (0x44), 10 mΩ shunt in the BAT+ path | I2C1 (DU STM32) | 0-26 V, ±3.2 A | +/-1% | 1 Hz | DU STM32 I2C1 (Unified PCB v5.0, Dispensing Unit) → state of charge, reported to the RV1106 in DU_STATUS (0x311) |
+| SLD tank level / presence + pump tachs | 6× digital Hall switch: float magnet (low level) and fixed magnet (presence) per drawer tank, rotor magnet tach per pump | Digital GPIO (DU STM32 PC0–PC5), open-drain, 10 k pull-ups | Low / present; ≈ 0.2–0.25 mL per tach pulse | +/-5% dispense after calibration | Tachs on EXTI; level and presence 1 Hz | DU STM32 Dispense task (open-loop metering, prime arming); QUERY_SLD over the host link to the RV1106 |
 | Pot Detection (backup) | Reed switch / Hall effect | Digital GPIO | On/Off | N/A | Interrupt-driven | STM32 PB1 on the CSC (J_SAFE pin 2); primary pot detection is the heating unit's HEAT_STATUS (`pot_detected`, centre sensor) |
-| Dock sense | DOCK_SENSE_A contact (low = docked) | Digital GPIO, 10k pull-up | Docked / lifted | N/A | GPIO edge + 1 Hz | RV1106 GPIO (DU); DOCK_SENSE_B → STM32 PB3 (CSC) |
-| Dock power | DOCK_PWR_OK (100k/10k divider on DOCK_24V → 2N7002, active-low) | Digital GPIO | DOCK_24V present / absent | N/A | 1 Hz | RV1106 GPIO (DU) |
+| Dock sense | DOCK_SENSE_A contact (low = docked) | Digital GPIO, 10k pull-up | Docked / lifted | N/A | GPIO edge + 1 Hz | DU STM32 PB3 (EXTI), flag in DU_STATUS to the RV1106; DOCK_SENSE_B → CSC STM32 PB3 |
+| Dock power | DOCK_PWR_OK (100k/10k divider on DOCK_24V → 2N7002, active-low) | Digital GPIO | DOCK_24V present / absent | N/A | 1 Hz | DU STM32 PB5 (EXTI), flag in DU_STATUS to the RV1106 |
 
 ---
 
@@ -56,7 +56,7 @@ status: Draft
 │         │   ┌──────┐    │                           │
 │         │   │ Lens │    │   ◄── White LED Ring      │
 │         │   └──┬───┘    │       (surrounding lens,  │
-│         └──────┼────────┘        RV1106 PWM)        │
+│         └──────┼────────┘        DU STM32 PWM)      │
 │         ═══════╪════════  sealed borosilicate window│
 │                │  20-30 cm (nominal 30 cm)          │
 │                │                                    │
@@ -84,8 +84,8 @@ The IMX415-98 lens is specified by Luckfox at 98 deg diagonal, 84 deg horizontal
 | Count | 12-16 LEDs in ring configuration |
 | Ring Diameter | 50-60mm (surrounds the camera lens behind the DU underside window) |
 | Color Temperature | 5000 K white |
-| Brightness | RV1106 PWM duty: OFF 0 %, NIGHT 30 %, CAPTURE 100 % |
-| Interface | RV1106 PWM (1 kHz) → Q_LED (IRLML6344 low-side) on the Unified PCB v4.0 → J_LED 2-pin (5V_MAIN / LED_RET); no STM32 or CAN involvement |
+| Brightness | DU STM32 TIM1 PWM duty: OFF 0 %, NIGHT 30 %, CAPTURE 100 %, set by the RV1106 with SET_LED (0x220) on the host link |
+| Interface | DU STM32 PA8 (TIM1_CH1, 1 kHz) → Q_LED (IRLML6344 low-side) on the Unified PCB v5.0 → J_LED 2-pin (5V_MAIN / LED_RET); SET_LED is a DU-local host-link frame, never on the CAN bus |
 | Power | 5V_MAIN, ≤ 1 A at CAPTURE |
 
 #### 2.4.2 Lighting Design
@@ -224,7 +224,7 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 | Camera | 30 fps capture | 2 Hz CV inference | <500ms per frame |
 | Surface Temperature | 10 Hz HEAT_STATUS from the heating unit on CAN | 1 Hz engine tick (stage logic), 10 Hz STM32 safety monitor | <200ms |
 | Pot Detection | Interrupt-driven | Immediate (<1ms) | <1ms |
-| SLD Load Cells | 10 Hz NAU7802 (I2C3 via TCA9543A) | 10 Hz `dispense` thread closed loop | <100ms |
+| SLD Hall switches | Tach EXTI (≤ 100 Hz); level / presence 1 Hz | Pulse count to target in the DU STM32 Dispense task | <10ms |
 | Battery / Dock | 1 Hz INA219 #2; DOCK_SENSE_A edge; DOCK_PWR_OK | 1 Hz power/dock monitor; UNIT_LIFTED on edge | <300ms (TELEMETRY timeout confirms mains loss) |
 
 ---
@@ -238,7 +238,7 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 | Camera | Frame received, not black/white | Valid histogram, >10% variance | Lens blocked, cable loose, module fault |
 | Surface Temperature | HEAT_STATUS received, reading in range | Frame every ≤ 500 ms, -20C < T < 350C | CAN bus fault, unit sensor fault (fault_flags) |
 | Pot Detection | State change matches expectations | Toggles when pot placed/removed | Switch stuck, magnet missing |
-| SLD Load Cells | NAU7802 ACK + data-ready, stable tare | DRDY ≤ 100 ms, drift < 2 g/min | NAU7802 I2C NACK / no data-ready → SLD_LOAD_CELL_DRIFT (RV1106-detected) |
+| SLD Hall switches | Tank present and not low before a dose; tach pulses once the pump runs | First pulse ≤ 1 s after start, rate ≥ 25 % of nominal | SLD_TANK_ABSENT / SLD_LOW_LEVEL / SLD_DISPENSE_ERROR (DU STM32-detected, NAK / DU_STATUS error_code to the RV1106) |
 | Battery / Dock | INA219 #2 reading in range; DOCK_SENSE_A and DOCK_PWR_OK consistent | 5.5 V < V < 8.5 V; PWR_OK only while docked | I2C NACK, pack PCM fault, fouled dock contacts |
 
 ### 6.2 Degradation Fallback Strategy
@@ -259,7 +259,7 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 - [ ] Verify 1280x720 @ 30fps on the ISP main path and 224x224 self-path frames reaching the NPU at 2 Hz
 - [ ] Capture image of white card, verify white balance (R/G/B within +/-10%)
 - [ ] Capture image of X-Rite ColorChecker, verify color accuracy (deltaE < 5)
-- [ ] LED ring on (RV1106 PWM CAPTURE 100 %): verify even illumination (no hot spots >20% variance); NIGHT 30 % usable for the on-demand preview
+- [ ] LED ring on (SET_LED → DU STM32 PWM CAPTURE 100 %): verify even illumination (no hot spots >20% variance); NIGHT 30 % usable for the on-demand preview
 - [ ] LED ring off: verify camera captures adequate image under typical kitchen lighting
 - [ ] Steam test: boil water for 10 minutes, verify the sealed borosilicate window does not fog
 - [ ] FPS test: verify 30fps capture sustained over 30 minutes
@@ -280,13 +280,13 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 - [ ] Verify interlock: remove pot during heating, confirm shutdown within 100ms
 - [ ] Test with non-magnetic pot: verify no false detection
 
-### 7.4 Battery, Dock & Load Cell Test Procedures
+### 7.4 Battery, Dock & SLD Sensing Test Procedures
 
 - [ ] INA219 #2 pack voltage and current agree with a bench meter (±1 %) at idle (~3 W lifted) and while charging (1.0 A docked)
-- [ ] Dock: seat the DU, verify DOCK_SENSE_A (RV1106) and DOCK_SENSE_B (STM32 PB3) both read low within 100 ms and DOCK_PWR_OK follows DOCK_24V
+- [ ] Dock: seat the DU, verify DOCK_SENSE_A (DU STM32 PB3, DU_STATUS docked flag) and DOCK_SENSE_B (CSC STM32 PB3) both read low within 100 ms and DOCK_PWR_OK follows DOCK_24V
 - [ ] Lift the DU: verify DOCK_SENSE_A high → PAUSED (UNIT_LIFTED) and dock pads de-energised (Q_DOCK off) within 100 ms
 - [ ] Pull mains while docked: DOCK_PWR_OK inactive + TELEMETRY timeout (300 ms) → AC-failure pause; the DU keeps running on its pack
-- [ ] Load cells: tare each NAU7802 channel through the TCA9543A, verify ±2 g at 100 g and 500 g reference masses, drift < 2 g over 10 min
+- [ ] SLD: tank present / low Hall inputs follow the tanks (out, full, ≈ 20 / 50 mL left); pump tachs count every pulse at 25 / 50 / 100 % PWM; a calibrated 100-pulse dose lands within ±5 %
 
 ---
 
@@ -313,3 +313,5 @@ The recipe engine on the RV1106 combines data from multiple sensors to determine
 | 1.5 | 2026-11-04 | Manas Pradhan | Three-unit architecture: battery voltage/current via INA219 #2 and SLD load cells via NAU7802 (TCA9543A mux) on RV1106 I2C3; pot reed on the CSC (STM32 PB1); dock sense / dock power rows added; white PWM LED ring driven by the RV1106 (WS2812B, SET_LED and STM32 removed); camera on the Dispensing Unit underside looking straight down; sampling, health and test checklists updated |
 | 1.6 | 2026-11-04 | Manas Pradhan | Heater is now a commercial electric heating unit (rice-cooker class) instead of the induction surface: cooking temperature comes from its spring-loaded centre (pot-bottom) sensor, pot detection is the pot pressing that sensor (`pot_detected`; no ferromagnetic pot, reed backup unchanged), `coil` → `element` temperature; §3, §4, fusion/health/fallback tables and tests updated (settle < 180 s) |
 | 1.7 | 2026-11-04 | Manas Pradhan | Temperature limits re-based to the Philips OneChef NX5300/00 reference unit (200 °C ceiling): STM32 surface_temp CRITICAL 220 °C / E_STOP 230 °C (was 270 °C) in §3 and the cut-off test; operating range 60-200 °C |
+| 1.8 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit: battery INA219 #2, SLD NAU7802 load cells, dock sense / dock power and the LED ring move from the RV1106 (I2C3 / GPIO / PWM) to the DU STM32 (I2C1, PB3/PB5, TIM1) on the Unified PCB v5.0; the RV1106 reads them via DU_STATUS / QUERY_WEIGHT on the UART host link |
+| 1.9 | 2026-11-05 | Manas Pradhan | Robot-mop SLD: the two NAU7802 load cells give way to six Hall switches on the DU STM32 (float low-level and presence per drawer tank, tach per pump) with open-loop pulse-counted metering; sensor table, rate table, health table and checklist updated |

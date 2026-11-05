@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-11-04
-version: 1.8
+modified: 2026-11-05
+version: 2.3
 status: Draft
 ---
 
@@ -9,16 +9,16 @@ status: Draft
 
 ## 1. Architecture Overview
 
-Epicura uses a dual-processor architecture with clearly separated responsibilities. The RV1106 handles high-level application logic and AI, while the STM32G0 manages real-time control and safety-critical operations.
+Epicura uses three controllers with clearly separated responsibilities: the RV1106 handles high-level application logic and AI; the **DU STM32** (STM32G0B1RE on the Unified PCB v5.0 beside the RV1106) runs the dispensers, LED ring, buzzer and battery/dock monitoring and is the Dispensing Unit's CAN node, acting as a transparent gateway for the RV1106 over a UART host link; the **CSC STM32** (same part, Cooking Surface Controller in the base) manages real-time stir control and the safety-critical paths. Both STM32 images are built from one `epicura-firmware` tree.
 
 | Layer | RV1106 (Application) | STM32G0 (Real-Time) |
 |-------|----------------------|---------------------|
-| **Hardware** | Rockchip RV1106G3 (Luckfox Pico Zero), 1x Cortex-A7 @ 1.2 GHz, 256 MB DDR3L, 8 GB eMMC, 1 TOPS NPU, 5 MP ISP — on the Unified PCB v4.0 in the lift-off Dispensing Unit (DU), 2S Li-ion pack as primary supply | STM32G0B1RE, Cortex-M0+ @ 64 MHz, 512 KB Flash, 144 KB SRAM — on the Cooking Surface Controller (CSC) in the Cooking Surface base |
+| **Hardware** | Rockchip RV1106G3 (Luckfox Pico Zero), 1x Cortex-A7 @ 1.2 GHz, 256 MB DDR3L, 8 GB eMMC, 1 TOPS NPU, 5 MP ISP — on the Unified PCB v5.0 in the lift-off Dispensing Unit (DU), 2S Li-ion pack as primary supply | STM32G0B1RE, Cortex-M0+ @ 64 MHz, 512 KB Flash, 144 KB SRAM — two instances: the DU STM32 on the Unified PCB v5.0 (dispensing, CAN gateway) and the CSC STM32 on the Cooking Surface Controller in the base (stir, safety) |
 | **OS** | Buildroot Linux (Luckfox SDK, kernel 5.10), busybox init | FreeRTOS 10.x |
 | **UI Framework** | LVGL 9 (C, software rendered) on 4" 480x320 SPI LCD | None |
 | **AI/ML** | Hardware ISP + NPU via `rockit` / `rknn_api` (RKNN INT8) | None |
-| **Application** | C11, single process `epicurad` (Recipe Engine, CV, UI, can, heat, dispense, sync) | C (MISRA C subset) |
-| **Communication** | SocketCAN `can0` (MCP2518FD, isolated 500 kbps bus crossing the dock pogo contacts), I2C3 to the dispenser / power peripherals, MQTT client, HTTPS client | FDCAN1 driver on the same bus (commands, telemetry, CAN bootloader); FDCAN2 to the CAN servo stirring motor; no UART to the RV1106 (different unit) |
+| **Application** | C11, single process `epicurad` (Recipe Engine, CV, UI, link, heat, dispense, sync) | C (MISRA C subset); `csc` and `du` images from one tree |
+| **Communication** | Host link to the DU STM32: UART2 (`/dev/ttyS2`, 921,600 baud, COBS/CRC-16, CAN-shaped frames) carrying both the CAN traffic (gatewayed) and the DU-local dispensing / LED / buzzer / status frames; I2C3 for touch only; MQTT client, HTTPS client | DU STM32: USART1 host link, FDCAN1 on the isolated 500 kbps bus (crossing the dock pogo contacts), I2C1 to the dispenser / power peripherals. CSC STM32: FDCAN1 on the same bus (commands, telemetry, CAN bootloader); FDCAN2 to the CAN servo stirring motor; no UART to the RV1106 (different unit) |
 | **Storage** | SQLite 3 (WAL, JSON1, FTS5), read-only squashfs rootfs + `/data` partition | Non-volatile flash (settings, logs) |
 | **Development** | Buildroot `br2-external` + CMake, VS Code + Remote SSH, LVGL PC simulator | STM32CubeIDE, STM32CubeMX |
 
@@ -48,8 +48,8 @@ Epicura uses a dual-processor architecture with clearly separated responsibiliti
 **Buildroot Linux (Luckfox SDK, kernel 5.10):**
 - Custom `br2-external` tree on the Luckfox SDK; no Yocto, no systemd, no container runtime
 - Minimal image: kernel + busybox init + `epicurad`; read-only squashfs rootfs
-- Device tree for MIPI CSI camera (IMX415-98), fbtft SPI LCD, I2C3 touch + dispenser / power peripherals (PCA9685, PCF8574 #2, TCA9543A → NAU7802 ×2, INA219 ×2), MCP2518FD CAN controller on SPI0 CS1, PWM ×4 (pumps, LED ring, buzzer), dock GPIOs (DOCK_SENSE_A, DOCK_PWR_OK, PCA9685 OE); no UART to the STM32
-- Kernel drivers (all mainline in 5.10): `mcp251xfd`, `pwm-pca9685`, `gpio-pcf857x`, `ina2xx` (hwmon), `i2c-mux-pca954x`, `nau7802` (IIO), `pwm-rockchip`
+- Device tree for MIPI CSI camera (IMX415-98), fbtft SPI LCD (SPI0 CS0 only), I2C3 touch (FT6336 only), UART2 host link to the DU STM32 (`/dev/ttyS2`), GPIO 32/38 (DU STM32 BOOT0/NRST), PWM10 backlight. No CAN controller and no dispenser / power ICs on the RV1106 side any more — they hang off the DU STM32
+- Kernel drivers (all mainline in 5.10): fbtft, `edt-ft5x06`, 8250 UART, `pwm-rockchip` (backlight); `mcp251xfd`, `pwm-pca9685`, `gpio-pcf857x`, `ina2xx`, `i2c-mux-pca954x` and `nau7802` dropped from the config
 - `/data` partition (~6 GB) for SQLite, images, logs and OTA staging
 - A/B boot + rootfs slots for OTA updates (swupdate)
 
@@ -70,13 +70,14 @@ All application functions run as threads of one native C process, `epicurad`, on
 │  │  └──────────────┘ └──────────────┘ └──────────────┘  │  │
 │  │                                                        │  │
 │  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐  │  │
-│  │  │ can + heat   │ │ sync thread  │ │ SQLite 3     │  │  │
-│  │  │ (SocketCAN)  │ │ (MQTT/HTTPS) │ │ (in-process) │  │  │
+│  │  │ link + heat  │ │ sync thread  │ │ SQLite 3     │  │  │
+│  │  │ (UART host   │ │ (MQTT/HTTPS) │ │ (in-process) │  │  │
+│  │  │  link, COBS) │ │              │ │              │  │  │
 │  │  └──────────────┘ └──────────────┘ └──────────────┘  │  │
 │  │                                                        │  │
 │  │  ┌──────────────┐ ┌──────────────┐                   │  │
 │  │  │dispense thr. │ │ dock monitor │                   │  │
-│  │  │ (I2C3 / PWM) │ │(INA219, GPIO)│                   │  │
+│  │  │(0x23x client)│ │ (DU_STATUS)  │                   │  │
 │  │  └──────────────┘ └──────────────┘                   │  │
 │  └───────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -135,7 +136,7 @@ All application functions run as threads of one native C process, `epicurad`, on
 ├─────────────────────────────────────────────────────────┤
 │                   In-Process Integration                 │
 │  • Direct calls into engine / cv / sync threads         │
-│  • Telemetry ring buffer (from can thread)              │
+│  • Telemetry ring buffer (from link thread)             │
 │  • SQLite queries for recipe browser (FTS5)             │
 ├─────────────────────────────────────────────────────────┤
 │   /dev/fb0 via fbtft (ST7796S, SPI0 50 MHz, DMA)         │
@@ -161,8 +162,8 @@ All application functions run as threads of one native C process, `epicurad`, on
 - **Interface:** In-process function calls from the LVGL UI thread; no HTTP/RPC boundary
 - **Communication:**
   - SQLite for recipe data and the 10 s session checkpoint
-  - Telemetry ring buffer from the can thread for real-time state
-  - Command queue to the can thread for STM32 commands; heat setpoint to the heat thread; dispense queue to the dispense thread (DISPENSE_FID / CID / SLD, QUERY_WEIGHT, PREFLIGHT, TARE, DISPENSER_HOME, DISPENSER_STATUS — in-process, no CAN)
+  - Telemetry ring buffer from the link thread for real-time state (CSC telemetry, heater status, DU_STATUS)
+  - Command queue to the link thread for CSC STM32 commands; heat setpoint to the heat thread; dispense queue to the dispense thread (DISPENSE_FID / CID / SLD, SLD_PRIME, QUERY_SLD, PREFLIGHT, SLD_CAL, DISPENSER_HOME, DISPENSER_STATUS — sent as DU-local frames 0x230–0x239 over the host link to the DU STM32, never on the CAN bus)
 
 ### 2.6 Cloud & Networking
 
@@ -173,7 +174,7 @@ All application functions run as threads of one native C process, `epicurad`, on
 | OTA Updates | swupdate | A/B boot + rootfs slot updates, signed `.swu` |
 | Backend API | Fastify (Node.js/TypeScript) — cloud only | REST API for mobile app and device sync; the device is a REST + MQTT client, not a server |
 | Live Camera | On-demand H.264 RTSP (`rtsp-stream`, :554 `/pot`) | Stream cooking video to mobile app on request (same LAN direct, else cloud relay) |
-| CAN bus node | can + heat threads of `epicurad` (C, `SCHED_FIFO`) | SocketCAN frames, seq/ACK, HB_AP heartbeat, telemetry buffering, 2 Hz heater setpoint keep-alive (the electric heating unit runs its own PID) |
+| Host link / CAN | link + heat threads of `epicurad` (C, `SCHED_FIFO`) | COBS/CRC-16 frames on `/dev/ttyS2` to the DU STM32 gateway, seq/ACK, HB_AP heartbeat, telemetry buffering, 2 Hz heater setpoint keep-alive (the electric heating unit runs its own PID) |
 
 ### 2.7 Storage
 
@@ -199,16 +200,17 @@ All application functions run as threads of one native C process, `epicurad`, on
 
 ### 2.8 Dispensing, Power & Peripheral Drivers
 
-The Dispensing Unit carries the carousels, pumps, load cells, LED ring, buzzer and battery, so their drivers live in `epicurad` on the RV1106 — nothing dispensing-related crosses the CAN bus.
+The Dispensing Unit carries the carousels, pumps, SLD drawer tanks with their Hall switches, LED ring, buzzer and battery. Their drivers live in the **DU STM32 firmware** (FreeRTOS, `du` image of `epicura-firmware`), not in Linux: `epicurad` only sends DU-local frames over the host link and reads the replies. Nothing dispensing-related crosses the CAN bus.
 
-| Function | Thread / driver | Hardware |
-|----------|-----------------|----------|
-| Servo carousels (FID / CID) | `dispense` thread, `pwm-pca9685` over I2C3 | PCA9685 (0x41), 6V_DSP rail enable via PCF8574 #2 P4 (`gpio-pcf857x`), PCA9685 OE GPIO; one servo at a time, ramped ≤ 3°/tick |
-| Stall detection | `dispense` thread, `ina2xx` (hwmon) | INA219 #1 (0x40) on the 6V_DSP rail: > 2.5 A for 300 ms, 3 s timeout or I2C NACK → retry once → DSB_STALL |
-| SLD oil / water | `dispense` thread, `nau7802` (IIO) behind `i2c-mux-pca954x` | TCA9543A (0x71) → NAU7802 ×2 (0x2A), 10 Hz closed loop, stop at 95 % of target; solenoids on PCF8574 #2 P0/P1, TB6612 pumps on RV1106 PWM (`pwm-rockchip`), direction P3/P5 |
-| LED ring (white, 5000 K) | `pwm-rockchip`, 1 kHz | Q_LED low-side on 5V_MAIN; duty OFF 0 % / CAPTURE 100 % / NIGHT 30 %; no colour control |
-| Buzzer | `pwm-rockchip` | 2N7002 driver on the Unified PCB |
-| Battery / dock monitor | 1 Hz in the sensor path + GPIO edge, `ina2xx` | INA219 #2 (0x44, 10 mΩ in the BAT+ path): pack voltage + current → state of charge; TP5100 CHRG / STDBY on PCF8574 #2 P6/P7; DOCK_SENSE_A (low = docked), DOCK_PWR_OK (active-low). Warning banner at 6.4 V, checkpoint + halt at 6.2 V; battery indicator always visible in the UI |
+| Function | `epicurad` side | DU STM32 side (hardware) |
+|----------|-----------------|--------------------------|
+| Servo carousels (FID / CID) | `dispense` thread sends DISPENSE_FID 0x230 / DISPENSE_CID 0x231 / DISPENSER_HOME 0x238, waits for DU_ACK 0x3FE | Dispense task: PCA9685 (0x41) on I2C1, 6V_DSP rail enable via PCF8574 #2 P4, PCA9685 OE on PB0; one servo at a time, ramped ≤ 3°/tick |
+| Stall detection | NAK result / DU_STATUS error_code → DSB_STALL | INA219 #1 (0x40) on the 6V_DSP rail: > 2.5 A for 300 ms, 3 s timeout or I2C NACK → retry once → DSB_STALL |
+| SLD oil / water | DISPENSE_SLD 0x232 (target_ml → actual_ml + primed_ml), SLD_PRIME 0x233, QUERY_SLD 0x235, SLD_CAL 0x237 (cal_ul at boot) | Open loop (2026-11-05): TB6612 pumps on TIM3 PWM (PA6/PA7), direction P3/P5; Hall tachs on PC0/PC1 counted to target_pulses; tank present / low Hall switches on PC2–PC5; prime routine; nozzle check valves (no solenoids, no load cells) |
+| LED ring (white, 5000 K) | SET_LED 0x220 (duty_pct) | TIM1 PWM 1 kHz → Q_LED low-side on 5V_MAIN; duty OFF 0 % / CAPTURE 100 % / NIGHT 30 %; no colour control |
+| Buzzer | SET_BUZZER 0x226 (tone_hz, duration_ms) | TIM14 PWM → 2N7002 driver on the Unified PCB |
+| Battery / dock monitor | Decodes DU_STATUS 0x311 (1 Hz + on flag change): batt_mV, batt_mA, soc_pct, docked, dock_power, charging, charge_done, can_bus_ok. Warning banner at 6.4 V, checkpoint + halt at 6.2 V; battery indicator always visible in the UI; no DU_STATUS for 3 s → DU_LINK_LOST | Monitor task: INA219 #2 (0x44, 10 mΩ in the BAT+ path) → state of charge; TP5100 CHRG / STDBY on PCF8574 #2 P6/P7; DOCK_SENSE_A (PB3, low = docked), DOCK_PWR_OK (PB5, active-low) with EXTI |
+| Host-loss rule | — | No HB_AP for 5 s → 6V_DSP off, OE high, pumps off, LED off; DU_STATUS keeps going |
 
 ### 2.9 RV1106 Development Tools
 
@@ -226,9 +228,9 @@ The Dispensing Unit carries the carousels, pumps, load cells, LED ring, buzzer a
 
 ---
 
-## 3. CAN Bus Node (RV1106 ↔ STM32 ↔ Heating Unit)
+## 3. Host Link and CAN Bus Node (RV1106 ↔ DU STM32 ↔ CSC STM32 ↔ Heating Unit)
 
-The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating unit MCU. The isolated domain is generated on the Cooking Surface Controller (CSC) in the base and reaches the Unified PCB in the Dispensing Unit over the dock pogo contacts (J_DOCK pins 3–6: CAN_H, CAN_L, GND_ISO, 5V_ISO); lifting the unit opens the bus. Two real-time threads inside `epicurad` own it: `can` handles every frame, `heat` keeps the heater setpoint alive and relays the unit's measured temperature (the heating unit runs its own PID; Epicura has no temperature sensor).
+The RV1106 has no CAN peripheral. It talks to the DU STM32 over the **host link** — UART2 (`/dev/ttyS2`) ↔ USART1 at 921,600 baud, CAN-shaped frames (11-bit id, dlc, ≤ 8 data bytes, CRC-16/CCITT-FALSE) COBS-encoded with a 0x00 terminator — and the DU STM32 is the Dispensing Unit's node on the CSC's isolated CAN bus (FDCAN1 + a non-isolated SN65HVD230; the isolation is on the CSC's port). It forwards every bus-bound frame unchanged and sends up every frame in the AP filter set, so on the bus the node is still AP (src_node 3) and the CAN ID map is unchanged; DU-local IDs (0x220, 0x226, 0x230–0x239, 0x311, 0x3FE) terminate on the DU STM32. The isolated domain is generated on the Cooking Surface Controller (CSC) in the base and reaches the Unified PCB over the dock pogo contacts (J_DOCK pins 3–5: CAN_H, CAN_L, GND_ISO tied to the DU ground there; pin 6 5V_ISO reserved); lifting the unit opens the bus but not the host link. Two real-time threads inside `epicurad` own the link: `link` handles every frame and the routing, `heat` keeps the heater setpoint alive and relays the unit's measured temperature (the heating unit runs its own PID; Epicura has no temperature sensor). Protocol detail: [[02-Controller-Software-Architecture#7.4|Controller Software Architecture §7.4]].
 
 ### 3.1 CAN Node Architecture
 
@@ -244,16 +246,22 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 │      command queue / setpoint / telemetry ring buffer       │
 │                          │                                  │
 │   ┌──────────────────────▼──────────┐  ┌─────────────────┐  │
-│   │   can thread (SCHED_FIFO)       │  │ heat thread     │  │
-│   │  • raw SocketCAN socket, filters│◄─┤ (SCHED_FIFO)    │  │
-│   │  • seq / ACK / retry (500ms x3) │  │ • 2 Hz setpoint │  │
-│   │  • TELEMETRY ring buffer (20 Hz)│  │   keep-alive    │  │
-│   │  • HB_AP heartbeat (2 s)        │  │ • HEAT_SET_TEMP │  │
+│   │   link thread (SCHED_FIFO)      │  │ heat thread     │  │
+│   │  • /dev/ttyS2 921,600, COBS+CRC │◄─┤ (SCHED_FIFO)    │  │
+│   │  • route: bus IDs ↔ DU-local IDs│  │ • 2 Hz setpoint │  │
+│   │  • seq / ACK / retry (500ms x3) │  │   keep-alive    │  │
+│   │  • TELEMETRY + DU_STATUS buffers│  │ • HEAT_SET_TEMP │  │
+│   │  • HB_AP heartbeat (2 s)        │  │                 │  │
 │   └────────────┬────────────────────┘  └─────────────────┘  │
-│                │  can0 (mcp251xfd, 500 kbps)                 │
+│                │  UART2 ↔ USART1 (host link)                 │
 └────────────────┼────────────────────────────────────────────┘
-                 │ SPI0 CS1 → MCP2518FD → ISO1050DUB #2 (Unified PCB, DU)
-                 │ J_DOCK pins 3–6 (pogo contacts, stub ≤ 30 cm)
+       ┌─────────▼──────────────────────────────┐
+       │ DU STM32 (STM32G0B1RE, Unified PCB v5.0)│
+       │ Link/Gateway task: UART ↔ FDCAN1       │
+       │ Dispense task: PCA9685, TB6612, tachs  │
+       │ Monitor task: INA219 x2, dock sense    │
+       └─────────┬──────────────────────────────┘
+                 │ FDCAN1 → SN65HVD230 (non-isolated) → J_DOCK pins 3–5 (pogo contacts, stub ≤ 30 cm)
       ═══════════╪════════ isolated CAN bus ════════════════════
                  │                              │
        ┌─────────▼─────────┐          ┌─────────▼─────────┐
@@ -265,30 +273,32 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
        └───────────────────┘          └───────────────────┘
 ```
 
-### 3.2 CAN Node Features
+### 3.2 Host Link and CAN Node Features
 
 | Feature | Implementation |
 |---------|----------------|
 | **Protocol** | CAN 2.0B, 11-bit IDs: 0x001 E_STOP, 0x010 HB_AP, 0x1xx heater, 0x2xx commands (seq byte first), 0x3xx reports, 0x3FF ACK/NAK, 0x7E0/0x7E8 firmware update — map in [[02-Controller-Software-Architecture#7.2 Message Types\|Controller Software Architecture §7.2]] |
-| **Transport** | MCP2518FD on SPI0 CS1 (≤ 20 MHz, shares the bus with the LCD on CS0) + ISO1050DUB #2 (bus side fed from dock 5V_ISO); the bus reaches the CSC through J_DOCK pins 3–6; kernel `mcp251xfd`, SocketCAN `can0` at 500 kbps |
+| **Transport** | Host link UART2 ↔ DU STM32 USART1, 921,600 baud 8N1, COBS-encoded frames `id(u16 LE) dlc data[≤8] crc16`; the DU STM32's FDCAN1 + a non-isolated SN65HVD230 puts the frames on the bus, which reaches the CSC's isolated port (ISO1050DUB #1) through J_DOCK pins 3–5 at 500 kbps. DU-local IDs 0x220, 0x226, 0x230–0x239 (AP → DU) and 0x311, 0x3FE (DU → AP) never leave the link |
 | **Message Queue** | In-process command queue (pthread mutex + condvar); seq-matched ACK/NAK |
 | **Telemetry Buffer** | Lock-free ring buffer; 20 Hz TELEMETRY + 10 Hz HEAT_STATUS; SQLite checkpoint every 10 s |
 | **Heater setpoint** | `heat` thread: HEAT_SET_TEMP (target, ramp ≤ 5 °C/s, max power) or HEAT_SET_POWER re-sent at 2 Hz; `surface_temp` from HEAT_STATUS to engine/ui; HEAT_ON_OFF 0 if HEAT_STATUS > 500 ms old |
-| **Health Monitoring** | HB_AP every 2 s (STM32 safe state after 5 s); TELEMETRY watchdog 300 ms, HEAT_STATUS watchdog 500 ms; `can0` bus-off detection; DOCK_SENSE_A / DOCK_PWR_OK GPIOs tell a lifted unit or a mains outage from an STM32 fault |
-| **STM32 firmware update** | CAN bootloader client: FW_UPDATE_REQ 0x7E0 / FW_UPDATE_RSP 0x7E8 (ERASE / WRITE / VERIFY / BOOT) streamed by the swupdate handler to the in-application bootloader on the CSC; no UART between the units |
-| **API** | C API: `can_send()`, `can_poll_telemetry()`, `can_status()`, `heat_set_setpoint()` |
-| **Logging** | syslog (busybox) / stderr; `candump` on `can0` for bus capture |
+| **Health Monitoring** | HB_AP every 2 s, forwarded by the gateway (CSC safe state after 5 s; DU STM32 drops dispensers after 5 s); TELEMETRY watchdog 300 ms, HEAT_STATUS watchdog 500 ms; DU_STATUS watchdog 3 s (DU_LINK_LOST); `can_bus_ok`, `docked` and `dock_power` flags in DU_STATUS tell bus-off, a lifted unit or a mains outage from an STM32 fault |
+| **STM32 firmware update** | CSC: CAN bootloader client — FW_UPDATE_REQ 0x7E0 / FW_UPDATE_RSP 0x7E8 (ERASE / WRITE / VERIFY / BOOT) streamed by the swupdate handler through the gateway to the in-application bootloader on the CSC. DU STM32: ST system bootloader over the same UART with BOOT0 (GPIO 32) / NRST (GPIO 38), driven by the swupdate handler |
+| **API** | C API: `link_send()`, `link_poll_telemetry()`, `link_du_status()`, `heat_set_setpoint()` |
+| **Logging** | syslog (busybox) / stderr; `epicurad --link-dump` prints decoded host-link frames (bus capture with a CAN analyser on J_CAN_HEAT) |
 
-### 3.3 CAN Node Stack
+### 3.3 Host Link Stack
 
 ```c
-/* epicurad can + heat threads — no external dependencies beyond the kernel */
-├── linux/can.h raw socket (CAN_RAW_FILTER for 0x00x, 0x01x, 0x18x, 0x3xx, 0x7E8)   /* can0 */
-├── can_codec.c (ID map, little-endian payload packing, seq/ACK matching)
+/* epicurad link + heat threads — no external dependencies beyond the kernel */
+├── termios on /dev/ttyS2 (921,600 8N1, raw)                                      /* host link */
+├── link_codec.c (COBS encode/decode, CRC-16/CCITT-FALSE, frame = id/dlc/data)
+├── can_codec.c (ID map, little-endian payload packing, seq/ACK matching; DU-local vs bus routing)
 ├── heat_setpoint.c (2 Hz HEAT_SET_TEMP / HEAT_SET_POWER keep-alive, HEAT_STATUS parsing)
-├── pthread (SCHED_FIFO can + heat threads)
-├── ring buffer (telemetry + heater status → engine / ui / sync / heat)
-└── stm32_can_bootloader.c (0x7E0/0x7E8 OpenBLT-style client for the swupdate STM32 handler)
+├── pthread (SCHED_FIFO link + heat threads)
+├── ring buffer (telemetry + heater status + DU_STATUS → engine / ui / sync / heat / dispense)
+├── stm32_can_bootloader.c (0x7E0/0x7E8 OpenBLT-style client for the CSC, through the gateway)
+└── stm32_uart_flash.c (BOOT0/NRST + ST system-bootloader protocol for the DU STM32)
 ```
 
 ---
@@ -310,7 +320,7 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | Comm | 6x USART + 2x LPUART, 3x SPI, 3x I2C, USB FS, 2x FDCAN |
 | Safety | IWDG, WWDG, SRAM parity, flash ECC, CRC; X-CUBE-CLASSB (IEC 60730-1 Class B) |
 | Package | LQFP-64 (LQFP-48 also fits the pin budget) |
-| Board | Cooking Surface Controller (CSC) v1.0, ~100 × 70 mm, 4-layer, in the Cooking Surface base beside the LRS-75-24; J_SWD, USB-C J_USB (DFU + CDC, bench only), J_DBG |
+| Boards | Two instances: Cooking Surface Controller (CSC) v1.0, ~100 × 70 mm, 4-layer, in the Cooking Surface base beside the three Mean Well PSUs (its own LRS-35-12 on J_12V_IN; LRS-75-24 #1 for the DU, #2 for the SU) (J_SWD, USB-C J_USB DFU + CDC bench only, J_DBG); and the Unified PCB v5.0 in the Dispensing Unit (DU STM32: J_SWD only, flashed by the RV1106 over USART1 with BOOT0/NRST) |
 | Dev board | NUCLEO-G0B1RE (MB1360), ~$11 |
 
 #### 4.1.2 Previous Choice: STM32G474RE
@@ -326,12 +336,14 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | Comm | 3x UART, 3x SPI, 4x I2C, 3x FDCAN |
 | Package | LQFP-64 or LQFP-100 |
 
-**Recommendation:** STM32G0B1RE. It is the cheapest ST part with two FDCAN controllers (FDCAN1 on the isolated host/heater bus, FDCAN2 on the regular stir-motor bus) and keeps the same HAL, FreeRTOS, system bootloader (USB DFU on the bench) and Class B library as the G474. The G474's FPU, 170 MHz and HRTIM were only needed while the MCU ran the temperature PID and a PWM motor; both have left the MCU. An RP2040 was rejected: no CAN peripheral (two external controllers or a PIO soft-CAN on the heater kill path), no internal flash, no UART ROM bootloader and no certified Class B library erase the price gap.
+**Recommendation:** STM32G0B1RE. It is the cheapest ST part with two FDCAN controllers (FDCAN1 on the isolated host/heater bus, FDCAN2 on the second isolated stir-motor bus) and keeps the same HAL, FreeRTOS, system bootloader (USB DFU on the bench) and Class B library as the G474. The G474's FPU, 170 MHz and HRTIM were only needed while the MCU ran the temperature PID and a PWM motor; both have left the MCU. An RP2040 was rejected: no CAN peripheral (two external controllers or a PIO soft-CAN on the heater kill path), no internal flash, no UART ROM bootloader and no certified Class B library erase the price gap.
 
 ### 4.2 RTOS
 
 **FreeRTOS 10.x:**
-- 4 concurrent tasks: Motor Control 50 Hz (FDCAN2 stir servo), Safety Monitor 10 Hz, CAN Comms 20 Hz (FDCAN1), Thermal/Fan 1 Hz (fans, optional tach, pot reed). The former Dispense and Sensor Poll tasks are gone — dispensing lives on the RV1106 in the Dispensing Unit
+- CSC image, 4 tasks: Motor Control 50 Hz (FDCAN2 stir servo), Safety Monitor 10 Hz, CAN Comms 20 Hz (FDCAN1), Thermal/Fan 1 Hz (fans, optional tach, pot reed)
+- DU image, 3 tasks: Link/Gateway (event-driven: USART1 DMA ↔ FDCAN1 RX FIFO, COBS codec, ID routing, HB_AP watchdog), Dispense (50 Hz while a move is active: PCA9685, TB6612 pumps with Hall tach metering, tank Hall switches, prime routine, INA219 #1 stall window), Monitor (1 Hz + EXTI: INA219 #2, charger, dock sense → DU_STATUS; LED and buzzer PWM). No safety authority on the DU STM32
+- One tree, two targets (`csc`, `du`): shared HAL, FreeRTOS, CAN frame codec, Class B start-up self-tests
 - Priority-based preemptive scheduling
 - Memory: heap_4 allocator (128 KB SRAM budget)
 - Tick rate: 1 kHz (1 ms resolution)
@@ -352,8 +364,8 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | USART | STM32 HAL UART | USART2 (PA2/PA3) → J_DBG local debug console only; no host link |
 | USB FS | STM32 HAL PCD / system bootloader | USB-C J_USB: DFU + CDC, bench only (SW_BOOT, SW_RST) |
 | FDCAN1 | STM32 HAL FDCAN | Isolated 3-node bus: host commands/telemetry with the RV1106, HEAT_STATUS monitoring, HEAT_ON_OFF=0 off-switch, in-application CAN bootloader (0x7E0/0x7E8) |
-| FDCAN2 | STM32 HAL FDCAN | Regular 1 Mbps bus to the CAN servo stirring motor (velocity/position commands, feedback) |
-| GPIO | STM32 HAL GPIO | E-stop (PB2, EXTI), safety relay Q_RLY (PB0), pot reed (PB1), DOCK_SENSE_B in (PB3, 10k pull-up, low = DU present), Q_STIR enable (PB4), Q_DOCK enable (PB5), status LED (PC7) |
+| FDCAN2 | STM32 HAL FDCAN | Second isolated 1 Mbps bus (ISO1050DUB #3, SU domain) to the CAN servo stirring motor (velocity/position commands, feedback) |
+| GPIO | STM32 HAL GPIO | E-stop (PB2, EXTI), safety relay Q_RLY (PB0), pot reed (PB1), DOCK_SENSE_B in (PB3, 10k pull-up, low = DU present), K_SU enable (PB4, pilot relay on the Stirring Unit PSU's AC input), Q_DOCK enable (PB5), status LED (PC7) |
 | IWDG | STM32 HAL IWDG | Independent watchdog (safety) |
 
 ### 4.5 STM32 Development Tools
@@ -418,13 +430,13 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | Unity + CMock (or cmocka) via CMake/ctest | C | Recipe engine, frame codec, sync logic, SQLite layer (host-side, mocked rockit/rknn) |
 | gcov / lcov | C | Code coverage reporting |
 | LVGL PC simulator | C | UI screens and navigation on the desktop |
-| HIL on Luckfox Pico Zero | C | ISP/NPU pipeline, CAN node (`can0`), heat loop, LCD, Wi-Fi |
+| HIL on Luckfox Pico Zero | C | ISP/NPU pipeline, host link to the DU STM32 (and through it the CAN bus), heat loop, LCD, Wi-Fi |
 
 ### 6.2 STM32 Testing
 
 | Framework | Language | Scope |
 |-----------|---------|-------|
-| Unity test framework | C | CAN command parser, safety logic, motor control |
+| Unity test framework | C | CAN command parser, safety logic, motor control (CSC); COBS/CRC codec, gateway routing, dispensing state machine, HB_AP watchdog (DU) |
 | CMock | C | Mock HAL functions for unit testing |
 | Ceedling | C | Build system for Unity + CMock |
 
@@ -433,7 +445,7 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | Method | Purpose |
 |--------|---------|
 | Hardware-in-Loop (HIL) | STM32 + real sensors, RV1106 + camera, end-to-end |
-| vcan / CAN loopback | Protocol testing without full hardware (SocketCAN `vcan0` on the host, FDCAN internal loopback on the STM32) |
+| pty / CAN loopback | Protocol testing without full hardware (host-link loopback on a `pty` pair with a simulated DU STM32 for `epicurad`; FDCAN internal loopback on the STM32) |
 | Static analysis (cppcheck) | C code quality on both platforms |
 | PC-lint (MISRA) | MISRA C compliance on STM32 safety code |
 | Valgrind / AddressSanitizer | Memory error detection on host-side `epicurad` unit tests |
@@ -463,7 +475,8 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 
 ### 7.2 STM32 (FreeRTOS)
 
-- **Mechanism:** In-application CAN bootloader (OpenBLT-style) on the CSC; no UART or BOOT0/NRST lines exist between the units
+- **Mechanism (CSC):** In-application CAN bootloader (OpenBLT-style) on the CSC, reached through the DU STM32 gateway; no UART or BOOT0/NRST lines exist between the units
+- **Mechanism (DU STM32):** ST system bootloader on USART1 — the swupdate handler raises BOOT0 (GPIO 32), pulses NRST (GPIO 38), writes and verifies the image over `/dev/ttyS2`, lowers BOOT0 and resets; the `link` thread is suspended meanwhile and DU_STATUS resumes within 2 s
 - **Trigger:** the RV1106 swupdate handler sends FW_UPDATE_REQ 0x7E0 `op = ERASE` while the appliance is docked and idle; the STM32 answers on FW_UPDATE_RSP 0x7E8 and enters update mode (stir disabled, heater off-switch and E_STOP handling stay active)
 - **Delivery:** the image is streamed in 0x7E0 `WRITE` frames (5 data bytes each) over the isolated CAN bus, through the dock; `VERIFY` then `BOOT`. Update frames carry the lowest priority on the bus
 - **Verification:** CRC over the written bank before `BOOT`
@@ -499,10 +512,11 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | Mobile App Framework | Native (Swift + Kotlin) | Flutter | Native platform APIs for BLE (Core Bluetooth, CompanionDeviceManager) and camera streaming; better UX, smaller app size |
 | Backend Framework | Fastify (TypeScript) | Express, NestJS | Fastest Node.js framework, built-in schema validation, TypeScript-first, plugin system (cloud only; device is a client) |
 | STM32 RTOS | FreeRTOS | Bare metal | FreeRTOS provides task isolation, priority scheduling, and watchdog integration needed for concurrent motor + safety + CAN comms |
-| Inter-Processor Comm | Isolated CAN 2.0B 500 kbps (MCP2518FD on SPI0 CS1) | UART, SPI | One bus for all three controllers (RV1106, STM32, heating unit MCU): hardware CRC/ACK, priority arbitration for E_STOP, 5 kV isolation; the bus crosses the Dispensing Unit dock on pogo contacts and STM32 firmware updates run over it too (no UART between the units) |
-| Stirring Motor Interface | CAN servo on STM32 FDCAN2 (regular, non-isolated port) | PWM + EN/DIR BLDC | Encoder feedback (rpm, angle, current, temperature) over two wires; stall detection from the motor itself; separate bus keeps the 1 Mbps motor protocol off the isolated heater bus |
+| Inter-Processor Comm | Isolated CAN 2.0B 500 kbps between the units (DU STM32 FDCAN1, CSC STM32 FDCAN1, heating unit MCU); UART host link (921,600, COBS/CRC) between the RV1106 and the DU STM32 inside the DU, with the DU STM32 as a transparent CAN gateway | MCP2518FD on the RV1106 SPI0, DU STM32 as a second CAN node, UART-only peripheral MCU | One bus for all three units with hardware CRC/ACK and priority arbitration for E_STOP, isolated once at the CSC's port (the DU node is a plain SN65HVD230, GND_ISO tied to DU ground at the dock); the RV1106 needs no CAN controller or SocketCAN, SPI0 is the LCD's alone, and the CAN ID map is untouched because the gateway forwards AP frames unchanged; the same UART flashes the DU STM32 via the ST system bootloader |
+| DU MCU (dispensing) | STM32G0B1RE on the Unified PCB v5.0 running the dispensers, LED ring, buzzer and battery/dock monitor | RV1106 driving them directly over I2C3 / PWM / GPIO (v4.0) | The Pico Zero header runs out of I/O once the camera, LCD and touch are placed; a second G0B1 shares the CSC toolchain, bootloader and Class B library, gives deterministic 50 Hz servo ramps off the single Linux core, and leaves the RV1106 with camera, display and one UART |
+| Stirring Motor Interface | CAN servo on STM32 FDCAN2 (second isolated port, ISO1050DUB #3 + B0505S #2); the Stirring Unit runs from its own LRS-75-24 #2 with GND_SU never bonded to the CS ground, cut by the K_SU pilot relay on the PSU's AC input | PWM + EN/DIR BLDC; non-isolated SN65HVD230 port with a Q_STIR 24 V switch on the CS supply | Encoder feedback (rpm, angle, current, temperature) over two wires; stall detection from the motor itself; separate bus keeps the 1 Mbps motor protocol off the isolated heater bus; with the SU on its own supply its ground must not tie to the CS ground, so isolating FDCAN2 too leaves the ISO1050 barrier and the B0505S transformer as the only galvanic links between CS and SU, and a relay on the PSU's AC input gives the command-independent stop without a switch in the floating rail |
 | Temperature Control | Unit-internal PID (electric heating unit's own centre sensor), RV1106 sends setpoints | IR thermometer + PID on the RV1106 / STM32 | No sensor, emissivity calibration or tuning in Epicura; the pre-certified heating unit already regulates; camera covers food-state decisions |
-| Dispensing-unit battery (primary supply, dock charging) | 2S Li-ion pack + TP5100 (1.0 A) on the Unified PCB v4.0 as the DU's primary supply, DOCK_24V charging through the dock, VSYS diode-OR | External 12 V UPS, mains-only DU with a tethered cable | The DU lifts off with no cable; the brain keeps running through a mains outage (> 5 h at ≈ 3 W) and the session auto-resumes when TELEMETRY returns; the pack lives in the cool zone away from the heat |
+| Dispensing-unit battery (primary supply, dock charging) | 2S Li-ion pack + TP5100 (1.0 A) on the Unified PCB v5.0 as the DU's primary supply, DOCK_24V charging through the dock, VSYS diode-OR | External 12 V UPS, mains-only DU with a tethered cable | The DU lifts off with no cable; the brain keeps running through a mains outage (> 12 h at ≈ 3 W on the 5,200 mAh pack) and the session auto-resumes when TELEMETRY returns; the pack lives in the cool zone away from the heat |
 | STM32 Variant | STM32G0B1RE | STM32G474RE, RP2040 | Two FDCAN controllers at about half the G474's price; nothing on the MCU needs the G474's FPU or 170 MHz any more; RP2040 has no CAN, no internal flash and no Class B library, so its saving disappears once those are added |
 | CV Model | MobileNetV2 INT8 (RKNN) | Custom CNN | MobileNetV2 converts cleanly with RKNN-Toolkit2, runs in 5-10 ms on the RV1106 NPU, proven on ARM |
 | Database | SQLite 3 (in-process) | PostgreSQL (Docker), MongoDB | Zero-server embedded DB fits 256 MB; JSON1 + FTS5 mirror the cloud PostgreSQL schema table-for-table so sync is a row copy |
@@ -537,3 +551,8 @@ The RV1106 sits on the isolated CAN bus shared with the STM32 and the heating un
 | 1.5 | 2026-11-04 | Manas Pradhan | Heater PID removed from Epicura (module-internal control, heat thread = 2 Hz setpoint keep-alive); FDCAN2 added for the CAN servo stirring motor; HAL table corrected (no IR thermometer / thermocouple); decisions for motor interface, temperature control and 2S battery backup added |
 | 1.7 | 2026-11-04 | Manas Pradhan | Three-unit architecture: RV1106 on the Unified PCB v4.0 in the Dispensing Unit (battery primary) gains the `dispense` thread, I2C3 peripheral drivers (`pwm-pca9685`, `gpio-pcf857x`, `ina2xx`, `i2c-mux-pca954x`, `nau7802`), LED ring / buzzer PWM and dock monitoring (new §2.8); STM32 moves to the Cooking Surface Controller with 4 tasks and a trimmed peripheral table (DOCK_SENSE_B, Q_DOCK, Q_STIR GPIO; no HX711 / I2C / WS2812B / battery ADC); CAN bus crosses the dock, service UART replaced by the CAN bootloader (0x7E0/0x7E8, USB DFU bench fallback); decision table row for the dispensing-unit battery |
 | 1.8 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, own PID, CAN port); same CAN contract, no controller change — §1 table, §3 heading/diagram and the temperature-control decision reworded |
+| 1.9 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit: second STM32G0B1RE on the Unified PCB v5.0 as the DU's CAN node and transparent gateway for the RV1106 over a UART host link (UART2 ↔ USART1, 921,600 baud, COBS/CRC-16, CAN-shaped frames); MCP2518FD / SocketCAN and the RV1106-side I2C3 / PWM / GPIO peripheral drivers removed; `can` thread → `link` thread; §2.2, §2.5, §2.6, §2.8 (drivers now in the DU STM32 firmware), §3 (host link + gateway), §4.1/4.2 (two images from one tree, DU task set), §6, §7.2 (DU STM32 flashed via the ST system bootloader) and the decision table updated |
+| 2.0 | 2026-11-04 | Manas Pradhan | Stirring Unit on its own PSU (CSC v1.3): FDCAN2 row and GPIO row of the STM32 peripheral table (second isolated port on ISO1050DUB #3, K_SU on PB4 instead of Q_STIR), boards row (two LRS-75-24 in the CS base) and the Stirring Motor Interface decision (isolated port, floating GND_SU, AC pilot relay) updated |
+| 2.1 | 2026-11-04 | Manas Pradhan | CAN isolation on the CSC only: DU STM32 node is a non-isolated SN65HVD230 (ISO1050DUB #2 and dock 5V_ISO feed removed, Unified PCB v5.1); §3 diagram and transport row, §4.1 recommendation wording, Inter-Processor Comm decision rationale ("5 kV isolation" → isolated at the CSC port) |
+| 2.2 | 2026-11-05 | Manas Pradhan | CSC on its own PSU (CSC v1.6): boards row — the CSC sits beside three Mean Well PSUs (a dedicated LRS-35-12 on J_12V_IN for the board, relay coils and fans; LRS-75-24 #1 for the DU, #2 for the SU) instead of "the two LRS-75-24"; nothing is tapped from the heating unit |
+| 2.3 | 2026-11-05 | Manas Pradhan | Robot-mop SLD: §2.8 SLD row (open-loop tach metering, SLD_PRIME / QUERY_SLD / SLD_CAL, no solenoids or NAU7802), host-loss row, DU STM32 diagram and FreeRTOS task bullet updated |

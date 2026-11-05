@@ -1,7 +1,7 @@
 ---
 created: 2026-02-14
-modified: 2026-11-04
-version: 1.8
+modified: 2026-11-05
+version: 1.15
 status: Draft
 tags: [epicura, project-overview, kitchen-robot]
 ---
@@ -20,10 +20,10 @@ This project encompasses the following major subsystems:
 - [[01-Epicura-Architecture|Epicura Architecture]] - System block diagrams and hardware wiring
 - [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, module-reported cooking temperature, and pot detection
 - [[04-Mechanical-Design|Mechanical Design]] - Three-unit enclosure (Cooking Surface, Stirring Unit, lift-off Dispensing Unit), arm mechanism, dock and industrial design
-- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor software modules and recipe state machine
+- [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Software modules across the RV1106 and the two STM32G0B1 controllers, and the recipe state machine
 - [[01-Tech-Stack|Tech Stack]] - Hardware platforms, software frameworks, and tools
 - [[01-UI-UX-Design|UI/UX Design]] - Touchscreen interface and companion mobile app
-- [[01-Electric-Heating|Electric Heating]] - 1,300W (assumed) electric heating unit of the rice-cooker class with CAN bus control (unit-internal temperature loop); reference unit Philips OneChef NX5300/00, whose body is the Cooking Surface and whose 6 L non-stick inner pot is Epicura's pot
+- [[01-Electric-Heating|Electric Heating]] - 1,300W (assumed) electric heating unit of the rice-cooker class with CAN bus control (unit-internal temperature loop); reference unit Philips OneChef NX5300/00, whose body is the Cooking Surface (Epicura's pot is a 25 × 25 × 12 cm rounded-square rounded-square non-stick pot, 6 L max fill)
 - [[02-Robotic-Arm|Robotic Arm]] - Single-axis servo arm and stir patterns
 - [[03-Ingredient-Dispensing|Ingredient Dispensing]] - Three-subsystem dispensing (FID/CID/SLD)
 - [[04-Vision-System|Vision System]] - HD camera, edge AI, and cooking stage detection
@@ -35,7 +35,7 @@ This project encompasses the following major subsystems:
 ### 3.1 Autonomous Cooking
 - Fully hands-off operation after ingredient loading and recipe selection
 - State machine recipe execution: detect cooking stage via CV, adjust heat/stir, dispense ingredients
-- Automatic ingredient dispensing via three subsystems: FID (fine ingredients, 6-canister servo carousel with ¼ tsp dosing), CID (coarse items, 5-slot servo carousel), SLD (liquids, peristaltic pump)
+- Automatic ingredient dispensing via three subsystems: FID (fine ingredients, 6-canister servo carousel with ¼ tsp dosing), CID (coarse items, 5-slot servo carousel), SLD (liquids, drawer tanks with pumps in the body, open-loop tach metering)
 - Supports one-pot recipes: curries, dal, rice, biryani, stir-fries, pasta, soups
 
 ### 3.2 Recipe Intelligence
@@ -92,16 +92,17 @@ This project encompasses the following major subsystems:
 │                                                                             │
 │  DISPENSING UNIT (DU) — lifts straight off, battery is the primary supply   │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │  Unified PCB v4.0: Luckfox Pico Zero (RV1106G3), 2S Li-ion pack,      │  │
-│  │  dispenser drivers (PCA9685 DSB, 6 V pumps + solenoids), NAU7802      │  │
-│  │  load cells, INA219 battery monitor, MCP2518FD CAN node, dock pads    │  │
+│  │  Unified PCB v5.0: Luckfox Pico Zero (RV1106G3) + DU STM32G0B1RE     │  │
+│  │  (UART host link), 2S Li-ion pack, dispenser drivers (PCA9685 DSB,    │  │
+│  │  6 V pumps + Hall tachs), SLD tank sensing, INA219 battery monitor,   │  │
+│  │  DU STM32 CAN node (FDCAN1 + ISO1050), dock pads                      │  │
 │  │  ┌────────────────────────────────┐  ┌──────────────────────────────┐ │  │
 │  │  │  Buildroot Linux / epicurad    │  │  4" Touch Display (LVGL)     │ │  │
 │  │  │  Recipe State Machine          │  │  IMX415-98 Camera + white    │ │  │
 │  │  │  CV Pipeline (ISP → NPU)       │  │   LED ring (underside, into  │ │  │
 │  │  │  Dispense thread (FID/CID/SLD  │  │   the pot)                   │ │  │
-│  │  │   local over I2C)              │  │  FID + CID carousels, SLD    │ │  │
-│  │  │  Power/dock monitor, LVGL UI   │  │   oil + water reservoirs     │ │  │
+│  │  │   via the DU STM32 host link)  │  │  FID + CID carousels, SLD    │ │  │
+│  │  │  Power/dock status, LVGL UI    │  │   oil + water drawer tanks   │ │  │
 │  │  │  Cloud Sync / OTA, SQLite      │  │  WiFi / BT, buzzer           │ │  │
 │  │  └────────────────────────────────┘  └──────────────────────────────┘ │  │
 │  └───────────────────────────────┬───────────────────────────────────────┘  │
@@ -112,14 +113,14 @@ This project encompasses the following major subsystems:
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │  Cooking Surface Controller (CSC): STM32G0B1RE, FreeRTOS              │  │
 │  │  ┌─────────────────────┐   ┌──────────────────┐  ┌──────────────────┐ │  │
-│  │  │  Heater Interlock   │   │  Electric Heating│  │  LRS-75-24 PSU   │ │  │
-│  │  │  Stir Motor (CAN)   │◄─►│  Unit (1,300 W   │  │  IEC C14 inlet   │ │  │
-│  │  │  Safety Watchdog    │CAN│  assumed, own    │  │  E-stop, relay   │ │  │
-│  │  │  Fans, dock switch  │iso│   PID, own AC)   │  │  2x fans, filter │ │  │
+│  │  │  Heater Interlock   │   │  Electric Heating│  │  3× PSU: 2× LRS- │ │  │
+│  │  │  Stir Motor (CAN)   │◄─►│  Unit (1,300 W,  │  │ 75-24 + LRS-35-12│ │  │
+│  │  │  Safety Watchdog    │CAN│  own PID, own AC │  │  IEC C14, E-stop,│ │  │
+│  │  │  Fans, dock switch  │iso│  via K_SAFE; CAN)│  │  relays, 2x fans │ │  │
 │  │  └──────────┬──────────┘   └──────────────────┘  └──────────────────┘ │  │
 │  └─────────────┼─────────────────────────────────────────────────────────┘  │
-│                │ J_SU (24 V + CAN), one harness inside the right pillar     │
-│                ▼  STIRRING UNIT (SU) — fed 24 V by the CS, no mains         │
+│                │ J_SU (24V_SU + isolated CAN) harness in the right pillar   │
+│                ▼  STIRRING UNIT (SU) — own PSU (LRS-75-24 #2), no mains     │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
 │  │  Gantry between the rear pillars: 24 V CAN servo stir motor, shaft,   │  │
 │  │  paddle, fume hood                                                    │  │
@@ -155,17 +156,17 @@ This project encompasses the following major subsystems:
 
 | Parameter | Value |
 |-----------|-------|
-| Dimensions | 50 x 40 x ≈35 cm (W x D x H; height to be confirmed) |
+| Dimensions | 50 x 40 x ≈37 cm (W x D x H; height to be confirmed); Dispensing Unit a Ø35 cm disc ≤ 15 cm tall |
 | Weight | ~12-15 kg (estimated); Dispensing Unit ≤ 4 kg fully loaded (two-hand lift) |
 | Units | Cooking Surface (mains: electric heating unit, PSU, Cooking Surface Controller with the STM32, E-stop, fans) + Stirring Unit (24 V + CAN from the CS over one internal harness) + Dispensing Unit (lifts off with no cable: RV1106 brain, 2S Li-ion primary supply, all three dispensers, LCD, camera; docks on the left pillar for charge + CAN) |
-| Battery | 2S Li-ion 18650, 2,600 mAh (~19 Wh) in the Dispensing Unit; > 5 h lifted, 1 A charge while docked |
+| Battery | 2S2P 18650 Li-ion, 5,200 mAh (~38 Wh) in the Dispensing Unit; > 12 h lifted, 1 A charge while docked (≈ 5.5 h) |
 | Power Input | 220-240V AC, 50 Hz (Indian standard) |
 | Max Power Draw | < 2,000W (compatible with 15A household outlets) |
 | Electric Heater | 1,300W peak (assumed; rice-cooker-class unit, TBD), variable power |
 | Display | 4" 480x320 capacitive touchscreen (SPI, ST7796S + FT6336) |
 | Camera | IMX415-98 8 MP, 1280x720 @ 30 fps, on the Dispensing Unit underside looking straight down |
 | Connectivity | Wi-Fi 6 (2.4 GHz), Bluetooth 5.2 LE |
-| Pot Capacity | 6 L nominal, ~4.8 L usable (OneChef non-stick inner pot; removable, dishwasher-safe) |
+| Pot Capacity | 6 L usable at the max-fill line, ≈ 7.3 L brim (25 × 25 × 12 cm rounded-square rounded-square non-stick pot; removable, dishwasher-safe) |
 | Ingredient Dispensing | FID (6-canister carousel, 3 servos) + CID (5-slot carousel, 1 servo) + SLD (2 liquid channels) |
 | Operating Temperature | 5°C - 45°C ambient |
 
@@ -218,3 +219,10 @@ Phase 1: Prototype          Phase 2: Alpha              Phase 3: Beta           
 | 1.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 on the Cooking Surface Controller, dispensers + battery + brain in the lift-off Dispensing Unit (Unified PCB v4.0), Stirring Unit on one harness, magnetic pogo dock with charge + CAN; system diagram, data flow and physical specifications updated; height ≈ 35 cm (TBC) |
 | 1.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit of the rice-cooker class (1,300 W assumed, own PID, CAN port; same CAN contract): summary, features, system diagram and physical specifications updated; temperature source wording corrected (pot-bottom + element temperature over CAN) |
 | 1.8 | 2026-11-04 | Manas Pradhan | Reference unit Philips OneChef NX5300/00 named (donor body = Cooking Surface, 6 L non-stick pot ~4.8 L usable); temperature range 60-200°C, sear 180-200°C |
+| 1.11 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit: Unified PCB v5.0 carries the RV1106 and a DU STM32G0B1RE (dispensing, battery/dock monitor, DU CAN node, UART host link to the RV1106); three controllers (RV1106 + two STM32G0B1); system diagram and index line updated |
+| 1.12 | 2026-11-04 | Manas Pradhan | Stirring Unit on its own floating PSU (second LRS-75-24, AC cut by K_SU) and both CSC CAN ports isolated: system diagram updated |
+| 1.9 | 2026-11-04 | Manas Pradhan | Pot changed to a 25 × 25 × 12 cm rounded-square rounded-square non-stick pot (≈ 7.3 L brim, 6 L max fill) replacing the donor's round 6 L inner pot; subsystem summary and physical specifications updated |
+| 1.10 | 2026-11-04 | Manas Pradhan | Dispensing Unit battery 2S2P 18650, 5,200 mAh (~38 Wh), > 12 h lifted |
+| 1.13 | 2026-11-05 | Manas Pradhan | CSC powered by a 12 V SELV tap from the heating unit's control board (CSC v1.5): system diagram updated |
+| 1.14 | 2026-11-05 | Manas Pradhan | CSC on its own Mean Well LRS-35-12, K_SAFE on the heating unit's AC inlet, nothing tapped from the unit (CSC v1.6, reversing 1.13): system diagram updated |
+| 1.15 | 2026-11-05 | Manas Pradhan | Robot-mop SLD and Ø350 mm DU disc: feature bullet, system diagram line and dimensions row updated |

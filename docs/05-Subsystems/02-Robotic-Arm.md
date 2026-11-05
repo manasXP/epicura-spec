@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
 modified: 2026-11-04
-version: 3.3
+version: 3.5
 status: Draft
 ---
 
@@ -9,7 +9,7 @@ status: Draft
 
 ## 1. Overview
 
-The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame: the **Stirring Unit (SU)**, a bridge between the two rear pillars of the Cooking Surface. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V integrated BLDC servo motor with a **CAN bus interface**, commanded by the STM32 on the **Cooking Surface Controller (CSC)** in the base over the CSC's regular (non-isolated) CAN port (FDCAN2, J_CAN_STIR) with velocity and position commands, and powered from a switched 24 V output (J_STIR_PWR). Both are bundled into one harness that runs inside the right pillar to the Stirring Unit's single port **J_SU** (Molex Micro-Fit 3.0, 5-way: 24V_STIR, GND, CAN_H, CAN_L, SHIELD) — the only cable between any two units. The RV1106 application processor (in the Dispensing Unit) selects patterns and speeds over the isolated host CAN bus; the STM32 translates them into motor commands.
+The robotic arm is a single-axis rotary stirring mechanism mounted above the cooking pot on a gantry frame: the **Stirring Unit (SU)**, a bridge between the two rear pillars of the Cooking Surface. It provides autonomous stirring, scraping, and folding actions driven by the recipe state machine. The arm is driven by a 24V integrated BLDC servo motor with a **CAN bus interface**, commanded by the STM32 on the **Cooking Surface Controller (CSC)** in the base over the CSC's second isolated CAN port (FDCAN2, ISO1050DUB #3, J_CAN_STIR) with velocity and position commands, and powered from the Stirring Unit's own floating 24 V supply (Mean Well LRS-75-24 #2 in the CS rear, passed through the CSC on J_SU_IN → F_SU → J_STIR_PWR; 24V_SU / GND_SU, never bonded to the CS ground). Both are bundled into one harness that runs inside the right pillar to the Stirring Unit's single port **J_SU** (Molex Micro-Fit 3.0, 5-way: 24V_SU, GND_SU, CAN_H, CAN_L, SHIELD) — the only cable between any two units. The RV1106 application processor (in the Dispensing Unit) selects patterns and speeds over the isolated host CAN bus; the STM32 translates them into motor commands.
 
 ## 2. Arm Assembly Design
 
@@ -17,7 +17,7 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 
 - **Type:** Single-axis rotary arm, gantry-mounted above pot center (Stirring Unit bridge between the rear pillars; also carries the fume hood)
 - **Motion:** 360-degree continuous rotation around the vertical axis
-- **Depth:** Fixed paddle depth in V1 (adjustable ±10 mm via manual set screw during setup). Shaft 175 mm overall, 145 mm below the gantry seal plane, paddle hub 45 mm above the pot bottom and blade edge 3 mm off the bottom of the 228.6 × 150 mm pot — stack in [[../02-Hardware/04-Mechanical-Design#6.2.1 Shaft and Paddle Vertical Stack|Mechanical Design §6.2.1]]
+- **Depth:** Fixed paddle depth in V1 (adjustable ±10 mm via manual set screw during setup). Shaft 145 mm overall, 115 mm below the gantry seal plane, paddle hub 45 mm above the pot bottom and blade edge 3 mm off the bottom of the 250 × 250 × 120 mm rounded-square pot (blade radius ~119 mm; the rounded corners lie outside the swept circle) — stack in [[../02-Hardware/04-Mechanical-Design#6.2.1 Shaft and Paddle Vertical Stack|Mechanical Design §6.2.1]]
 - **Paddle:** Removable silicone or nylon blade, heat-resistant, food-safe
 - **Drive:** 24V BLDC motor at top of gantry, coupled to a vertical drive shaft through a bearing and seal
 - **Camera:** None on the gantry — the camera and LED ring are on the underside of the Dispensing Unit above it (see [[04-Vision-System|Vision System]])
@@ -71,7 +71,7 @@ The robotic arm is a single-axis rotary stirring mechanism mounted above the coo
 | Parameter | Value |
 |-----------|-------|
 | Motor Type | 24V integrated BLDC servo (motor + planetary gearbox + encoder + driver in one housing) with CAN bus interface — CyberGear/RobStride-class actuator or an industrial 24 V BLDC gearmotor with a CAN driver (model TBD) |
-| Supply Voltage | 24V DC from the CSC switched rail (J_STIR_PWR → pillar harness → J_SU; F_STIR 5 A fuse, Q_STIR AO4407A high-side switch enabled by STM32 PB4) |
+| Supply Voltage | 24V DC from the SU's own Mean Well LRS-75-24 #2 (floating 24V_SU / GND_SU; AC input through the CSC pilot relay K_SU, Omron G5V-2, driven by STM32 PB4 via Q_KSU) → CSC J_SU_IN → F_SU 5 A polyfuse → J_STIR_PWR → pillar harness → J_SU |
 | Continuous / Peak Torque | ≥ 3 N·m (30 kg-cm) continuous, ≥ 5 N·m peak |
 | Speed Range | 0-300 RPM at the output shaft |
 | Control Interface | CAN 2.0B, 1 Mbps, 29-bit IDs (motor protocol); velocity mode for stirring, position mode for homing/parking; enable/disable, zero-set and parameter frames |
@@ -89,9 +89,9 @@ The CAN servo replaces the PWM/EN/DIR BLDC of revision 2.x for the following adv
 - **Closed-loop speed and position** — the integrated encoder gives true RPM and shaft angle, so stirring speed, scrape offsets and parking are exact; no FG tachometer or PA3 reservation needed
 - **Stall and over-torque from the source** — the motor reports phase current and temperature; stall detection no longer relies on the INA219 24 V rail heuristic
 - **Two wires for control** — CANH/CANL replace three PWM/GPIO lines; the STM32 frees PA4, PA5 and PA8 (the buzzer is now on the RV1106 in the Dispensing Unit)
-- **Shared physical layer** — the CSC already has CAN (FDCAN1 to the isolated bus); a second FDCAN controller and a $1 transceiver add the port
+- **Shared physical layer** — the CSC already has CAN (FDCAN1 to the isolated bus); a second FDCAN controller and a second isolated transceiver (ISO1050DUB #3 + B0505S #2, the same parts as port #1) add the port
 - **Torque headroom** — ≥ 3 N·m continuous for thick Indian gravies, with current limits set in the motor
-- **Safe by default** — motor firmware stops on command timeout; the STM32 also removes 24 V with Q_STIR on E-stop and at boot
+- **Safe by default** — motor firmware stops on command timeout; the STM32 also cuts the SU PSU's AC input with K_SU on E-stop and at boot (K_SU de-energised = SU PSU off)
 
 ## 4. Materials
 
@@ -144,12 +144,12 @@ Reverse:     ┌────CW────┐┌───CCW────┐┌�
 
 | Parameter | Value |
 |-----------|-------|
-| Bus | STM32 FDCAN2 (PB12 RX / PB13 TX) on the CSC → SN65HVD230 → J_CAN_STIR → pillar harness → J_SU, 1 Mbps; 120 Ω at J_CAN_STIR and in the motor |
+| Bus | STM32 FDCAN2 (PB12 RX / PB13 TX) on the CSC → ISO1050DUB #3 (isolated CAN port #2, bus side 5V_ISO2 / GND_SU from B0505S #2) → J_CAN_STIR → pillar harness → J_SU, 1 Mbps; 120 Ω at J_CAN_STIR and in the motor |
 | Command rate | 50 Hz (Motor Control task) |
 | Velocity command | Signed target in rad/s (motor protocol units); sign = direction (positive = CW) |
 | Speed range | 0–300 RPM at the shaft; current limit set in the motor to the stall threshold |
 | Enable / disable | Motor enable frame on pattern start; disable frame on ARM_STOP, E-stop, heartbeat loss and DU undock (DOCK_SENSE_B open) |
-| Power | 24V_STIR switched on by Q_STIR (STM32 PB4 via 2N7002) before the enable frame; off when the arm is parked for > 60 s |
+| Power | 24V_SU from the SU's LRS-75-24 #2, switched on by K_SU (STM32 PB4 via Q_KSU 2N7002; relay on the PSU's AC input) before the enable frame — the PSU needs ≈ 300 ms to come up and the Motor Control task waits for the motor's boot frame; off when the arm is parked for > 60 s |
 | Feedback | Velocity, position, current, temperature parsed every cycle; `motor_rpm` published in TELEMETRY (0x310) |
 
 ### 6.2 Speed Ramping
@@ -172,7 +172,7 @@ Target Speed
 
 - **Acceleration limit:** 30 RPM/s (prevents sudden splashing)
 - **Deceleration limit:** 60 RPM/s (faster stop for safety)
-- **Emergency stop:** Immediate halt (motor disable frame + Q_STIR off, no ramp; safety conditions only)
+- **Emergency stop:** Immediate halt (motor disable frame + K_SU off (SU PSU de-energised), no ramp; safety conditions only)
 
 ## 7. Home Position Sensor
 
@@ -188,13 +188,13 @@ Target Speed
 
 ```c
 /* STM32G0B1RE on the Cooking Surface Controller (CSC), Cooking Surface base */
-/* FDCAN2 on PB12 (RX) / PB13 (TX), AF3 — regular (non-isolated) motor bus */
+/* FDCAN2 on PB12 (RX) / PB13 (TX), AF3 — isolated motor bus (ISO1050 #3)  */
 /* Classic CAN, 1 Mbps nominal bit timing from the 64 MHz FDCAN kernel clk */
 /* Extended (29-bit) IDs as required by the motor protocol                 */
 /* RX FIFO0 filter: motor feedback IDs only; TX: enable, velocity, position */
 /* Motor Control task (50 Hz): send velocity target, parse feedback,        */
 /* ramp-limit, detect stall from reported current                           */
-/* Boot-safe: Q_STIR (PB4, 24V_STIR) off until the first SET_STIR;          */
+/* Boot-safe: K_SU (PB4, SU PSU AC) off until the first SET_STIR;           */
 /* also off while DOCK_SENSE_B (PB3) is high (Dispensing Unit lifted)       */
 ```
 
@@ -230,8 +230,8 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | Stall Detection | Motor-reported phase current with velocity error (commanded vs. measured) | Current above the configured limit with < 20 % of commanded speed for 500 ms | Disable motor, retry up to 3 times, then error |
 | Over-Torque | Motor current limit (set in the motor) + STM32 check of reported current | > configured peak (≈ 5 N·m equivalent) | Motor limits current itself; STM32 disables and logs |
 | Thermal Protection | Motor-reported driver/winding temperature | > 80 °C | Reduce speed 50%, alert; disable at 95 °C |
-| Power Isolation | Q_STIR high-side switch on 24V_STIR (STM32 PB4 via 2N7002, AO4407A, F_STIR 5 A) | E-stop, heartbeat loss, boot, DU undocked | 24 V removed from the motor independently of CAN |
-| DU-Undocked Safe Hold | DOCK_SENSE_B (STM32 PB3, 10k pull-up) opens when the Dispensing Unit is lifted off the dock | Immediate | Stir disable frame + Q_STIR off; STATUS reports DU_UNDOCKED (0x17). Not an E_STOP: stirring stays disabled until DOCK_SENSE_B is low again, HB_AP has returned and the RV1106 sends a new SET_STIR after the user resumes |
+| Power Isolation | K_SU pilot relay (Omron G5V-2 #2, STM32 PB4 via Q_KSU 2N7002) on the AC input of the SU's LRS-75-24 #2; F_SU 5 A polyfuse on the CSC | E-stop, heartbeat loss, boot, DU undocked | SU PSU de-energised within ~50 ms (relay drop-out + LRS hold-up); 24 V removed from the motor independently of CAN |
+| DU-Undocked Safe Hold | DOCK_SENSE_B (STM32 PB3, 10k pull-up) opens when the Dispensing Unit is lifted off the dock | Immediate | Stir disable frame + K_SU off (SU PSU de-energised); STATUS reports DU_UNDOCKED (0x17). Not an E_STOP: stirring stays disabled until DOCK_SENSE_B is low again, HB_AP has returned and the RV1106 sends a new SET_STIR after the user resumes |
 | Mechanical Guard | Physical shroud above pot rim | - | Prevents finger access to paddle zone |
 
 ### 9.2 Stall Recovery Sequence
@@ -302,9 +302,10 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 ### 11.2 Prototype Validation Checklist
 
 - [ ] CAN servo motor drives paddle through 360-degree rotation smoothly; feedback RPM matches commanded within ±5 RPM
-- [ ] Motor stops within 500 ms when CAN commands cease (command timeout) and when Q_STIR removes 24 V
-- [ ] Lifting the Dispensing Unit mid-stir disables the motor and drops 24V_STIR (DOCK_SENSE_B safe hold); stirring does not restart on re-dock without a user resume
-- [ ] J_SU harness (24V_STIR, GND, CAN_H, CAN_L, SHIELD) through the right pillar carries 1 Mbps CAN and 5 A without errors or voltage sag at stall
+- [ ] Motor stops within 500 ms when CAN commands cease (command timeout) and within ~50 ms of K_SU opening (SU PSU de-energised)
+- [ ] Lifting the Dispensing Unit mid-stir disables the motor and opens K_SU (24V_SU drops) (DOCK_SENSE_B safe hold); stirring does not restart on re-dock without a user resume
+- [ ] J_SU harness (24V_SU, GND_SU, CAN_H, CAN_L, SHIELD) through the right pillar carries 1 Mbps CAN and 5 A without errors or voltage sag at stall
+- [ ] GND_SU at J_SU has no continuity to the CS ground (ISO1050DUB #3 / B0505S #2 barrier intact); after K_SU closes the first stir command waits for the motor's boot frame (≈ 300 ms PSU start-up)
 - [ ] Twist-lock paddle attachment holds securely during vigorous stirring
 - [ ] Stall detection triggers within 500ms of blockage
 - [ ] Speed ramping prevents visible splashing at all pattern transitions
@@ -340,3 +341,5 @@ Codes mirror [[../03-Software/02-Controller-Software-Architecture#7.2 Message Ty
 | 3.1 | 2026-11-04 | Manas Pradhan | Three-unit architecture: the arm is the Stirring Unit (gantry between the rear pillars); the STM32, FDCAN2, SN65HVD230, Q_STIR, J_CAN_STIR and J_STIR_PWR move to the Cooking Surface Controller in the base, harness inside the right pillar to the SU port J_SU (Micro-Fit 3.0, 5-way); Q_STIR enable is STM32 PB4 (was PCF8574 #2 P5); SET_LED retired; DU-undocked safe hold (DOCK_SENSE_B → stir disabled, DU_UNDOCKED) added to safety; the gantry no longer carries the camera; INA219 plausibility check dropped (no current sense on the CSC) |
 | 3.2 | 2026-11-04 | Manas Pradhan | Paddle depth tied to the 150 mm OneChef pot: shaft 175 mm overall (145 mm below the seal plane), hub 45 mm above the pot bottom, ±10 mm set-screw range; geometry owned by Mechanical Design §6.2.1 |
 | 3.3 | 2026-11-04 | Manas Pradhan | Drive shaft diameter 6 → 8 mm (§2.2 diagram, §4 materials) to match Mechanical Design §6.2 |
+| 3.4 | 2026-11-04 | Manas Pradhan | Paddle depth re-tied to the 250 × 250 × 120 mm rounded-square pot: shaft 175 → 145 mm overall (115 mm below the seal plane), hub 45 mm unchanged, blade radius ~119 mm; geometry owned by Mechanical Design §6.2.1 |
+| 3.5 | 2026-11-04 | Manas Pradhan | Aligned to CSC v1.3: the stir bus is the CSC's second isolated CAN port (FDCAN2 → ISO1050DUB #3 + B0505S #2, 5V_ISO2 / GND_SU; SN65HVD230 gone); the SU runs from its own Mean Well LRS-75-24 #2 (floating 24V_SU / GND_SU, J_SU_IN → F_SU → J_STIR_PWR, never bonded to the CS ground); Q_STIR / F_STIR replaced by the pilot relay K_SU (PB4 via Q_KSU) on the SU PSU's AC input; J_SU pinout 24V_SU, GND_SU, CAN_H, CAN_L, SHIELD; fail-safe chain, boot-safe comments, power-isolation row and checklist updated |

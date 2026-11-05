@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-11-04
-version: 6.1
+modified: 2026-11-05
+version: 6.8
 status: Draft
 ---
 
@@ -31,7 +31,7 @@ The induction surface it replaces was faster and more efficient; the trade-offs 
 
 | Property | Heating plate (chosen) | Induction (dropped) |
 |----------|------------------------|---------------------|
-| Pot material | Any flat-bottomed pot; the rice-cooker inner pot (aluminium, non-stick) fits directly | Ferromagnetic only |
+| Pot material | Any flat-bottomed pot that covers the plate (Epicura's 25 cm rounded-square aluminium non-stick pot) | Ferromagnetic only |
 | Heat path | Plate → pot bottom by contact; plate stores heat, so response is slower and there is thermal lag after a power cut | Direct in the pot base |
 | Preheat ramp | ~2–4 °C/s on the plate | ~20 °C/s |
 | Efficiency | ~65–75 % (contact losses, plate mass) | 85–90 % |
@@ -55,27 +55,28 @@ The heating unit is a self-contained module that includes:
 - Closed-loop temperature controller
 - Exposed CAN bus port for external control (temperature setpoint, power level, on/off, status)
 
-The unit lives in the Cooking Surface (CS) base and shares one isolated CAN bus with the RV1106 in the Dispensing Unit (which sends setpoints and reads status) and the STM32 on the Cooking Surface Controller (which can only force it off). All mains power electronics are handled internally by the unit — neither of Epicura's control boards (the CSC or the Unified PCB) ever touches mains voltage.
+The unit lives in the Cooking Surface (CS) base and shares one isolated CAN bus with the RV1106 in the Dispensing Unit (which sends setpoints and reads status) and the STM32 on the Cooking Surface Controller (which can only force it off). All mains power electronics are handled internally by the unit — neither of Epicura's control boards (the CSC or the Unified PCB) ever touches mains voltage. The OEM unit is not opened: Epicura uses only its CAN port and puts the safety relay K_SAFE on its AC inlet loom; nothing is tapped from its internal supply.
 
 Unit selection requirements:
 - Temperature mode: accepts a setpoint in °C and regulates on its own centre sensor; reports the measured temperature at ≥ 10 Hz
 - Power mode: accepts a 0–100 % power level (time-proportional on the plate) for stages that specify power rather than temperature (sear, boil)
 - Command watchdog: drops to zero power if no HEAT_SET_TEMP / HEAT_SET_POWER refresh arrives for 1 s, so a stalled application processor cannot leave the heater on
 - Pot detection: `pot_detected` in HEAT_STATUS from the centre sensor; no heating while the pot is absent
-- Plate temperature range: 80–200 °C at the centre sensor, as on the reference unit; sear and tadka stages are written for ≤ 200 °C (the inner pot is non-stick, so no higher target is wanted)
+- Plate temperature range: 80–200 °C at the centre sensor, as on the reference unit; sear and tadka stages are written for ≤ 200 °C (the pot is non-stick, so no higher target is wanted)
 - CAN port: the OEM unit ships with a control board that exposes the HEAT_* set on CAN (confirmed 2026-11-04); the retail OneChef's touch-panel board is not used. No Epicura controller drives the plate
+- CAN port isolation: the control board's CAN port must be **SELV** — galvanically isolated inside the unit from its mains-side (relay/triac, sensor and supply) electronics — because Epicura's bus is referenced to its 24 V SELV ground (dock pin 5) and the Dispensing Unit's transceiver is not isolated; to be confirmed on the OEM board before a DU is docked (added 2026-11-04)
 
 ### 2.3 Reference Unit: Philips OneChef NX5300/00
 
-The OneChef is a 6 L multicooker with a detachable air-fryer lid, sold in India since 2026. Epicura takes the cooker body, heating plate, controller, inner pot and glass lid; the air-fryer lid (its heater and fan) is dropped and the Dispensing Unit docks in its place, and the body is modified to carry the Stirring Unit gantry and the dock pillar. Published figures (retail listings disagree on size and weight; the OEM drawing governs):
+The OneChef is a 6 L multicooker with a detachable air-fryer lid, sold in India since 2026. Epicura takes the cooker body, heating plate and controller; the round inner pot and glass lid are set aside (Epicura's pot is a 25 × 25 × 12 cm rounded-square pot, [[../02-Hardware/04-Mechanical-Design|Mechanical Design]] §2.2, and the pot well is opened out for it); the air-fryer lid (its heater and fan) is dropped and the Dispensing Unit docks in its place, and the body is modified to carry the Stirring Unit gantry and the dock pillar. Published figures (retail listings disagree on size and weight; the OEM drawing governs):
 
 | Parameter | Reference unit | Used in Epicura |
 |-----------|----------------|-----------------|
 | Nameplate power | 2,280 W (base plate + air-fryer lid), 230 V | Base plate only: 1,000–1,300 W expected, **1,300 W planning figure** |
 | Heating | "AmbiHeat": resistive plate under the pot with temperature sensors under the pot; stage-wise temperature profiles in firmware | Plate + centre sensor; the profile logic moves to the recipe engine, the unit's controller keeps the PID |
 | Temperature range | 80–200 °C | 60–200 °C requested (keep-warm at 60–70 °C), sear ≤ 200 °C |
-| Inner pot | 6 L, non-stick, min/max marks (fill ≤ 4/5 → ~4.8 L usable), dishwasher safe | Epicura's pot; replaces the 3–4 L stainless pot |
-| Lid | Glass lid (plus the air-fryer lid, dropped) | Glass lid kept for the UNIT_LIFTED / manual-cook case; the DU is the lid in normal use |
+| Inner pot | 6 L, non-stick, min/max marks (fill ≤ 4/5 → ~4.8 L usable), dishwasher safe | Not used — Epicura's pot is a 25 × 25 × 12 cm rounded-square non-stick pot (≈ 7.3 L brim, 6 L max fill) on the same plate |
+| Lid | Glass lid (plus the air-fryer lid, dropped) | Round glass lid does not fit the square pot; a matching square glass lid is sourced with the pot for the UNIT_LIFTED / manual-cook case; the DU is the lid in normal use |
 | Body | Matte plastic, 38.5 × 35.7 × 28 cm / 6.2 kg (Croma, with lid) or 33 × 33 × 33 cm / 4.6 kg (Reliance Digital) | Cooking Surface envelope; stirrer and dock added |
 | Sensing / safety | Under-pot temperature sensors, lid detection ("No Lid" in air-fry mode), auto shut-off, cool-touch handles | Centre sensor → `surface_temp`, plate sensor → `element_temp`, `pot_detected`; lid detection not used |
 | Interface | Touch panel, 33 presets; HomeID app for recipes only, no device connectivity | OEM control board with CAN port (ships with the unit) |
@@ -107,22 +108,22 @@ AC Mains (220-240V 50Hz)
 │                   CAN Bus Port                     │
 └────────────────────┬───────────────────────────────┘
                      │
-              CAN_H, CAN_L, GND_ISO, 5V_ISO  (isolated bus, 500 kbps)
+              CAN_H, CAN_L, GND_ISO, 5V_ISO  (CSC isolated port #1, 500 kbps)
                      │  J_CAN_HEAT on the CSC (R_TERM1 120 Ω)
        ┌─────────────┴──────────────┐
-       ▼                            ▼  J_DOCK pins 3–6 (pogo dock, stub ≤ 30 cm)
+       ▼                            ▼  J_DOCK pins 3–5 (pogo dock, stub ≤ 30 cm; pin 5 → DU GND)
 ┌──────────────┐             ┌──────────────┐
-│  ISO1050DUB  │ ◄── 5 kV ──►│  ISO1050DUB  │   #1 on the CSC (Cooking Surface),
-│  #1 (STM32)  │  isolation  │  #2 (RV1106) │   #2 on the Unified PCB (Dispensing Unit);
-└──────┬───────┘             └──────┬───────┘   one 5V_ISO domain from the B0505S-1WR3 on the CSC
-       │ TXD/RXD (3.3V)             │ TXD/RXD (3.3V)
+│  ISO1050DUB  │  isolated   │  SN65HVD230  │   #1 on the CSC (Cooking Surface), bus side on
+│  #1 (STM32)  │  at the CSC │  (DU STM32)  │   5V_ISO / GND_ISO from the B0505S-1WR3 #1;
+└──────┬───────┘   only      └──────┬───────┘   plain 3.3 V transceiver on the Unified PCB v5.0
+       │ TXD/RXD (3.3V)             │ D/R (3.3V)
        ▼                            ▼
 ┌──────────────┐             ┌──────────────┐
-│ STM32G0B1RE  │             │  MCP2518FD   │ ◄── SPI0 CS1 (Luckfox header)
-│ FDCAN1       │             │  (SPI CAN)   │
+│ STM32G0B1RE  │             │ DU STM32G0B1 │  FDCAN1 (PB8/PB9), transparent
+│ FDCAN1       │             │ CAN gateway  │  gateway for the RV1106 ("AP" node)
 │ (PB8/PB9)    │             └──────┬───────┘
-│ off-switch   │                    ▼
-│ + status     │             ┌──────────────┐
+│ off-switch   │                    │ host link: UART2 ↔ USART1, 921,600 baud
+│ + status     │             ┌──────▼───────┐
 │   monitor    │             │ RV1106       │
 └──────────────┘             │ heat thread  │  HEAT_SET_TEMP keep-alive 2 Hz,
  Cooking Surface             └──────────────┘  reads HEAT_STATUS (no PID)
@@ -137,9 +138,9 @@ AC Mains (220-240V 50Hz)
 |-----------|-------|
 | Protocol | CAN 2.0B |
 | Bit Rate | 500 kbps |
-| Transceiver | Onboard in the heating unit; two ISO1050DUB isolated transceivers (5 kV RMS), one per Epicura board, in one isolated 5V_ISO domain generated once by the B0505S-1WR3 on the CSC: #1 on the **Cooking Surface Controller** for the STM32 FDCAN1, #2 on the **Unified PCB** (Dispensing Unit) for the RV1106's MCP2518FD (SPI0 CS1), its bus side powered from dock pin 6 (5V_ISO, F_CAN 100 mA). J_CAN_HEAT is the CSC's **isolated CAN port**; the stirring motor is on the CSC's separate non-isolated port (FDCAN2) |
+| Transceiver | Onboard in the heating unit (its CAN port must be SELV — isolated inside the unit from the mains side); one ISO1050DUB isolated transceiver (#1, 5 kV RMS) on the **Cooking Surface Controller** for the STM32 FDCAN1, bus side on the 5V_ISO / GND_ISO domain of the B0505S-1WR3 #1; a plain **SN65HVD230** (3.3 V, non-isolated) on the **Unified PCB v5.0** (Dispensing Unit) for the DU STM32's FDCAN1 (the "AP" node: the DU STM32 is a transparent gateway for the RV1106, which reaches it over the UART host link). Dock pin 5 ties GND_ISO to the DU logic ground (the one reference point of the bus domain); pin 6 (5V_ISO, F_CAN 100 mA) is reserved. J_CAN_HEAT is the CSC's **isolated CAN port #1**; the stirring motor is on the CSC's separate isolated port #2 (FDCAN2, ISO1050DUB #3 + B0505S #2 in the floating Stirring Unit domain, GND_SU) |
 | Termination | 120 ohm at each end (R_TERM1 at J_CAN_HEAT on the CSC + inside the heating unit); the dock → Unified PCB run is a stub ≤ 30 cm |
-| Connector | Standard CAN connector on the unit (CAN_H, CAN_L, GND) ↔ J_CAN_HEAT (JST-XH 4-pin: CAN_H, CAN_L, GND_ISO, 5V_ISO) on the CSC; the bus continues to the Dispensing Unit over J_DOCK pogo pins 3–6 (CAN_H, CAN_L, GND_ISO, 5V_ISO) |
+| Connector | Standard CAN connector on the unit (CAN_H, CAN_L, GND) ↔ J_CAN_HEAT (JST-XH 4-pin: CAN_H, CAN_L, GND_ISO, 5V_ISO) on the CSC; the bus continues to the Dispensing Unit over J_DOCK pogo pins 3–5 (CAN_H, CAN_L, GND_ISO → DU GND; pin 6 5V_ISO reserved) |
 | Wiring | Twisted pair, shielded, <1m length; shield connects to GND_ISO at the CSC end only (single-point ground) |
 | Nodes | Heating unit MCU (runs its own PID), RV1106 in the Dispensing Unit (sends setpoints, reads status), STM32 on the CSC (HEAT_ON_OFF = 0 only, E_STOP, relay) |
 
@@ -165,9 +166,9 @@ AC Mains (220-240V 50Hz)
 |-----------|-------|
 | Maximum Power | 1,300 W (assumed, unit TBD; range 1,000–1,400 W) |
 | AC Input Voltage | 220-240V, 50Hz single-phase |
-| Plate Diameter | Matched to the 6 L inner pot base: pot is 228.6 mm Ø × 150 mm, plate est. ~220 mm (OEM drawing governs) |
+| Plate Diameter | Est. ~220 mm (OEM drawing governs), centred under the flat base of the 250 × 250 × 120 mm rounded-square pot, which overhangs it by ~15 mm on all sides |
 | Efficiency | ~65-75% (electrical to thermal, contact heating) |
-| Pot Compatibility | The unit's own 6 L non-stick inner pot (~4.8 L usable); any flat-bottomed pot of the same base diameter fits |
+| Pot Compatibility | 25 cm rounded-square non-stick pot (6 L max fill, Mechanical Design §2.2); any flat-bottomed pot that covers the plate and fits the well is accepted |
 | Minimum Pot Diameter | 120mm |
 | Control Interface | CAN bus (500 kbps), temperature mode + power mode |
 | Temperature Control | Unit-internal PID on its centre (pot-bottom) sensor; setpoint resolution 1 °C, reported at 0.1 °C |
@@ -178,7 +179,7 @@ AC Mains (220-240V 50Hz)
 
 ### 5.1 Control Loop Architecture
 
-The temperature loop runs **inside the heating unit**. Epicura does not measure food temperature: the RV1106 recipe engine sends a setpoint (HEAT_SET_TEMP 0x100) or a power level (HEAT_SET_POWER 0x103) and the unit's own controller regulates on its centre sensor. The `heat` thread of `epicurad` re-sends the active setpoint at 2 Hz as a keep-alive, reads HEAT_STATUS (0x180) at 10 Hz and hands `surface_temp` to the engine for stage transitions. The STM32 only supervises HEAT_STATUS for absolute limits and can force the unit off.
+The temperature loop runs **inside the heating unit**. Epicura does not measure food temperature: the RV1106 recipe engine sends a setpoint (HEAT_SET_TEMP 0x100) or a power level (HEAT_SET_POWER 0x103) and the unit's own controller regulates on its centre sensor. The `heat` thread of `epicurad` re-sends the active setpoint at 2 Hz as a keep-alive, reads HEAT_STATUS (0x180) at 10 Hz and hands `surface_temp` to the engine for stage transitions; its frames reach the bus through the DU STM32 gateway (host link UART2 ↔ USART1, FDCAN1 + SN65HVD230 on the Unified PCB v5.0), which forwards them unchanged. The STM32 only supervises HEAT_STATUS for absolute limits and can force the unit off.
 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────────────────────┐
@@ -280,12 +281,12 @@ ELSE:
 Safety is handled at two levels:
 
 1. **Unit-internal:** The heating unit has its own safety circuits (pot detection, thermal fuse, over-temperature cut-off, and a 1 s command watchdog that drops power to zero without HEAT_SET_TEMP / HEAT_SET_POWER) that operate independently of both processors. These cannot be overridden by external CAN commands.
-2. **System-level:** The RV1106 sends setpoints; the unit regulates. The STM32 independently monitors the unit's HEAT_STATUS (pot-bottom and element temperature, fault flags), and on a fault or heartbeat loss sends HEAT_ON_OFF = 0, broadcasts E_STOP (0x001) and cuts AC power via the safety relay. It never sends setpoints or power levels.
-3. **Galvanic isolation:** Two ISO1050DUB isolated CAN transceivers, one per board — #1 on the **Cooking Surface Controller** (STM32 node) and #2 on the **Unified PCB** in the Dispensing Unit (RV1106 node) — share one isolated bus domain (5V_ISO / GND_ISO from the B0505S-1WR3 on the CSC) behind the CSC's isolated CAN port (J_CAN_HEAT) and provide 5 kV RMS galvanic isolation between the control electronics and the CAN bus connected to the heating unit. The isolated bus crosses the dock on pogo pins 3–6; the DU logic ground joins the CS ground only through dock pin 2. The stirring motor sits on a separate, non-isolated CAN port on the CSC. This keeps the mains-referenced heater controller and its relay/triac switching transients out of the logic ground, and satisfies IEC 60335 reinforced insulation requirements.
+2. **System-level:** The RV1106 sends setpoints; the unit regulates. The STM32 independently monitors the unit's HEAT_STATUS (pot-bottom and element temperature, fault flags), and on a fault or heartbeat loss sends HEAT_ON_OFF = 0, broadcasts E_STOP (0x001) and cuts AC to the heating unit via the safety relay K_SAFE on its inlet loom (NC: de-energised = unit disconnected); the CSC stays up on its own LRS-35-12. It never sends setpoints or power levels.
+3. **Isolation at the CSC port:** The ISO1050DUB #1 on the **Cooking Surface Controller** (STM32 node) isolates the CSC logic ground from the bus domain (5V_ISO / GND_ISO from the B0505S-1WR3 #1) behind the CSC's isolated CAN port #1 (J_CAN_HEAT). The DU node on the **Unified PCB v5.0** (the "AP" node, driven by the DU STM32 FDCAN1 as a gateway for the RV1106) is a plain SN65HVD230, and dock pin 5 ties GND_ISO to the DU logic ground: the bus domain is referenced to the 24 V SELV ground at that single point. Because the DU ground also meets the CS ground through dock pin 2, this barrier is a signal-reference / ground-loop barrier, not a mains-safety barrier — mains safety rests on the transformer isolation of the Mean Well PSUs and on the heating unit's own board, whose **CAN port must be SELV** (galvanically isolated inside the unit from its relay/triac mains side; selection requirement, §2.1). The stirring motor sits on a separate isolated CAN port on the CSC (ISO1050DUB #3 + B0505S #2, referenced to the Stirring Unit's floating ground GND_SU, never bonded to the CS ground). This keeps the mains-referenced heater controller and its relay/triac switching transients out of the logic ground, and satisfies IEC 60335 reinforced insulation requirements.
 4. **Dock lift-off:** Lifting the Dispensing Unit opens the bus and the 24 V at the same instant. The unit drops to zero power ≤ 1 s later because its keep-alive stops (the AP is gone from the bus), the STM32 enters its safe hold on DOCK_SENSE_B (HEAT_ON_OFF = 0, stir and dock power off, STATUS DU_UNDOCKED) and the dock pads are de-energised by Q_DOCK. This is a pause, not an E_STOP. The plate keeps radiating stored heat for a few minutes after power-off; the UI shows a hot-surface warning while `surface_temp` is above 60 °C.
 
 > [!warning] Critical Safety Section
-> The unit's internal safety interlocks operate independently of the RV1106 and the STM32 and cannot be overridden. The safety relay provides a system-level hard disconnect; the STM32 that drives it does not depend on the application processor.
+> The unit's internal safety interlocks operate independently of the RV1106 and the STM32 and cannot be overridden. The safety relay K_SAFE provides a system-level hard disconnect of the heating unit at its AC inlet, independent of the unit's own interlocks; the STM32 that drives it runs from its own PSU and does not depend on the application processor.
 
 ### 8.2 Safety Summary
 
@@ -296,10 +297,10 @@ Safety is handled at two levels:
 | Unit | Thermal fuse (internal) | Plate runaway | Unit disconnects permanently | Hardware |
 | Unit | Command watchdog | No HEAT_SET_TEMP / HEAT_SET_POWER refresh for 1 s (AP stalled or bus down) | Power to 0 | 1s |
 | Unit | Temperature loop | Internal PID holds the setpoint; internal over-temperature limit | Power reduced / cut internally | Unit-internal |
-| System | Safety relay | E-stop, STM32 fault, RV1106 heartbeat loss | Relay opens, cuts AC to unit | <100ms |
+| System | Safety relay K_SAFE | E-stop, STM32 fault, RV1106 heartbeat loss | Relay opens, cuts AC to the heating unit at its inlet | <100ms |
 | System | STM32 CAN off-switch | HEAT_STATUS surface_temp >230C (unit ceiling 200 °C), element over-temp, HEAT_FAULT, or RV1106 heartbeat loss | Send HEAT_ON_OFF=0 and broadcast E_STOP on the bus | <100ms |
 | System | RV1106 heat thread | No HEAT_STATUS for 500 ms, HEAT_FAULT, pot absent | HEAT_ON_OFF 0, PAUSED | <500ms |
-| System | Dispensing Unit lifted (dock) | DOCK_SENSE_B opens on the CSC; the AP leaves the isolated bus | Unit keep-alive expires → power 0; STM32 safe hold (HEAT_ON_OFF = 0, Q_STIR and Q_DOCK off, STATUS DU_UNDOCKED); RV1106 PAUSED (UNIT_LIFTED), resume only by user tap after re-docking | ≤ 1 s |
+| System | Dispensing Unit lifted (dock) | DOCK_SENSE_B opens on the CSC; the AP leaves the isolated bus | Unit keep-alive expires → power 0; STM32 safe hold (HEAT_ON_OFF = 0, K_SU (SU PSU) and Q_DOCK off, STATUS DU_UNDOCKED); RV1106 PAUSED (UNIT_LIFTED), resume only by user tap after re-docking | ≤ 1 s |
 | System | STM32 watchdog | Firmware hang | STM32 resets, relay opens (fail-safe) | 1s |
 
 ### 8.3 Safe State Definition
@@ -308,7 +309,7 @@ When any safety condition triggers, the system enters the following safe state:
 
 ```
 1. CAN ──► HEAT_ON_OFF = 0 from the STM32 + E_STOP 0x001 broadcast (unit stops heating)
-2. Relay ──► OPEN (physical disconnect of AC to the unit)
+2. K_SAFE ──► OPEN (physical disconnect of AC to the heating unit at its inlet)
 3. Error flag ──► SET (logged to eMMC, displayed on UI)
 4. Buzzer ──► ALERT pattern (3 short beeps, 1s pause, repeat)
 5. RV1106 notified ──► Push notification to companion app
@@ -385,11 +386,11 @@ Power (W)
 - [ ] CAN power level commands (HEAT_SET_POWER) correctly modulate plate power; HEAT_SET_TEMP engages the unit's temperature mode
 - [ ] Unit's internal pot detection prevents heating without pot
 - [ ] Unit holds a HEAT_SET_TEMP setpoint within +/- 5 C after settling; RV1106 keep-alive at 2 Hz is never late with the LCD refreshing
-- [ ] Sear / tadka stage reaches 200 °C at the centre sensor within 3 min from 25 °C with the 6 L pot empty
+- [ ] Sear / tadka stage reaches 200 °C at the centre sensor within 3 min from 25 °C with the 25 cm pot empty
 - [ ] STM32 watchdog resets to safe state on firmware hang
-- [ ] RV1106 heartbeat loss triggers power cutoff within 5s; killing `epicurad` drops unit power within 1s
+- [ ] RV1106 heartbeat loss triggers power cutoff within 5s; killing `epicurad` (or unplugging the DU STM32 host link) drops unit power within 1s
 - [ ] Lifting the Dispensing Unit mid-cook drops unit power within 1 s (keep-alive loss) and the STM32 reports DU_UNDOCKED; heating does not resume on re-dock without a user tap
-- [ ] Safety relay disconnects AC on E-stop
+- [ ] Safety relay K_SAFE disconnects AC to the heating unit at its inlet on E-stop while the CSC stays up on its own LRS-35-12
 - [ ] Soft-start keeps mains flicker within IEC 61000-3-3 limits
 - [ ] Continuous 2-hour cook session completes without fault
 
@@ -421,3 +422,9 @@ Power (W)
 | 6.0 | 2026-11-04 | Manas Pradhan | Induction surface replaced by a commercial electric heating unit of the premium rice-cooker class (resistive plate, spring-loaded centre sensor, own PID and CAN port). Document renamed from Induction Heating. CAN message set, bus topology, CSC, Unified PCB and both firmwares unchanged; `coil_temp` renamed `element_temp`. Rated power assumed 1,300 W (unit TBD): power tables, ramp rates, efficiency, pot compatibility (any flat-bottomed pot, no ferromagnetic requirement), pot detection (centre sensor), EMI/EMF notes, step-response and thermal-cycling criteria updated; §1.2 now records the induction trade-offs |
 | 6.1 | 2026-11-04 | Manas Pradhan | Reference unit fixed: Philips OneChef NX5300/00 (§2.3) — its body becomes the Cooking Surface (modified for the stirrer and dock), its air-fryer lid is replaced by the Dispensing Unit, its 6 L non-stick pot is Epicura's pot. 2,280 W nameplate includes the lid heater; base plate 1,000–1,300 W, planning figure stays 1,300 W. Temperature range 60–200 °C (sear/tadka ≤ 200 °C, STM32 cut-off 230 °C), selection requirement for an OEM CAN control board added with the Case B fallback named |
 | 6.2 | 2026-11-04 | Manas Pradhan | OEM unit confirmed to ship with a CAN control board: Case B fallback removed from §2.1 and §2.3 |
+| 6.3 | 2026-11-04 | Manas Pradhan | Pot changed to a 25 × 25 × 12 cm rounded-square rounded-square non-stick pot (≈ 7.3 L brim, 6 L max fill; Mechanical Design §2.2): the donor's round inner pot and glass lid are set aside (§2.3 table), plate diameter and pot compatibility rows, sear checklist item |
+| 6.4 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit: the AP node's transceiver (ISO1050DUB #2 on the Unified PCB v5.0) is now driven by the DU STM32 FDCAN1, a transparent gateway for the RV1106 over the UART host link; MCP2518FD / SocketCAN removed from the block diagram, physical-layer table and isolation paragraph. HEAT_* message set, bus topology, dock and CSC unchanged |
+| 6.6 | 2026-11-04 | Manas Pradhan | DU CAN node non-isolated (Unified PCB v5.1): SN65HVD230 replaces ISO1050DUB #2, dock pin 5 ties GND_ISO to the DU ground, pin 6 reserved; isolation only at the CSC's port #1 (ground-loop barrier, not a safety barrier); new selection requirement that the unit's CAN port is SELV; block diagram, §3.1 transceiver/connector rows and safety item 3 updated |
+| 6.5 | 2026-11-04 | Manas Pradhan | Aligned to CSC v1.3: the stirring motor's port is now the CSC's second isolated CAN port (FDCAN2, ISO1050DUB #3 + B0505S #2, floating GND_SU) instead of a non-isolated port (physical-layer table, isolation paragraph); DU-lifted safe hold names K_SU (SU PSU AC cut) instead of Q_STIR. Heater bus, HEAT_* message set and K_SAFE relay chain unchanged |
+| 6.7 | 2026-11-05 | Manas Pradhan | Heating unit's control-board 12 V SELV rail powers the CSC, fans and relay coils (CSC v1.5, J_HU_PWR): supply-tap selection requirement added beside the CAN-port SELV rule in §2.1 (SELV, 10.8–13.2 V, ≥ 1.5 A spare, live whenever on; not yet characterised, IRM-20-12 fallback) and a §2.3 row; K_SAFE semantics moved to the heating element loom (unit controller, interlocks, CAN port and 12 V stay live) in §8.1, the warning, §8.2, §8.3 and the checklist; block diagram shows the tap |
+| 6.8 | 2026-11-05 | Manas Pradhan | Heating-unit tap withdrawn (CSC v1.6, reversing 6.7): the CSC, fans and relay coils run from a dedicated Mean Well LRS-35-12, the OEM unit is not opened and only its CAN port is used — §2.1 supply-tap requirement, §2.3 row, block-diagram tap line and the teardown-characterisation checklist item removed (the CAN-port SELV rule stays); K_SAFE back on the unit's AC inlet loom in §8.1, the warning, §8.2, §8.3 and the checklist |

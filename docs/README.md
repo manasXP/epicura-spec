@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-11-04
-version: 1.6
+modified: 2026-11-05
+version: 1.10
 status: Draft
 ---
 
@@ -19,11 +19,11 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 #### 1.1.2 Hardware
 2. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]]** - Heating, robotic arm, sensors, and performance requirements
 3. **[[01-Epicura-Architecture|Epicura Architecture]]** - Three-unit system (Cooking Surface, Stirring Unit, lift-off Dispensing Unit), block diagrams, dock and hardware wiring
-4. **[[03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera + white LED ring on the Dispensing Unit underside, module-reported cooking temperature, NAU7802 load cells, battery/dock monitoring and pot detection
+4. **[[03-Sensors-Acquisition|Sensors & Acquisition]]** - Camera + white LED ring on the Dispensing Unit underside, module-reported cooking temperature, SLD tank / pump Hall switches, battery/dock monitoring and pot detection
 5. **[[04-Mechanical-Design|Mechanical Design]]** - Three-unit stack (CS base, SU gantry, lift-off DU), arm mechanism, dock and industrial design
 
 #### 1.1.3 Software
-6. **[[02-Controller-Software-Architecture|Controller & Software Architecture]]** - Dual-processor software modules, recipe state machine, and control flow
+6. **[[02-Controller-Software-Architecture|Controller & Software Architecture]]** - Software modules across the RV1106 and the two STM32G0B1 (DU + CSC), recipe state machine, host-link and CAN protocols, and control flow
 7. **[[03-Main-Loop-State-Machine|Main Loop State Machine]]** - Cooking state diagram, state-layer impact matrix, sequence diagrams, and transition triggers
 8. **[[01-Tech-Stack|Tech Stack]]** - Hardware platforms, software frameworks, and development tools
 9. **[[04-MPU-Functional-Specification|MPU Functional Specification]]** - RV1106G3 (Cortex-A7 + NPU/ISP) functional requirements, interfaces, and software architecture
@@ -34,8 +34,8 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 
 #### 1.1.5 Subsystems
 9. **[[01-Electric-Heating|Electric Heating]]** - 1,300W (assumed) electric heating unit of the rice-cooker class on the isolated CAN port, unit-internal temperature control, and power management
-10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis arm on a 24V CAN servo motor in the Stirring Unit (CSC regular CAN port via the J_SU harness), stirring patterns, and STM32 motor control
-11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing in the lift-off Dispensing Unit, driven by the RV1106: FID (fine, servo carousel), CID (coarse, servo carousel), SLD (liquids, NAU7802 load cells)
+10. **[[02-Robotic-Arm|Robotic Arm]]** - Single-axis arm on a 24V CAN servo motor in the Stirring Unit (CSC isolated CAN port #2 and the SU's own PSU via the J_SU harness), stirring patterns, and STM32 motor control
+11. **[[03-Ingredient-Dispensing|Ingredient Dispensing]]** - Three-subsystem dispensing in the lift-off Dispensing Unit, driven by the DU STM32 under RV1106 commands: FID (fine, servo carousel), CID (coarse, servo carousel), SLD (liquids: drawer tanks, pumps with Hall tachs, open-loop metering)
 12. **[[04-Vision-System|Vision System]]** - HD camera, edge AI inference, and cooking stage detection
 13. **[[05-Exhaust-Fume-Management|Exhaust & Fume Management]]** - Exhaust fan, grease/carbon filtration, and fume extraction
 
@@ -55,13 +55,13 @@ Welcome to the comprehensive documentation for the Epicura autonomous kitchen ro
 
 #### 1.1.9 Components (BOM)
 18. **[[01-Compute-Module-Components|Compute Module Components]]** - Luckfox Pico Zero (RV1106G3), STM32, 4" SPI LCD
-19. **[[02-Actuation-Components|Actuation Components]]** - Servo motors, heating unit, solenoids
+19. **[[02-Actuation-Components|Actuation Components]]** - Servo motors, heating unit, SLD pumps and drawer tanks
 20. **[[03-Sensor-Components|Sensor Components]]** - IMX415-98 camera, reed switch, LED ring
 21. **[[__Workspaces/Appliance/Epicura/epi-Spec/docs/08-Components/04-Total-Component-Cost|Total Component Cost]]** - Full BOM and cost analysis (≈ $650-760 prototype)
 
 #### 1.1.10 PCB Design
-22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - Dispensing Unit board v4.0 (160x90mm, 4-layer): Luckfox Pico Zero slot, 2S Li-ion primary supply + 1 A dock charger, CID/FID/SLD drivers on a 6 V rail, NAU7802 load cells, RV1106 isolated CAN node, dock pads (document lives in epi-Design/PCB)
-23. **[[02-Cooking-Surface-Controller|Cooking Surface Controller]]** - Cooking Surface board v1.0 (~100x70mm, 4-layer): STM32G0B1RE, isolated CAN to the heating unit (J_CAN_HEAT) and the dock, stir-motor CAN + 24V (J_SU harness), safety relay, E-stop, fans, dock power switch (document lives in epi-Design/PCB alongside 01-Unified-PCB-Design)
+22. **[[01-Unified-PCB-Design|Unified PCB Design]]** - Dispensing Unit board v5.3 (annular sector in the Ø350 mm DU, 4-layer): Luckfox Pico Zero slot + DU STM32G0B1RE (UART host link), 2S Li-ion primary supply + 1 A dock charger, CID/FID/SLD drivers on a 6 V rail, SLD Hall inputs, DU STM32 CAN node, dock pads (document lives in epi-Design/PCB)
+23. **[[02-Cooking-Surface-Controller|Cooking Surface Controller]]** - Cooking Surface board v1.0 (~100x70mm, 4-layer): STM32G0B1RE, isolated CAN to the heating unit (J_CAN_HEAT) and the dock, second isolated CAN port + floating pass-through of the SU's own 24V (J_SU_IN → J_SU harness), safety relays K_SAFE (heating unit AC inlet) / K_SU, E-stop, fans, dock power switch; board, fans and relay coils powered by a dedicated Mean Well LRS-35-12 (J_12V_IN), LRS-75-24 #1 passing through only as the dock feed (document lives in epi-Design/PCB alongside 01-Unified-PCB-Design)
 24. **[epicura-design / PCB](https://github.com/manasXP/Epicura-Design/tree/main/PCB)** - Dedicated repo for KiCad project files, schematics, layouts, Gerbers, and DRC/fabrication outputs
 
 #### 1.1.11 Backend
@@ -118,7 +118,7 @@ docs/
 │   ├── 03-Sensor-Components.md                  Sensors & cameras BOM
 │   └── 04-Total-Component-Cost.md               Full cost analysis (≈ $650-760)
 ├── 09-PCB/  (documents live in epi-Design/PCB)
-│   ├── 01-Unified-PCB-Design.md              Dispensing Unit board (Unified PCB v4.0)
+│   ├── 01-Unified-PCB-Design.md              Dispensing Unit board (Unified PCB v5.0)
 │   └── 02-Cooking-Surface-Controller.md      Cooking Surface board (CSC, STM32G0B1RE)
 ├── 10-Backend/
 │   ├── 01-Backend-Architecture.md               Cloud backend architecture
@@ -153,12 +153,12 @@ Start with:
 Start with:
 1. [[__Workspaces/Appliance/Epicura/epi-Spec/docs/02-Hardware/02-Technical-Specifications|Technical Specifications]] - System requirements and power budget
 2. [[01-Epicura-Architecture|Epicura Architecture]] - Block diagrams and wiring
-3. [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, module-reported temperature, and load cell design
+3. [[03-Sensors-Acquisition|Sensors & Acquisition]] - Camera, module-reported temperature, and SLD tank / pump sensing
 4. [[04-Mechanical-Design|Mechanical Design]] - Enclosure, arm mechanism, and thermal management
 
 ### 3.3 For Software Engineers
 Start with:
-1. [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Dual-processor design and recipe state machine
+1. [[02-Controller-Software-Architecture|Controller & Software Architecture]] - Three-controller design (RV1106 + two STM32G0B1) and recipe state machine
 2. [[01-Tech-Stack|Tech Stack]] - Development environment and tools
 3. UI/UX Design - See [[__Workspaces/Appliance/Epicura/epi-Design/UX/__init|epi-Design/UX]] workspace
 
@@ -188,7 +188,7 @@ Start with:
 - **AI Vision Monitoring** - Overhead camera with hardware ISP + NPU edge AI (RKNN) for food color/texture analysis and cooking stage detection
 - **Electric Heating Control** - 1,300W (assumed) rice-cooker-class heating unit regulating on its own centre sensor; setpoints and status over an isolated CAN port
 - **Robotic Stirring Arm** - Single-axis arm on a 24V CAN servo motor in the Stirring Unit (CSC FDCAN2 via the J_SU harness) with multiple stir patterns and auto-scraping
-- **Three-Subsystem Dispensing** - FID (6-canister servo carousel, ¼ tsp dosing, 3 servos), CID (5-slot servo carousel, 1 servo), SLD (2 peristaltic pump liquid channels with dedicated per-reservoir load cells + low-level alerts); FID + CID share one Dispenser Servo Block; all three travel with the lift-off Dispensing Unit and are driven by the RV1106
+- **Three-Subsystem Dispensing** - FID (6-canister servo carousel, ¼ tsp dosing, 3 servos), CID (5-slot servo carousel, 1 servo), SLD (2 drawer-tank liquid channels, pumps in the body with Hall tach metering, low-level alerts); FID + CID share one Dispenser Servo Block; all three travel with the lift-off Dispensing Unit and are driven by the RV1106
 - **Touchscreen + Companion Apps** - 4" LVGL touchscreen on device, native mobile apps (iOS + Android) for remote control and live camera feed
 - **100+ Indian Recipes** - Curated recipe database covering curries, dal, rice, biryani, and more with regional variations
 - **Cloud + Offline Operation** - Cloud-updatable recipe library with full local SQLite for offline cooking
@@ -207,16 +207,16 @@ Start with:
 ## 6. Subsystem Overview
 
 ### 6.1 Hardware Subsystems
-- **Compute Platform** - Luckfox Pico Zero (RV1106G3; AI/vision/UI/dispensing) on the Unified PCB v4.0 in the Dispensing Unit + STM32G0B1RE on the Cooking Surface Controller (CSC: stir motor, heater off-switch, fans, dock)
+- **Compute Platform** - Luckfox Pico Zero (RV1106G3; AI/vision/UI/recipe engine) + DU STM32G0B1RE (dispensing, battery/dock monitor, DU CAN node; UART host link) on the Unified PCB v5.0 in the Dispensing Unit + STM32G0B1RE on the Cooking Surface Controller (CSC: stir motor, heater off-switch, fans, dock)
 - **Electric Heating Unit** - 1,300W (assumed) rice-cooker-class heating unit with internal temperature control in the Cooking Surface base, isolated CAN port on the CSC
 - **Display** - 4" 480x320 capacitive touchscreen (LVGL interface, SPI) on the Dispensing Unit front face
-- **Robotic Arm** - Stirring Unit gantry between the rear pillars: single-axis arm on a 24V CAN servo motor, fed by one harness (J_SU) from the CSC's regular CAN port
-- **Sensors** - IMX415-98 camera + white LED ring on the DU underside, NAU7802 SLD load cells, INA219 battery monitor, module-reported cooking temperature over CAN; the 2S Li-ion pack on the Unified PCB v4.0 is the DU's primary supply
-- **Ingredient Dispensing** - FID + CID servo carousels (PCA9685 Dispenser Servo Block, 6 V rail) + SLD (6 V peristaltic pumps + solenoids), all in the lift-off Dispensing Unit, driven by the RV1106
+- **Robotic Arm** - Stirring Unit gantry between the rear pillars: single-axis arm on a 24V CAN servo motor, fed by one harness (J_SU) from the CSC's second isolated CAN port and the SU's own floating PSU
+- **Sensors** - IMX415-98 camera + white LED ring on the DU underside, SLD tank / pump Hall switches, INA219 battery monitor, module-reported cooking temperature over CAN; the 2S Li-ion pack on the Unified PCB v5.0 is the DU's primary supply
+- **Ingredient Dispensing** - FID + CID servo carousels (PCA9685 Dispenser Servo Block, 6 V rail) + SLD (drawer tanks, 6 V pumps with Hall tachs, check-valve nozzles), all in the lift-off Ø350 mm Dispensing Unit, driven by the DU STM32 under RV1106 commands
 - **Dock** - 8-contact magnetic pogo block on the left rear pillar: 24V charge + isolated CAN + dock sense; the Dispensing Unit lifts straight off with no cable
 
 ### 6.2 Software Subsystems
-- **RV1106 (Buildroot Linux)** - Single C application `epicurad`: recipe engine, ISP + NPU vision pipeline, LVGL UI, `dispense` thread (FID/CID/SLD over I2C), battery/dock monitor, heater setpoints over the shared CAN bus (the module runs its own PID), cloud sync (REST/MQTT client), SQLite, STM32 OTA over CAN
+- **RV1106 (Buildroot Linux)** - Single C application `epicurad`: recipe engine, ISP + NPU vision pipeline, LVGL UI, `dispense` thread (FID/CID/SLD commands to the DU STM32 over the UART host link), battery/dock status from the DU STM32, heater setpoints over the shared CAN bus through the DU STM32 gateway (the module runs its own PID), cloud sync (REST/MQTT client), SQLite, DU STM32 flashing over UART and CSC OTA over CAN
 - **STM32 (FreeRTOS)** - CAN node on the Cooking Surface Controller: stir motor over a second CAN bus, heater off-switch, safety relay / E-stop, exhaust fans, dock power switch, safe hold when the DU is lifted, safety watchdog
 
 ```
@@ -226,22 +226,22 @@ Start with:
 │  DISPENSING UNIT (lifts off, battery-powered)                       │
 │  ┌──────────────────────┐        ┌──────────────────────┐           │
 │  │  RV1106 (Luckfox)    │        │  4" Touchscreen      │           │
-│  │  Unified PCB v4.0    │        │  IMX415-98 Camera +  │           │
-│  │  - Recipe Engine     │        │   white LED ring     │           │
-│  │  - CV Pipeline       │        │  FID/CID/SLD, load   │           │
-│  │  - Dispense thread   │        │   cells, 2S battery  │           │
+│  │  + DU STM32G0B1RE    │        │  IMX415-98 Camera +  │           │
+│  │  Unified PCB v5.0    │        │   white LED ring     │           │
+│  │  - Recipe Engine, CV │        │  FID/CID/SLD, load   │           │
+│  │  - Dispense (STM32)  │        │   cells, 2S battery  │           │
 │  │  - LVGL UI, Cloud    │        │  WiFi/BT             │           │
 │  └──────────┬───────────┘        └──────────────────────┘           │
 │             │ J_DOCK (8 pogo pins: 24 V charge + isolated CAN)      │
 │  COOKING SURFACE (mains)                                            │
 │  ┌──────────▼───────────┐        ┌──────────────────────┐           │
 │  │  STM32 on the CSC    │        │  Heating Unit        │           │
-│  │  (FreeRTOS)          │◄──────►│  PSU, E-stop, relay  │           │
+│  │  (FreeRTOS)          │◄──────►│ 3× PSU, E-stop, relay│           │
 │  │  - Heater Interlock  │  CAN   │  2x fans + filter    │           │
 │  │  - Stir Motor (CAN)  │ (iso)  │  Dock block (pillar) │           │
 │  │  - Safety Watchdog   │        │                      │           │
 │  └──────────┬───────────┘        └──────────────────────┘           │
-│             │ J_SU (24 V + CAN harness in the right pillar)         │
+│             │ J_SU (floating 24 V + isolated CAN, right pillar)     │
 │  STIRRING UNIT                                                      │
 │  ┌──────────▼───────────┐                                           │
 │  │  CAN Servo Arm       │                                           │
@@ -267,3 +267,7 @@ Start with:
 | 1.4 | 2026-11-04 | Manas Pradhan | Single Unified PCB with Pico Zero slot, two CAN ports and 2S battery; IR thermometer removed (module-internal temperature control); CAN servo stirring motor; BOM ~$710 |
 | 1.5 | 2026-11-04 | Manas Pradhan | Three-unit architecture (Cooking Surface with the CSC, Stirring Unit, lift-off Dispensing Unit with the Unified PCB v4.0, magnetic pogo dock): index descriptions, subsystem overview and system diagram updated; new PCB doc 02-Cooking-Surface-Controller; BOM ≈ $650-760 |
 | 1.6 | 2026-11-04 | Manas Pradhan | Induction surface replaced by a rice-cooker-class electric heating unit (1,300 W assumed, same CAN contract): index entries, file tree, subsystem overview and system diagram updated |
+| 1.7 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit (Unified PCB v5.0: RV1106 + DU STM32G0B1RE over a UART host link; DU STM32 drives the dispensers and is the DU CAN node): index entries, file tree, subsystem overview and system diagram updated |
+| 1.8 | 2026-11-04 | Manas Pradhan | Both CSC CAN ports isolated and the Stirring Unit on its own floating PSU (second LRS-75-24, K_SU AC cut; CSC v1.3): CSC and Robotic Arm index lines, subsystem overview and system diagram updated |
+| 1.9 | 2026-11-05 | Manas Pradhan | CSC powered from the heating unit's 12 V SELV rail and K_SAFE on the heating element loom (CSC v1.5): CSC index line updated |
+| 1.10 | 2026-11-05 | Manas Pradhan | CSC on its own Mean Well LRS-35-12 and K_SAFE back on the heating unit's AC inlet (CSC v1.6, reversing 1.9): CSC index line and system diagram (3× PSU) updated |

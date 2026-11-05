@@ -1,7 +1,7 @@
 ---
 created: 2026-02-15
-modified: 2026-11-04
-version: 1.8
+modified: 2026-11-05
+version: 2.5
 status: Draft
 ---
 
@@ -30,8 +30,8 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 #### 3.1.1 Objectives
 - Set up Luckfox Pico Zero (RV1106G3) with a Buildroot Linux image
-- Set up STM32G0B1RE with FreeRTOS
-- Bring up the isolated CAN bus between the RV1106 (MCP2518FD on SPI0 CS1), the STM32 and the electric heating unit
+- Set up STM32G0B1RE with FreeRTOS (two images from one tree: `csc` for the Cooking Surface Controller, `du` for the DU STM32 on the Unified PCB)
+- Bring up the host link between the RV1106 and the DU STM32 (UART2 ↔ USART1, 921,600 baud, COBS/CRC) and the isolated CAN bus between the DU STM32 (FDCAN1, gateway for the RV1106), the CSC STM32 and the electric heating unit
 - Validate basic I/O and power supply
 
 #### 3.1.2 Tasks
@@ -41,26 +41,29 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Build Buildroot image from the Luckfox SDK inside the `luckfoxtech/luckfox_pico:1.0` Docker image (kernel 5.10, busybox init, squashfs rootfs; packages: sqlite, libyaml, cjson, libmosquitto, libcurl, mbedtls, lvgl, swupdate, wpa_supplicant, bluez5, rockit, rknn)
 - [ ] Flash image to eMMC over USB-C, verify boot
 - [ ] Establish SSH access over Wi-Fi (no Ethernet on the Pico Zero); UART0 debug console as fallback
-- [ ] Test GPIO, I2C3 (touch + dispenser/power ICs: PCA9685, PCF8574 #2, INA219 ×2, TCA9543A → NAU7802 ×2), PWM ×4, SPI0 (LCD on CS0, MCP2518FD on CS1 → `can0`) from Linux userspace
+- [ ] Test GPIO 32/38 (DU STM32 BOOT0/NRST), I2C3 (touch only), PWM10 (backlight), SPI0 (LCD on CS0 — nothing on CS1) and UART2 (`/dev/ttyS2` at 921,600, loopback with TX–RX jumpered) from Linux userspace
 - [ ] Bring up the 4" LCD on fbtft (SPI0, 50 MHz, DMA) and FT6336 touch on I2C3 (evdev)
 - [ ] Verify IMX415-98 on MIPI CSI through rockit VI/ISP (1280x720 @ 30 fps)
 
-**Week 2: STM32 Bring-up**
-- [ ] Acquire NUCLEO-G0B1RE development board
+**Week 2: STM32 Bring-up (both images)**
+- [ ] Acquire two NUCLEO-G0B1RE development boards (one stands in for the CSC, one for the DU STM32)
 - [ ] Install STM32CubeIDE and STM32CubeMX
-- [ ] Create FreeRTOS project with basic task structure
-- [ ] Test GPIO output (LED blink)
-- [ ] Test USB-C DFU and the J_DBG console on the NUCLEO; later verify the CAN bootloader (0x7E0/0x7E8) once FDCAN1 is up
-- [ ] Test FDCAN1 on the shared bus (receive heating unit HEAT_STATUS and RV1106 HB_AP)
-- [ ] Test PWM output (servo signal generation)
+- [ ] Create the FreeRTOS project with one tree and two targets (`csc`: CAN Comms / Motor Control / Safety / Thermal; `du`: Link-Gateway / Dispense / Monitor)
+- [ ] Test GPIO output (LED blink) on both
+- [ ] CSC: test USB-C DFU and the J_DBG console on the NUCLEO; later verify the CAN bootloader (0x7E0/0x7E8) once FDCAN1 is up
+- [ ] DU: flash through the ST system bootloader on USART1 (PA9/PA10) with BOOT0/NRST driven from the Pico Zero GPIO 32/38; SWD as bench fallback
+- [ ] DU: host-link loopback — COBS/CRC-16 frames from `epicurad` echoed by the DU STM32 at 921,600 baud, zero CRC errors over 1 M frames
+- [ ] Test FDCAN1 on the shared bus from both images (receive heating unit HEAT_STATUS; DU forwards the RV1106's HB_AP, CSC receives it)
+- [ ] DU: test I2C1 (PCA9685, PCF8574 #2, INA219 ×2), the six SLD Hall inputs (PC0–PC5) and TIM PWM (pumps, LED ring, buzzer, servo signal generation)
 
-**Week 3: Inter-Processor Communication (CAN)**
-- [ ] Wire the isolated CAN bus: MCP2518FD + ISO1050DUB #2 on SPI0 CS1 (GPIO 58) of the Pico Zero, STM32 FDCAN1 (PB8/PB9) + ISO1050DUB #1, B0505S-1WR3 isolated supply, 120 Ω at J_CAN and in the module; bring up `can0` (`mcp251xfd`) at 500 kbps
-- [ ] Define the CAN ID map (E_STOP 0x001, HB_AP 0x010, heater 0x1xx, commands 0x2xx with a seq byte, reports 0x3xx, ACK/NAK 0x3FF)
-- [ ] Implement the protocol on the STM32 (FDCAN1 RX FIFO interrupt, ID filters, ACK/NAK, 20 Hz TELEMETRY)
-- [ ] Implement the protocol on the RV1106 (C, `epicurad` can thread, raw SocketCAN socket with filters)
-- [ ] Test bidirectional exchange: RV1106 sends a command, STM32 ACKs; 20 Hz TELEMETRY keeps flowing while the LCD refreshes
-- [ ] Measure round-trip latency (target: < 10 ms)
+**Week 3: Inter-Processor Communication (host link + CAN)**
+- [ ] Wire the isolated CAN bus: DU STM32 FDCAN1 (PB8/PB9) + non-isolated SN65HVD230 on the Unified PCB (GND_ISO tied to DU ground at dock pad 5, pad 6 unused), CSC STM32 FDCAN1 (PB8/PB9) + ISO1050DUB #1 with the B0505S-1WR3 #1 isolated supply, 120 Ω at J_CAN_HEAT and in the module; 500 kbps; confirm the heating unit's CAN port is SELV
+- [ ] Define the CAN ID map (E_STOP 0x001, HB_AP 0x010, heater 0x1xx, commands 0x2xx with a seq byte, reports 0x3xx, ACK/NAK 0x3FF) and the host-link DU-local block (0x220, 0x226, 0x230–0x239, 0x311 DU_STATUS, 0x3FE DU_ACK)
+- [ ] Implement the protocol on the CSC STM32 (FDCAN1 RX FIFO interrupt, ID filters, ACK/NAK, 20 Hz TELEMETRY)
+- [ ] Implement the gateway on the DU STM32 (USART1 DMA ↔ FDCAN1: forward bus IDs unchanged, terminate DU-local IDs, 5 s HB_AP watchdog → dispensers off)
+- [ ] Implement the protocol on the RV1106 (C, `epicurad` link thread: termios on `/dev/ttyS2`, COBS/CRC codec, ID routing)
+- [ ] Test bidirectional exchange: RV1106 sends a command, CSC ACKs through the gateway; 20 Hz TELEMETRY and 1 Hz DU_STATUS keep flowing while the LCD refreshes
+- [ ] Measure round-trip latency (target: < 10 ms through the gateway, < 5 ms for a DU-local command)
 
 **Week 4: Power Supply & Integration**
 - [ ] Use bench PSU initially (5V over USB-C for the Pico Zero (~1 W), 6V for servos, 3.3V for STM32)
@@ -80,7 +83,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Risks:**
 - Luckfox SDK / Buildroot build issues → Fallback: start from the prebuilt Luckfox Pico Zero image and add packages incrementally
-- SPI0 contention between the LCD and the MCP2518FD → Fallback: cap fbtft transfer chunks, keep the can thread at SCHED_FIFO (there is no UART fallback: the STM32 is in another unit and only the CAN bus crosses the dock)
+- Host-link framing errors at 921,600 baud (long header traces, EMI from the 6V_DSP switcher) → Fallback: drop to 460,800 baud (still > 10x the traffic), keep the link thread at SCHED_FIFO; CAN frames are hardware-protected once on the bus
 
 ---
 
@@ -94,18 +97,19 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.2.2 Tasks
 
 **Week 5: Heating Unit Setup**
-- [ ] Buy a Philips OneChef NX5300/00 donor cooker (or equivalent, ₹19,995 ≈ $230) and strip the air-fryer lid; keep the body, heating plate (~1,300 W assumed), controller, 6 L non-stick inner pot and glass lid
+- [ ] Buy a Philips OneChef NX5300/00 donor cooker (or equivalent, ₹19,995 ≈ $230) and strip the air-fryer lid; keep the body, heating plate (~1,300 W assumed) and controller; set the round inner pot and glass lid aside
+- [ ] Source the 25 × 25 × 12 cm rounded-square rounded-square non-stick pot and its matching glass lid (commercial square casserole or custom pressed; 6 L max fill) and open the donor pot well out to the square footprint (Mechanical Design §2.2)
 - [ ] Obtain the OEM unit with its CAN control board (ships with the unit, confirmed 2026-11-04) and review its CAN protocol documentation; the retail OneChef board has no external interface and is not used
-- [ ] Connect the unit's CAN port to J_CAN_HEAT on the Cooking Surface Controller (the RV1106 node reaches the same bus over the dock contacts; both nodes already up)
-- [ ] Verify CAN communication from the RV1106: send HEAT_QUERY, receive HEAT_STATUS on `can0`; confirm the STM32 sees the same frames
-- [ ] Wire safety relay on AC mains to module (STM32 GPIO control)
+- [ ] Connect the unit's CAN port to J_CAN_HEAT on the Cooking Surface Controller (the DU STM32 node reaches the same bus over the dock contacts; both Epicura nodes already up)
+- [ ] Verify CAN communication from the RV1106 through the DU STM32 gateway: send HEAT_QUERY, receive HEAT_STATUS on the host link; confirm the CSC STM32 sees the same frames
+- [ ] Wire the safety relay K_SAFE on the heating unit's AC inlet loom (STM32 PB0 → J_SAFE pin 1 → power relay; NC wiring, de-energised = unit disconnected); the OEM unit is not opened — Epicura uses only its CAN port
 
 **Week 6: CAN Power Control Integration**
 - [ ] Implement HEAT_SET_POWER (0-100%, power mode) and HEAT_SET_TEMP (temperature mode) from the RV1106 heat thread with 2 Hz keep-alive; STM32 sends HEAT_ON_OFF=0 only
 - [ ] Verify all power levels (warm, simmer, medium, boil, sear)
 - [ ] Measure power delivery at different CAN power levels (25%, 50%, 75%, 100%)
 - [ ] Log temperature ramp rates for water (1L, 2L, 3L)
-- [ ] Test safety relay disconnect, STM32 HEAT_ON_OFF=0 / E_STOP broadcast, and the unit's 1 s command watchdog (kill `epicurad`)
+- [ ] Test the E-stop cut (K_SAFE opens the heating unit's AC inlet; the CSC stays up on its own LRS-35-12 and keeps reporting), STM32 HEAT_ON_OFF=0 / E_STOP broadcast, and the unit's 1 s command watchdog (kill `epicurad`)
 
 **Week 7: Temperature Control & Sensors**
 - [ ] Verify surface_temp and element temperature reporting in HEAT_STATUS from the heating unit (10 Hz)
@@ -153,12 +157,12 @@ This document outlines the comprehensive plan for building a functional Epicura 
 #### 3.3.2 Tasks
 
 **Week 8: Servo Arm Assembly**
-- [ ] Acquire 24V integrated CAN servo motor (≥ 3 N·m, CyberGear/RobStride-class) and bring it up on the STM32 FDCAN2 bus (J_CAN_STIR, 1 Mbps) with 24 V from J_STIR_PWR
+- [ ] Acquire 24V integrated CAN servo motor (≥ 3 N·m, CyberGear/RobStride-class) and bring it up on the STM32 FDCAN2 bus (J_CAN_STIR, isolated port #2, 1 Mbps) with 24 V from J_STIR_PWR — the SU's own LRS-75-24 #2 fed in on J_SU_IN and switched by the K_SU pilot relay on its AC input (after K_SU closes, wait ≈ 300 ms and for the motor boot frame before commanding)
 - [ ] Design mounting bracket (3D print, PETG or aluminum)
 - [ ] Fabricate stainless steel shaft (8mm diameter, 250mm length)
 - [ ] Attach food-grade silicone paddle to shaft end
 - [ ] Mount servo + shaft assembly above pot center
-- [ ] Wire motor CAN + 24 V harness to J_CAN_STIR / J_STIR_PWR; configure the motor's command timeout (≤ 500 ms) and zero the encoder at the home angle
+- [ ] Wire motor CAN + 24 V harness to J_CAN_STIR / J_STIR_PWR (J_SU 5-way: 24V_SU, GND_SU, CAN_H, CAN_L, SHIELD; GND_SU stays floating from the CS ground — verify no continuity); configure the motor's command timeout (≤ 500 ms) and zero the encoder at the home angle
 
 **Week 9: Stirring Patterns**
 - [ ] Implement 5 stirring patterns on STM32 (CAN velocity commands at 50 Hz):
@@ -188,18 +192,18 @@ This document outlines the comprehensive plan for building a functional Epicura 
 │            │                             │
 │     ┌──────────────┐   ┌─────────────┐   │
 │     │     Pot      │   │ Heating unit│   │
-│     │(6L non-stick)│   │ centre temp │   │
+│     │(25 cm square)│   │ centre temp │   │
 │     └──────┬───────┘   └─────────────┘   │
 │            │                             │
-│  ┌─────┐┌─────┐┌─────┐┌─────┐            │
-│  │LC 1 ││LC 2 ││LC 3 ││LC 4 │            │
-│  └──┬──┘└──┬──┘└──┬──┘└──┬──┘            │
-│     └───┬──┘      └───┬──┘               │
-│         └──────┬──────┘                  │
-│                ▼                         │
-│          ┌──────────┐                    │
-│          │ NAU7802  │ 24-bit I2C ADC     │
-│          └──────────┘                    │
+│  ┌─────────┐┌─────────┐  SLD drawer tanks│
+│  │Oil tank ││H2O tank │  (float+presence │
+│  └──┬───┬──┘└──┬───┬──┘   magnets)       │
+│  pump│   │Hall │   │Hall                 │
+│     ▼   ▼     ▼   ▼                      │
+│  ┌──────────────────┐                    │
+│  │ DU STM32 PC0–PC5 │ tachs + level in,  │
+│  │ (Dispense task)  │ open-loop metering │
+│  └──────────────────┘                    │
 └──────────────────────────────────────────┘
 ```
 
@@ -224,7 +228,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 11: Camera Setup**
 - [ ] Mount IMX415-98 camera module on the Dispensing Unit underside, centred over the pot behind the sealed window (overhead view)
-- [ ] Install the white LED ring (12–16 LEDs, 5000 K) around the camera window; drive it from an RV1106 PWM via Q_LED and implement the OFF / CAPTURE / NIGHT duty modes in `epicurad`
+- [ ] Install the white LED ring (12–16 LEDs, 5000 K) around the camera window; drive it from the DU STM32 PWM via Q_LED (SET_LED 0x220 over the host link) and implement the OFF / CAPTURE / NIGHT duty modes in `epicurad`
 - [ ] Configure rockit VI/ISP on the RV1106 for 1280x720 @ 30fps capture (main path NV12) plus a 224x224 RGB888 self-path
 - [ ] ISP tuning check: load the IMX415-98 tuning file from the Luckfox SDK; verify AWB/AE, dehaze and 3DNR behaviour over a steaming pot
 - [ ] Test image quality under LED illumination (consistent lighting)
@@ -318,18 +322,18 @@ This document outlines the comprehensive plan for building a functional Epicura 
   - Load recipe YAML
   - Execute stages sequentially
   - Transition on CV detection OR timeout OR weight confirmation
-  - Send commands to the STM32 and heater over the CAN bus (can thread)
+  - Send commands to the CSC STM32 and heater over the CAN bus (link thread → DU STM32 gateway) and dispensing commands to the DU STM32 (dispense thread, DU-local IDs)
 - [ ] Create recipe files for 5 target dishes
 
 **Week 16: Dispensing Mechanism**
 - [ ] Build FID: 6-canister carousel (Ø170 mm ring, 4:3 index gear) with per-canister ¼ tsp measure wheels, dosing station (F2 blade coupling) and steam-gate flap (F3)
 - [ ] Build CID: 5-slot + cover carousel (Ø230 mm lift-off ring, thin-section bearing) on fixed base plate with rear aperture and chute, index servo (C1) via 4:3 gear
-- [ ] Build SLD: 2 liquid channels (peristaltic pumps + solenoid valves + silicone tubing)
-- [ ] Install 2× SLD dedicated load cells (2 kg each) under the oil and water reservoirs, each on a NAU7802 behind the TCA9543A mux (I2C3)
-- [ ] Assemble the Dispenser Servo Block: PCA9685 @ 0x41 on RV1106 I2C3, OE on an RV1106 GPIO, MP1584EN #2 set to 6.0 V with P-MOSFET rail switch on PCF8574 #2 P4, servo leads to J_DSB1-4; implement the `epicurad` dispense thread (FID/CID/SLD sequences, INA219 stall window)
+- [ ] Build SLD (robot-mop pattern): two drawer tanks (200 mL oil, 500 mL water; bottom self-sealing poppet, vented cap, float + presence magnets) in the DU service ring, 6 V peristaltic (oil) and 6 V diaphragm (water) pumps in the body with rotor magnets, short pump lines, snap-out nozzle cartridges with spring check valves
+- [ ] Fit the six Hall switches (two tachs, two present, two low) on the 12-pin J_SLD → DU STM32 PC0–PC5; implement open-loop metering (pulses × cal_ul), the prime routine and SLD_CAL; calibrate both channels into a measuring cup
+- [ ] Assemble the Dispenser Servo Block: PCA9685 @ 0x41 on the DU STM32 I2C1, OE on PB0, MP1584EN #2 set to 6.0 V with P-MOSFET rail switch on PCF8574 #2 P4, servo leads to J_DSB1-4; implement the DU STM32 Dispense task (FID/CID/SLD sequences, INA219 stall window) and the `epicurad` dispense thread as its host-link client (0x230–0x239 → DU_ACK 0x3FE)
 - [ ] Calibrate FID dosing: weigh 10 doses per spice, store g per ¼ tsp; verify jiggle clears packed powder; verify CID ascending-order NACK and stall detection
-- [ ] Calibrate SLD dispensing per channel: start pump, monitor individual reservoir weight loss, stop at target
-- [ ] Test SLD low-level alert: verify alert fires when reservoir drops below threshold
+- [ ] Calibrate SLD dispensing per channel: fixed pulse count into a measuring cup, store cal_ul (SLD_CAL); verify ±5 % on 10 mL oil and 300 mL water
+- [ ] Test SLD tank sensing: low-level Hall at ≈ 20 / 50 mL left, tank-absent NAK with a tank out, prime runs once after a tank re-seat; check valves hold with a full tank
 
 ```
 ┌──────────────────────────────────────────────────┐
@@ -437,7 +441,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 
 **Week 21: Full System Integration**
 - [ ] Connect all subsystems into single enclosure/frame
-- [ ] Verify wiring per unit: CS (PSU, CSC, relay, fans, J_CAN_HEAT, stir harness to J_SU), DU (battery pack, I2C3, SPI, servos, pumps, LED ring), dock contacts (DOCK_24V, CAN, sense pins) with the DU seated and lifted
+- [ ] Verify wiring per unit: CS (LRS-35-12 → J_12V_IN for the CSC, fans and relay coils, LRS-75-24 #1 → J_DU_IN only, LRS-75-24 #2 → J_SU_IN, K_SAFE on the heating unit's AC inlet, K_SU on the SU PSU's AC input, fans, J_CAN_HEAT, stir harness to J_SU with GND_SU floating), DU (battery pack, DU STM32 host link + BOOT0/NRST, I2C1 peripherals, SPI LCD, servos, pumps, LED ring), dock contacts (DOCK_24V, CAN, sense pins) with the DU seated and lifted
 - [ ] Run system self-test sequence (each subsystem checks in)
 - [ ] End-to-end test: select recipe on UI → cook → complete notification
 
@@ -446,7 +450,7 @@ This document outlines the comprehensive plan for building a functional Epicura 
 - [ ] Evaluate results: taste, texture, consistency, timing
 - [ ] Identify failure modes and edge cases
 - [ ] Tune PID, CV thresholds, and dispensing calibration
-- [ ] Test with different fill levels in the 6 L pot (1L, 2L, 4L; ~4.8 L usable max)
+- [ ] Test with different fill levels in the 25 cm rounded-square pot (1 L, 2 L, 4 L, 6 L max-fill)
 
 **Week 23: Safety Validation**
 - [ ] Test all interlocks:
@@ -485,15 +489,15 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | Category | Items | Estimated Cost |
 |----------|-------|----------------|
 | Compute | Luckfox Pico Zero (RV1106G3) + STM32 Nucleo dev board | $65-80 |
-| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD pumps/solenoids + OneChef NX5300/00 donor cooker (heating unit, controller, 6 L pot, lid, body) | $390-490 |
-| Sensors | IMX415-98 camera + reed switch + white LED ring + NAU7802 ×2 + INA219 ×2 (no thermometer) | $65-80 |
+| Actuation | 24V CAN servo motor + 4 dispenser servos (FID/CID carousels, PCA9685) + SLD drawer tanks, pumps and check-valve nozzles + OneChef NX5300/00 donor cooker (heating unit, controller, body) + 25 cm rounded-square pot with lid | $415-515 |
+| Sensors | IMX415-98 camera + reed switch + white LED ring + SLD Hall switches ×6 + INA219 ×2 (no thermometer) | $60-75 |
 | Mechanical | 3D printing (PETG filament) + stainless steel shaft + fasteners + brackets | $100-200 |
 | Display | 4" ST7796S SPI IPS touchscreen (FT6336 I2C touch) | $15-20 |
-| Power | Bench PSU + prototype PSU board + cables + connectors | $50-80 |
+| Power | Bench PSU + 2× Mean Well LRS-75-24 (DU #1, SU #2) + 1× Mean Well LRS-35-12 (CSC) + prototype PSU board + cables + connectors | $77-112 |
 | Tools | Soldering station + multimeter + oscilloscope + 3D printer access | $100-200 |
 | Consumables | Ingredients (20+ cook sessions) + thermal paper + misc | $50-100 |
 | Miscellaneous | PCBs (JLCPCB) + shipping + contingency | $200-400 |
-| **Total** | | **$1,020-1,650** |
+| **Total** | | **$1,072-1,707** |
 
 ---
 
@@ -608,3 +612,10 @@ This document outlines the comprehensive plan for building a functional Epicura 
 | 1.6 | 2026-11-04 | Manas Pradhan | Three-unit architecture: STM32 on the Cooking Surface Controller (no UART service link, CAN bootloader), dispensers driven by the RV1106 dispense thread on I2C3 (NAU7802 load cells, 6.0 V rail), white PWM LED ring on the Dispensing Unit underside, per-unit wiring check with the dock |
 | 1.7 | 2026-11-04 | Manas Pradhan | Heater changed from the induction surface to a commercial electric heating unit (rice-cooker class, ~1,300 W assumed, own PID, CAN port; same CAN contract): Phase 2 renamed Heater Integration, week 5/7 tasks, control diagram (plate, centre NTC, element temp), deliverables (boil < 10 min, element over-temp cut-off), budget row ($205-305), risk and production rows reworded |
 | 1.8 | 2026-11-04 | Manas Pradhan | Heating unit referenced to the Philips OneChef NX5300/00: Phase 2 starts by buying the donor cooker and stripping the air-fryer lid, OEM CAN control board (Case A / Case B) task and risk note; pot is the donor's 6 L non-stick inner pot (diagram, fill-level tests); calibration range and cut-offs re-based (surface_temp 220 °C CRITICAL / 230 °C E_STOP, unit ceiling 200 °C); budget: Actuation $205-305 → $390-490 (donor $230 replaces heating unit $45), total $835-1,465 → $1,020-1,650, BOM $433 → $618 |
+| 1.9 | 2026-11-04 | Manas Pradhan | Pot changed to a 25 × 25 × 12 cm rounded-square rounded-square non-stick pot (6 L max fill; Mechanical Design §2.2): Week 5 sourcing / pot-well task added, donor's round pot and lid set aside, control diagram and fill-level tests updated; budget Actuation $390-490 → $415-515 (pot + lid $25), total $1,020-1,650 → $1,045-1,675 |
+| 2.0 | 2026-11-04 | Manas Pradhan | MCU back in the Dispensing Unit (second STM32G0B1RE on the Unified PCB v5.0 as CAN node + gateway for the RV1106 over a UART host link): Phase 1 weeks 1–3 rewritten (two NUCLEO boards, `csc` + `du` images, host-link loopback, BOOT0/NRST flashing, gateway bring-up, DU-local ID block), MCP2518FD / `can0` tasks and the SPI0-contention risk removed (host-link framing risk added), week 5 heater verification through the gateway, LED ring and DSB tasks moved to the DU STM32 with `epicurad` as client, integration wiring check updated; budget unchanged (second NUCLEO ≈ $11 inside the development line) |
+| 2.1 | 2026-11-04 | Manas Pradhan | Stirring Unit on its own PSU (CSC v1.3): week 8 motor bring-up on the isolated FDCAN2 port with 24 V from LRS-75-24 #2 via J_SU_IN and the K_SU pilot relay (≈ 300 ms start-up, motor boot frame), harness wiring to J_SU (24V_SU / GND_SU floating), week 21 CS wiring check (two PSUs, K_SAFE / K_SU); budget: second LRS-75-24 added to the Power line $50-80 → $65-100, total $1,045-1,675 → $1,060-1,695 |
+| 2.2 | 2026-11-04 | Manas Pradhan | CAN isolation on the CSC only: week 3 bus wiring uses a non-isolated SN65HVD230 on the DU STM32 (ISO1050DUB #2 dropped, Unified PCB v5.1), GND_ISO tied to DU ground at the dock, SELV check on the heating unit's CAN port added; budget unchanged |
+| 2.3 | 2026-11-05 | Manas Pradhan | CSC powered from the heating unit (CSC v1.5): week 5 gains the donor-supply characterisation task (SELV, 12 V, ≥ 1.5 A spare with the element cycling, IRM-20-12 fallback on the same J_HU_PWR) and wires K_SAFE on the element loom instead of the AC inlet; week 6 element-disconnect test; week 21 CS wiring check (CSC on J_HU_PWR, LRS-75-24 #1 → J_DU_IN only, K_SAFE on the element loom); budget: IRM-20-12 fallback (~$8, if needed) listed without changing the totals |
+| 2.4 | 2026-11-05 | Manas Pradhan | CSC on its own PSU (CSC v1.6, reverses 2.3): week 5 donor-supply characterisation task removed and K_SAFE wired back on the heating unit's AC inlet loom (the OEM unit is not opened); week 6 element-disconnect test → E-stop test (unit's AC cut, CSC stays up); week 21 CS wiring check (LRS-35-12 → J_12V_IN, LRS-75-24 #1 → J_DU_IN, #2 → J_SU_IN, K_SAFE on the inlet); budget: IRM-20-12 "if needed" line dropped, 1× Mean Well LRS-35-12 ($12) added to the Power line $65-100 → $77-112, total $1,060-1,695 → $1,072-1,707 |
+| 2.5 | 2026-11-05 | Manas Pradhan | Robot-mop SLD: week 2 DU bring-up (Hall inputs instead of NAU7802), sensing diagram, week 16 SLD build tasks (drawer tanks, pumps with tachs, check-valve nozzles, open-loop metering, prime, calibration) and budget rows updated |

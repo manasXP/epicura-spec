@@ -32,7 +32,7 @@
 - [ ] Order NUCLEO-G0B1RE dev board
 - [ ] Source a commercial rice-cooker-class electric heating unit with a CAN port for teardown
 - [ ] Order 24V integrated CAN servo motor (≥ 3 N·m, CyberGear/RobStride-class)
-- [ ] Order 2S1P 18650 Li-ion pack with PCM + NTC
+- [ ] Order 2S2P 18650 Li-ion pack (5,200 mAh) with PCM + NTC
 - [ ] Order IMX415-98 camera module
 - [ ] Order HX711 + load cells
 - [ ] Order a 4" ST7796S SPI touchscreen display
@@ -42,7 +42,9 @@
 
 - [ ] RV1106 Buildroot image bring-up
 - [ ] STM32 FreeRTOS project setup
-- [ ] Isolated CAN bus: RV1106 (MCP2518FD) ↔ STM32 ↔ heating unit
+- [ ] Isolated CAN bus: DU STM32 (FDCAN1, gateway for the RV1106 over the UART host link) ↔ CSC STM32 ↔ heating unit — superseded 2026-11-04: the RV1106 MCP2518FD node is gone
+- [ ] RV1106 ↔ DU STM32 host link (UART2 ↔ USART1, 921,600 baud, COBS-framed CAN-shaped frames, DU-local 0x22x/0x23x block, DU_STATUS 0x311, DU_ACK 0x3FE)
+- [ ] DU STM32 FreeRTOS firmware (Link/Gateway, Dispense, Monitor tasks) built from the same tree as the CSC image
 - [ ] Heater setpoint keep-alive (RV1106 heat thread; the heating unit runs its own PID)
 - [ ] Stir motor CAN driver on STM32 FDCAN2
 - [ ] Servo arm stirring patterns
